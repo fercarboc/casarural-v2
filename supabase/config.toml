@@ -1,0 +1,41 @@
+[functions.check-availability]
+verify_jwt = false
+
+[functions.calculate-price]
+verify_jwt = false
+
+[functions.suggest-combinations]
+verify_jwt = false
+
+[functions.create-pre-reservation]
+verify_jwt = false
+
+[functions.create-stripe-checkout]
+verify_jwt = false
+
+[functions.get-reservation]
+verify_jwt = false
+
+[functions.get-config]
+verify_jwt = false
+
+[functions.get-unit-availability]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.sync-ical-import]
+verify_jwt = false
+
+[functions.cancel-reservation]
+verify_jwt = false
+
+[functions.generate-ical-export]
+verify_jwt = false
+
+[functions.send-reminders]
+verify_jwt = false

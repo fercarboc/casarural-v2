@@ -117,17 +117,17 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-zinc-100 sticky top-0 bg-white z-10">
+        <div className="flex items-center justify-between p-6 border-b border-slate-100 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-zinc-100">
-              <Mail size={18} className="text-zinc-600" />
+            <div className="p-2 rounded-xl bg-slate-100">
+              <Mail size={18} className="text-slate-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-zinc-900">Enviar confirmación</h2>
-              <p className="text-xs text-zinc-400">{reserva.nombre} {reserva.apellidos} · {reserva.email}</p>
+              <h2 className="text-base font-bold text-slate-900">Enviar confirmación</h2>
+              <p className="text-xs text-slate-400">{reserva.nombre} {reserva.apellidos} · {reserva.email}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-700">
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-700">
             <X size={20} />
           </button>
         </div>
@@ -135,7 +135,7 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
         <div className="p-6 space-y-5">
           {/* Tipo de pago */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
               Método de pago del cliente
             </label>
             <div className="space-y-2">
@@ -145,13 +145,13 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
                 { value: 'EFECTIVO_BIZUM', label: '💵 Efectivo / Bizum', desc: 'Confirmación simple sin datos de pago' },
               ].map(opt => (
                 <label key={opt.value}
-                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${tipoPago === opt.value ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 hover:border-zinc-300'}`}>
+                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${tipoPago === opt.value ? 'border-brand-600 bg-slate-50' : 'border-slate-200 hover:border-slate-300'}`}>
                   <input type="radio" checked={tipoPago === opt.value}
                     onChange={() => setTipoPago(opt.value as TipoPago)}
-                    className="accent-zinc-900" />
+                    className="accent-slate-900" />
                   <div>
-                    <p className="text-sm font-semibold text-zinc-900">{opt.label}</p>
-                    <p className="text-xs text-zinc-500">{opt.desc}</p>
+                    <p className="text-sm font-semibold text-slate-900">{opt.label}</p>
+                    <p className="text-xs text-slate-500">{opt.desc}</p>
                   </div>
                 </label>
               ))}
@@ -163,43 +163,43 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Datos bancarios para el email</p>
               <div>
-                <label className="block text-xs font-medium text-zinc-600 mb-1">Titular de la cuenta</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Titular de la cuenta</label>
                 <input type="text" value={titularCuenta} onChange={e => setTitularCuenta(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400" />
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-600 mb-1">IBAN</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">IBAN</label>
                 <input type="text" value={iban} onChange={e => setIban(e.target.value)}
                   placeholder="ES00 0000 0000 0000 0000 0000"
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-400" />
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-600 mb-1">Importe a transferir (€)</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Importe a transferir (€)</label>
                 <input type="number" value={importeTransferencia} onChange={e => setImporteTransferencia(e.target.value)}
                   step="0.01" min="0"
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-zinc-400" />
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
               </div>
             </div>
           )}
 
           {/* Notas para el cliente */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
-              Nota adicional para el cliente <span className="font-normal text-zinc-400">(opcional)</span>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+              Nota adicional para el cliente <span className="font-normal text-slate-400">(opcional)</span>
             </label>
             <textarea value={notasCliente} onChange={e => setNotasCliente(e.target.value)}
               rows={3} placeholder="Texto que se incluirá en el email..."
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-900 focus:border-zinc-400 focus:outline-none resize-none" />
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-brand-400 focus:outline-none resize-none" />
           </div>
 
           {/* Incluir check-in */}
           {reserva.token_cliente && (
-            <label className="flex items-center gap-3 p-3 rounded-xl border border-zinc-200 cursor-pointer hover:bg-zinc-50">
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
               <input type="checkbox" checked={incluirCheckin} onChange={e => setIncluirCheckin(e.target.checked)}
-                className="w-4 h-4 rounded accent-zinc-900" />
+                className="w-4 h-4 rounded accent-slate-900" />
               <div>
-                <p className="text-sm font-medium text-zinc-800">Incluir enlace de check-in</p>
-                <p className="text-xs text-zinc-500">El cliente podrá añadir los datos de los huéspedes desde el email</p>
+                <p className="text-sm font-medium text-slate-800">Incluir enlace de check-in</p>
+                <p className="text-xs text-slate-500">El cliente podrá añadir los datos de los huéspedes desde el email</p>
               </div>
             </label>
           )}
@@ -215,11 +215,11 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
         {/* Footer */}
         <div className="flex gap-3 px-6 pb-6">
           <button onClick={onClose} disabled={loading}
-            className="flex-1 rounded-xl border border-zinc-200 py-3 text-sm font-bold text-zinc-600 hover:bg-zinc-50 disabled:opacity-50">
+            className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
             Cancelar
           </button>
           <button onClick={handleSend} disabled={loading || sent}
-            className="flex-1 rounded-xl bg-zinc-900 py-3 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50 flex items-center justify-center gap-2">
+            className="flex-1 rounded-xl bg-brand-600 py-3 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-2">
             {sent
               ? <><Check size={15} /> Enviado</>
               : loading

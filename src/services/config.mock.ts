@@ -10,6 +10,9 @@ export const MOCK_CONFIG: PricingConfig = {
   limpieza:                  60,
   descuento_no_reembolsable: 10,
   porcentaje_senal:          30,
+  estancia_minima:           2,
+  capacidad_base:            10,
+  capacidad_max:             11,
 };
 
 export const configMockService = {

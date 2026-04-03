@@ -1,1 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* ── Brand colors (StayNex identity) ─────────────────────────────────────── */
+  --color-brand-50:  #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
+  --color-brand-300: #6ee7b7;
+  --color-brand-400: #34d399;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+  --color-brand-800: #065f46;
+  --color-brand-900: #064e3b;
+
+  /* ── Sidebar ─────────────────────────────────────────────────────────────── */
+  --color-sidebar-bg:     #020617;
+  --color-sidebar-hover:  #1e293b;
+  --color-sidebar-active: #0f172a;
+  --color-sidebar-border: #1e293b;
+
+  /* ── Admin light content area ────────────────────────────────────────────── */
+ --color-admin-bg: #353d48;
+
+  /* ── Dark surface palette ────────────────────────────────────────────────── */
+  --color-app-bg:    #07111f;
+  --color-card-bg:   #111c2d;
+  --color-panel-bg:  #182436;
+  --color-input-bg:  #223149;
+
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+
+  /* ── Text ────────────────────────────────────────────────────────────────── */
+  --color-text-title:     #f5f7fb;
+  --color-text-main:      #d7deea;
+  --color-text-secondary: #9fb0c7;
+
+  /* ── Accent colors ───────────────────────────────────────────────────────── */
+  --color-accent-green:   #16b67a;
+  --color-accent-blue:    #4da3ff;
+  --color-accent-amber:   #f59e0b;
+
+  /* ── Shadows ─────────────────────────────────────────────────────────────── */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07);
+  --shadow-card-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07);
+}
+
+/* ── Date inputs dark mode fix ─────────────────────────────────────────────── */
+input[type="date"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.15);
+  opacity: 0.9;
+  cursor: pointer;
+}
+
+/* ── Selects dark mode: dropdown options legibles ─────────────────────────── */
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #0f1b2d;
+  color: #f5f7fb;
+}
+
+select option:checked {
+  background-color: #223149;
+  color: #ffffff;
+}
+
+select option:hover {
+  background-color: #223149;
+  color: #ffffff;
+}
+
+select optgroup {
+  background-color: #0f1b2d;
+  color: #9fb0c7;
+}
+/* ── Date inputs dark mode: icono calendario visible ─────────────────────── */
+input[type="date"] {
+  color-scheme: white;
+  position: relative;
+    
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.4) contrast(1.2);
+  opacity: 1;
+  cursor: pointer;
+   
+}
+
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-clear-button {
+  filter: invert(1);
+}

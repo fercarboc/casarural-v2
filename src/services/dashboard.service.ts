@@ -7,8 +7,8 @@ export const dashboardService = {
     if (isMockMode) return getMockDashboardStats();
 
     try {
-      const today     = new Date();
-      const todayStr  = format(today, 'yyyy-MM-dd');
+      const today      = new Date();
+      const todayStr   = format(today, 'yyyy-MM-dd');
       const monthStart = format(startOfMonth(today), 'yyyy-MM-dd');
       const monthEnd   = format(endOfMonth(today), 'yyyy-MM-dd');
       const yearStart  = format(startOfYear(today), 'yyyy-MM-dd');
@@ -25,66 +25,57 @@ export const dashboardService = {
         { data: reservasAnio },
         { data: bloqueosMes },
       ] = await Promise.all([
-        // Reservas creadas o con entrada este mes
         supabase
           .from('reservas')
-          .select('id, total, estado, estado_pago, importe_pagado, fecha_entrada, created_at')
+          .select('id, importe_total, estado, estado_pago, fecha_entrada, created_at')
           .gte('fecha_entrada', monthStart)
           .lte('fecha_entrada', monthEnd),
 
-        // En casa ahora mismo
         supabase
           .from('reservas')
-          .select('id, nombre, apellidos, fecha_entrada, fecha_salida, num_huespedes, estado')
+          .select('id, nombre_cliente, apellidos_cliente, fecha_entrada, fecha_salida, num_huespedes, estado')
           .eq('estado', 'CONFIRMED')
           .lte('fecha_entrada', todayStr)
           .gt('fecha_salida', todayStr),
 
-        // Check-in hoy
         supabase
           .from('reservas')
-          .select('id, nombre, apellidos, num_huespedes, estado')
+          .select('id, nombre_cliente, apellidos_cliente, num_huespedes, estado')
           .in('estado', ['CONFIRMED', 'PENDING_PAYMENT'])
           .eq('fecha_entrada', todayStr),
 
-        // Check-out hoy
         supabase
           .from('reservas')
-          .select('id, nombre, apellidos, num_huespedes')
+          .select('id, nombre_cliente, apellidos_cliente, num_huespedes')
           .eq('estado', 'CONFIRMED')
           .eq('fecha_salida', todayStr),
 
-        // Próximas llegadas (14 días)
         supabase
           .from('reservas')
-          .select('id, nombre, apellidos, fecha_entrada, fecha_salida, num_huespedes, estado, origen')
+          .select('id, nombre_cliente, apellidos_cliente, fecha_entrada, fecha_salida, num_huespedes, estado, origen')
           .in('estado', ['CONFIRMED', 'PENDING_PAYMENT'])
           .gt('fecha_entrada', todayStr)
           .lte('fecha_entrada', next14days)
           .order('fecha_entrada', { ascending: true })
           .limit(6),
 
-        // Consultas sin responder
         supabase
           .from('consultas')
           .select('id')
-          .eq('estado', 'NUEVA'),
+          .eq('estado', 'PENDIENTE'),
 
-        // Últimas reservas creadas (actividad reciente)
         supabase
           .from('reservas')
-          .select('id, codigo, nombre, apellidos, fecha_entrada, fecha_salida, total, estado, estado_pago, created_at')
+          .select('id, nombre_cliente, apellidos_cliente, fecha_entrada, fecha_salida, importe_total, estado, estado_pago, created_at')
           .order('created_at', { ascending: false })
           .limit(5),
 
-        // Ingresos del año
         supabase
           .from('reservas')
-          .select('importe_pagado')
+          .select('importe_total')
           .eq('estado', 'CONFIRMED')
           .gte('fecha_entrada', yearStart),
 
-        // Bloqueos este mes (para calcular ocupación)
         supabase
           .from('bloqueos')
           .select('fecha_inicio, fecha_fin')
@@ -97,10 +88,9 @@ export const dashboardService = {
       const pendientes  = reservas.filter(r => r.estado === 'PENDING_PAYMENT');
       const canceladas  = reservas.filter(r => r.estado === 'CANCELLED');
 
-      const ingresosMes = confirmadas.reduce((s, r) => s + Number(r.importe_pagado ?? 0), 0);
-      const ingresosAnio = (reservasAnio ?? []).reduce((s, r) => s + Number(r.importe_pagado ?? 0), 0);
+      const ingresosMes  = confirmadas.reduce((s, r) => s + Number(r.importe_total ?? 0), 0);
+      const ingresosAnio = (reservasAnio ?? []).reduce((s, r) => s + Number(r.importe_total ?? 0), 0);
 
-      // Calcular días ocupados este mes
       const diasMes = getDaysInMonth(today);
       const ocupadosSet = new Set<string>();
       for (const r of confirmadas) {
@@ -124,7 +114,6 @@ export const dashboardService = {
       const ocupacionPct = Math.round((ocupadosSet.size / diasMes) * 100);
 
       return {
-        // Stats principales
         monthlyReservations: reservas.length,
         monthlyRevenue:      ingresosMes,
         yearlyRevenue:       ingresosAnio,
@@ -133,31 +122,29 @@ export const dashboardService = {
         consultasNuevas:     (consultasNuevas ?? []).length,
         ocupacionMes:        ocupacionPct,
 
-        // Hoy
-        enCasaAhora:  (enCasaAhora  ?? []).map(r => ({
-          id:         r.id,
-          guestName:  `${r.nombre} ${r.apellidos}`,
-          checkIn:    r.fecha_entrada,
-          checkOut:   r.fecha_salida,
-          guests:     r.num_huespedes,
-          status:     r.estado,
-        })),
-        checkinHoy:  (checkinHoy  ?? []).map(r => ({
+        enCasaAhora: (enCasaAhora ?? []).map(r => ({
           id:        r.id,
-          guestName: `${r.nombre} ${r.apellidos}`,
+          guestName: `${r.nombre_cliente} ${r.apellidos_cliente ?? ''}`.trim(),
+          checkIn:   r.fecha_entrada,
+          checkOut:  r.fecha_salida,
+          guests:    r.num_huespedes,
+          status:    r.estado,
+        })),
+        checkinHoy: (checkinHoy ?? []).map(r => ({
+          id:        r.id,
+          guestName: `${r.nombre_cliente} ${r.apellidos_cliente ?? ''}`.trim(),
           guests:    r.num_huespedes,
           status:    r.estado,
         })),
         checkoutHoy: (checkoutHoy ?? []).map(r => ({
           id:        r.id,
-          guestName: `${r.nombre} ${r.apellidos}`,
+          guestName: `${r.nombre_cliente} ${r.apellidos_cliente ?? ''}`.trim(),
           guests:    r.num_huespedes,
         })),
 
-        // Próximas llegadas
         upcomingCheckins: (proximasLlegadas ?? []).map(r => ({
           id:        r.id,
-          guestName: `${r.nombre} ${r.apellidos}`,
+          guestName: `${r.nombre_cliente} ${r.apellidos_cliente ?? ''}`.trim(),
           checkIn:   r.fecha_entrada,
           checkOut:  r.fecha_salida,
           guests:    r.num_huespedes,
@@ -165,14 +152,12 @@ export const dashboardService = {
           origen:    r.origen,
         })),
 
-        // Actividad reciente
         actividadReciente: (actividadReciente ?? []).map(r => ({
           id:        r.id,
-          codigo:    r.codigo,
-          guestName: `${r.nombre} ${r.apellidos}`,
+          guestName: `${r.nombre_cliente} ${r.apellidos_cliente ?? ''}`.trim(),
           checkIn:   r.fecha_entrada,
           checkOut:  r.fecha_salida,
-          total:     r.total,
+          total:     r.importe_total,
           estado:    r.estado,
           estadoPago: r.estado_pago,
           createdAt: r.created_at,

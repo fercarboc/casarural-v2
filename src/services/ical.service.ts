@@ -3,7 +3,9 @@ import { icalMockService } from './ical.mock';
 
 export interface ICalFeed {
   id: string;
-  nombre: string;
+  property_id: string;
+  unidad_id: string;
+  nombre: string | null;
   plataforma: 'BOOKING' | 'AIRBNB' | 'ESCAPADARURAL' | 'OTRO';
   url: string;
   activo: boolean;
@@ -14,11 +16,17 @@ export interface ICalFeed {
 
 export interface SyncLog {
   id: string;
-  feed_id: string;
+  feed_id: string | null;
+  unidad_id: string | null;
+  estado: 'OK' | 'ERROR';
+  bloqueos_creados: number;
+  bloqueos_omitidos: number;
+  detalle: string | null;
+  created_at: string;
+  // Alias de compatibilidad con el componente
   resultado: 'OK' | 'ERROR';
   bloqueos_importados: number;
   mensaje: string | null;
-  created_at: string;
 }
 
 export const icalService = {
@@ -32,7 +40,7 @@ export const icalService = {
     return data ?? [];
   },
 
-  async addFeed(feed: { nombre: string; plataforma: ICalFeed['plataforma']; url: string }): Promise<ICalFeed> {
+  async addFeed(feed: { nombre: string; plataforma: ICalFeed['plataforma']; url: string; unidad_id: string }): Promise<ICalFeed> {
     if (isMockMode) throw new Error('No disponible en modo mock');
     const { data, error } = await supabase
       .from('feeds_ical')
@@ -68,7 +76,13 @@ export const icalService = {
       .limit(20);
     if (feedId) q = q.eq('feed_id', feedId);
     const { data } = await q;
-    return data ?? [];
+    // Normalizar columnas v2 → alias compatibles con el componente
+    return (data ?? []).map((row: any) => ({
+      ...row,
+      resultado:           row.estado,
+      bloqueos_importados: row.bloqueos_creados ?? 0,
+      mensaje:             row.detalle ?? null,
+    }));
   },
 
   async syncFeed(feedId: string): Promise<{ importados: number; error?: string }> {
@@ -83,7 +97,7 @@ export const icalService = {
       if (error) throw error;
       const result = data?.results?.[0];
       if (result?.status === 'ERROR') return { importados: 0, error: result.error };
-      return { importados: result?.creadas ?? 0 };
+      return { importados: result?.bloqueos_creados ?? result?.creadas ?? 0 };
     } catch (err: any) {
       return { importados: 0, error: err.message };
     }

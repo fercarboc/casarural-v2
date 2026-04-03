@@ -1,6 +1,6 @@
 // supabase/functions/get-config/index.ts  [v2]
-// Devuelve configuración de la propiedad + unidades + temporadas
-// GET ?property_id=xxx  o  GET ?property_slug=la-rasilla
+// Devuelve configuración de la propiedad + unidades (con precios) + periodos especiales
+// GET ?property_slug=la-rasilla  |  GET ?property_id=xxx
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -19,10 +19,17 @@ serve(async (req) => {
     let property_id    = url.searchParams.get('property_id');
     const propertySlug = url.searchParams.get('property_slug');
 
-    // También acepta body JSON para compatibilidad
-    if (!property_id && !propertySlug && req.method === 'POST') {
+    // También acepta body JSON para compatibilidad POST
+    if ((!property_id && !propertySlug) && req.method === 'POST') {
       const body = await req.json().catch(() => ({}));
-      property_id    = body.property_id ?? null;
+      property_id = body.property_id ?? null;
+      if (!property_id && body.property_slug) {
+        const { data: prop } = await createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        ).from('properties').select('id').eq('slug', body.property_slug).single();
+        property_id = prop?.id ?? null;
+      }
     }
 
     const supabase = createClient(
@@ -47,8 +54,8 @@ serve(async (req) => {
       );
     }
 
-    // Obtener propiedad + unidades + temporadas en paralelo
-    const [propResult, unidadesResult] = await Promise.all([
+    // Obtener propiedad, unidades y periodos en paralelo
+    const [propResult, unidadesResult, periodosResult] = await Promise.all([
       supabase
         .from('properties')
         .select('id, nombre, slug, telefono, email, descripcion, localidad, provincia')
@@ -56,10 +63,23 @@ serve(async (req) => {
         .single(),
       supabase
         .from('unidades')
-        .select('id, nombre, slug, tipo, capacidad_base, capacidad_maxima, num_habitaciones, num_banos, superficie_m2, fotos, amenities, orden')
+        .select([
+          'id', 'nombre', 'slug', 'tipo',
+          'capacidad_base', 'capacidad_maxima',
+          'num_habitaciones', 'num_banos', 'superficie_m2',
+          'fotos', 'amenities', 'orden',
+          'precio_noche', 'extra_huesped_noche', 'tarifa_limpieza', 'min_noches',
+          'precio_noche_especial', 'extra_huesped_especial', 'tarifa_limpieza_especial', 'min_noches_especial',
+        ].join(', '))
         .eq('property_id', property_id)
         .eq('activa', true)
         .order('orden'),
+      supabase
+        .from('periodos_especiales')
+        .select('id, nombre, fecha_inicio, fecha_fin, activa')
+        .eq('property_id', property_id)
+        .eq('activa', true)
+        .order('fecha_inicio'),
     ]);
 
     if (propResult.error) {
@@ -69,18 +89,7 @@ serve(async (req) => {
       );
     }
 
-    // Temporadas de todas las unidades activas
-    const unidadIds = (unidadesResult.data ?? []).map((u: any) => u.id);
-    const { data: temporadas } = unidadIds.length
-      ? await supabase
-          .from('temporadas_unidad')
-          .select('id, unidad_id, nombre, fecha_inicio, fecha_fin, precio_noche, extra_huesped_noche, tarifa_limpieza, min_noches')
-          .in('unidad_id', unidadIds)
-          .eq('activa', true)
-          .order('fecha_inicio')
-      : { data: [] };
-
-    // Política de cancelación (fija por ahora, configurable en el futuro)
+    // Política de cancelación (fija por ahora)
     const politicaCancelacion = [
       { min_dias: 60, reembolso: 100, descripcion: '100% de reembolso' },
       { min_dias: 45, reembolso: 50,  descripcion: '50% de reembolso' },
@@ -90,12 +99,12 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        property:             propResult.data,
-        unidades:             unidadesResult.data ?? [],
-        temporadas:           temporadas ?? [],
-        politica_cancelacion: politicaCancelacion,
-        descuento_no_reembolsable: 10,  // porcentaje
-        porcentaje_senal:          30,  // porcentaje señal FLEXIBLE
+        property:              propResult.data,
+        unidades:              unidadesResult.data ?? [],
+        periodos_especiales:   periodosResult.data ?? [],
+        politica_cancelacion:  politicaCancelacion,
+        descuento_no_reembolsable: 10,
+        porcentaje_senal:          30,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

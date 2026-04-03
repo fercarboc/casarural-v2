@@ -8,15 +8,13 @@ import { supabase } from '../../integrations/supabase/client'
 type Periodo = 'mes' | 'anio' | 'custom'
 
 interface ReservaIngreso {
-  id: string; codigo: string
-  nombre: string; apellidos: string
+  id: string
+  nombre_cliente: string; apellidos_cliente: string
   fecha_entrada: string; fecha_salida: string
   noches: number; num_huespedes: number
   origen: string; tarifa: string
-  total: number; importe_pagado: number | null; importe_senal: number | null
-  comision_plataforma: number
+  importe_total: number
   estado: string; estado_pago: string
-  descuento: number
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -28,7 +26,7 @@ const PAGO_LABEL: Record<string, string> = {
   UNPAID: 'Sin pagar', PARTIAL: 'Señal pagada', PAID: 'Pagado', REFUNDED: 'Devuelto',
 }
 const PAGO_STYLE: Record<string, string> = {
-  UNPAID: 'bg-zinc-100 text-zinc-500',
+  UNPAID: 'bg-slate-100 text-slate-500',
   PARTIAL: 'bg-blue-50 text-blue-700',
   PAID: 'bg-emerald-50 text-emerald-700',
   REFUNDED: 'bg-violet-50 text-violet-700',
@@ -71,7 +69,7 @@ export const IncomePage: React.FC = () => {
 
     const { data } = await supabase
       .from('reservas')
-      .select('id,codigo,nombre,apellidos,fecha_entrada,fecha_salida,noches,num_huespedes,origen,tarifa,total,importe_pagado,importe_senal,comision_plataforma,estado,estado_pago,descuento')
+      .select('id,nombre_cliente,apellidos_cliente,fecha_entrada,fecha_salida,noches,num_huespedes,origen,tarifa,importe_total,estado,estado_pago')
       .gte('fecha_entrada', fromStr)
       .lte('fecha_entrada', toStr)
       .neq('estado', 'CANCELLED')
@@ -85,11 +83,9 @@ export const IncomePage: React.FC = () => {
   useEffect(() => { load() }, [load])
 
   // ── Cálculos de resumen ───────────────────────────────────────────────────
-  const totalCobrado      = reservas.reduce((s, r) => s + (r.importe_pagado ?? 0), 0)
-  const totalFacturado    = reservas.reduce((s, r) => s + r.total, 0)
-  const totalPendiente    = reservas.reduce((s, r) => s + Math.max(0, r.total - (r.importe_pagado ?? 0)), 0)
-  const totalComisiones   = reservas.reduce((s, r) => s + (r.comision_plataforma ?? 0), 0)
-  const totalNeto         = totalFacturado - totalComisiones
+  const totalFacturado    = reservas.reduce((s, r) => s + r.importe_total, 0)
+  const totalCobrado      = reservas.filter(r => r.estado_pago === 'PAID').reduce((s, r) => s + r.importe_total, 0)
+  const totalPendiente    = reservas.filter(r => r.estado_pago !== 'PAID' && r.estado_pago !== 'REFUNDED').reduce((s, r) => s + r.importe_total, 0)
   const totalNoches       = reservas.reduce((s, r) => s + r.noches, 0)
   const precioMedioNoche  = totalNoches > 0 ? totalFacturado / totalNoches : 0
 
@@ -104,8 +100,8 @@ export const IncomePage: React.FC = () => {
         groups[key] = { label: format(new Date(y, m - 1, 1), 'MMMM yyyy', { locale: es }), count: 0, total: 0, cobrado: 0 }
       }
       groups[key].count++
-      groups[key].total   += r.total
-      groups[key].cobrado += r.importe_pagado ?? 0
+      groups[key].total   += r.importe_total
+      groups[key].cobrado += r.estado_pago === 'PAID' ? r.importe_total : 0
     })
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
   }, [reservas, applied.periodo])
@@ -217,30 +213,27 @@ export const IncomePage: React.FC = () => {
         <table>
           <thead>
             <tr>
-              <th>Código</th><th>Cliente</th><th>Entrada</th><th>Salida</th>
+              <th>Cliente</th><th>Entrada</th><th>Salida</th>
               <th className="tc">Noch.</th><th>Origen</th><th>Tarifa</th>
-              <th className="tr">Total</th><th className="tr">Cobrado</th><th>Estado pago</th>
+              <th className="tr">Total</th><th>Estado pago</th>
             </tr>
           </thead>
           <tbody>
             {reservas.map(r => (
               <tr key={r.id}>
-                <td style={{ fontFamily: 'monospace', fontSize: 9 }}>{r.codigo}</td>
-                <td>{r.nombre} {r.apellidos}</td>
+                <td>{r.nombre_cliente} {r.apellidos_cliente}</td>
                 <td>{fmtDate(r.fecha_entrada)}</td>
                 <td>{fmtDate(r.fecha_salida)}</td>
                 <td className="tc">{r.noches}</td>
                 <td>{ORIGEN_SHORT[r.origen] ?? r.origen}</td>
                 <td>{r.tarifa === 'FLEXIBLE' ? 'Flexible' : 'No reemb.'}</td>
-                <td className="tr" style={{ fontWeight: 700 }}>{fmt(r.total)}</td>
-                <td className="tr">{fmt(r.importe_pagado ?? 0)}</td>
+                <td className="tr" style={{ fontWeight: 700 }}>{fmt(r.importe_total)}</td>
                 <td>{PAGO_LABEL[r.estado_pago] ?? r.estado_pago}</td>
               </tr>
             ))}
             <tr className="tfoot-row">
-              <td colSpan={7}>TOTAL PERÍODO</td>
+              <td colSpan={6}>TOTAL PERÍODO</td>
               <td className="tr">{fmt(totalFacturado)}</td>
-              <td className="tr">{fmt(totalCobrado)}</td>
               <td></td>
             </tr>
           </tbody>
@@ -251,22 +244,22 @@ export const IncomePage: React.FC = () => {
       <div className="space-y-6">
 
         {/* Header */}
-        <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-900">Ingresos</h1>
-            <p className="text-sm text-zinc-500 mt-0.5 capitalize">{periodoLabel}</p>
+            <h1 className="text-2xl font-bold text-slate-900">Ingresos</h1>
+            <p className="text-sm text-slate-500 mt-1 capitalize">{periodoLabel}</p>
           </div>
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-bold text-zinc-600 hover:bg-zinc-50 transition-all shadow-sm"
+            className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
           >
-            <Download size={16} /> Descargar PDF
+            <Download size={15} /> Descargar PDF
           </button>
-        </header>
+        </div>
 
         {/* Filtros de período */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex rounded-xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
+          <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden shadow-sm">
             {([
               { v: 'mes'    as Periodo, label: 'Este mes' },
               { v: 'anio'   as Periodo, label: 'Este año' },
@@ -275,8 +268,8 @@ export const IncomePage: React.FC = () => {
               <button
                 key={v}
                 onClick={() => handlePeriodo(v)}
-                className={`px-4 py-2.5 text-sm font-semibold transition-all border-r border-zinc-200 last:border-r-0 ${
-                  periodo === v ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-50'
+                className={`px-4 py-2 text-sm font-medium transition-all border-r border-slate-200 last:border-r-0 ${
+                  periodo === v ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 {label}
@@ -287,28 +280,28 @@ export const IncomePage: React.FC = () => {
           {periodo === 'custom' && (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-zinc-500">Desde</span>
+                <span className="text-xs font-medium text-slate-500">Desde</span>
                 <input
                   type="date"
                   value={customFrom}
                   onChange={e => setCustomFrom(e.target.value)}
-                  className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 shadow-sm"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-brand-400 shadow-sm"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-zinc-500">Hasta</span>
+                <span className="text-xs font-medium text-slate-500">Hasta</span>
                 <input
                   type="date"
                   value={customTo}
                   min={customFrom}
                   onChange={e => setCustomTo(e.target.value)}
-                  className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 shadow-sm"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-brand-400 shadow-sm"
                 />
               </div>
               <button
                 onClick={applyCustom}
                 disabled={!customFrom || !customTo}
-                className="rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-40 transition-all"
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-40 transition-all shadow-sm"
               >
                 Aplicar
               </button>
@@ -318,7 +311,7 @@ export const IncomePage: React.FC = () => {
 
         {loading ? (
           <div className="flex h-40 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
           </div>
         ) : (
           <>
@@ -332,20 +325,18 @@ export const IncomePage: React.FC = () => {
                 sub={`${reservas.length} reservas`}
               />
               <StatCard
-                label="Comisiones plataforma"
-                value={fmt(totalComisiones)}
+                label="Cobrado (pagado)"
+                value={fmt(totalCobrado)}
                 icon={<CreditCard size={16} />}
-                color="amber"
-                sub={totalFacturado > 0 && totalComisiones > 0
-                  ? `${Math.round(totalComisiones / totalFacturado * 100)}% del bruto`
-                  : 'Sin comisiones registradas'}
+                color="emerald"
+                sub={totalFacturado > 0 ? `${Math.round(totalCobrado / totalFacturado * 100)}% del total` : '—'}
               />
               <StatCard
-                label="Neto (bruto − comis.)"
-                value={fmt(totalNeto)}
+                label="Pendiente de cobro"
+                value={fmt(totalPendiente)}
                 icon={<TrendingUp size={16} />}
-                color="emerald"
-                sub={totalPendiente > 0 ? `Pendiente: ${fmt(totalPendiente)}` : 'Todo cobrado'}
+                color="amber"
+                sub={totalPendiente > 0 ? `${reservas.filter(r => r.estado_pago !== 'PAID' && r.estado_pago !== 'REFUNDED').length} reservas` : 'Todo cobrado'}
               />
               <StatCard
                 label="Precio medio / noche"
@@ -358,39 +349,39 @@ export const IncomePage: React.FC = () => {
 
             {/* Desglose mensual (solo vista año) */}
             {monthlyGroups && monthlyGroups.length > 0 && (
-              <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-                <div className="bg-zinc-50 border-b border-zinc-100 px-6 py-4">
-                  <h3 className="text-sm font-bold text-zinc-700">Desglose mensual {today.getFullYear()}</h3>
+              <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="bg-slate-50 border-b border-slate-100 px-6 py-4">
+                  <h3 className="text-sm font-semibold text-slate-700">Desglose mensual {today.getFullYear()}</h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-zinc-100">
-                        <th className="px-6 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-400">Mes</th>
-                        <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-zinc-400">Reservas</th>
-                        <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-zinc-400">Total facturado</th>
-                        <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-zinc-400">Cobrado</th>
-                        <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-zinc-400">Pendiente</th>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Mes</th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Reservas</th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Total facturado</th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Cobrado</th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Pendiente</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-50">
+                    <tbody className="divide-y divide-slate-100">
                       {monthlyGroups.map(([key, g]) => (
-                        <tr key={key} className="hover:bg-zinc-50 transition-colors">
-                          <td className="px-6 py-3 font-semibold text-zinc-900 capitalize">{g.label}</td>
-                          <td className="px-6 py-3 text-right text-zinc-500">{g.count}</td>
-                          <td className="px-6 py-3 text-right font-bold text-zinc-900">{fmt(g.total)}</td>
-                          <td className="px-6 py-3 text-right font-semibold text-emerald-700">{fmt(g.cobrado)}</td>
+                        <tr key={key} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-3 font-medium text-slate-900 capitalize">{g.label}</td>
+                          <td className="px-6 py-3 text-right text-slate-500">{g.count}</td>
+                          <td className="px-6 py-3 text-right font-semibold text-slate-900">{fmt(g.total)}</td>
+                          <td className="px-6 py-3 text-right font-medium text-emerald-700">{fmt(g.cobrado)}</td>
                           <td className="px-6 py-3 text-right text-amber-700">{fmt(Math.max(0, g.total - g.cobrado))}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="border-t-2 border-zinc-200 bg-zinc-50">
-                        <td className="px-6 py-3 text-sm font-bold text-zinc-900">Total año</td>
-                        <td className="px-6 py-3 text-right text-sm font-bold text-zinc-900">{reservas.length}</td>
-                        <td className="px-6 py-3 text-right text-sm font-bold text-zinc-900">{fmt(totalFacturado)}</td>
-                        <td className="px-6 py-3 text-right text-sm font-bold text-emerald-700">{fmt(totalCobrado)}</td>
-                        <td className="px-6 py-3 text-right text-sm font-bold text-amber-700">{fmt(totalPendiente)}</td>
+                      <tr className="border-t-2 border-slate-200 bg-slate-50">
+                        <td className="px-6 py-3 text-sm font-semibold text-slate-900">Total año</td>
+                        <td className="px-6 py-3 text-right text-sm font-semibold text-slate-900">{reservas.length}</td>
+                        <td className="px-6 py-3 text-right text-sm font-semibold text-slate-900">{fmt(totalFacturado)}</td>
+                        <td className="px-6 py-3 text-right text-sm font-semibold text-emerald-700">{fmt(totalCobrado)}</td>
+                        <td className="px-6 py-3 text-right text-sm font-semibold text-amber-700">{fmt(totalPendiente)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -399,57 +390,47 @@ export const IncomePage: React.FC = () => {
             )}
 
             {/* Tabla de reservas */}
-            <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              <div className="bg-zinc-50 border-b border-zinc-100 px-6 py-4 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-zinc-700">Detalle de reservas</h3>
-                <span className="text-xs text-zinc-400">{reservas.length} reservas · {totalNoches} noches</span>
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="bg-slate-50 border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-700">Detalle de reservas</h3>
+                <span className="text-xs text-slate-400">{reservas.length} reservas · {totalNoches} noches</span>
               </div>
 
               {reservas.length === 0 ? (
-                <div className="px-6 py-12 text-center text-sm text-zinc-400">
+                <div className="px-6 py-12 text-center text-sm text-slate-400">
                   No hay reservas en el período seleccionado.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-zinc-100">
-                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-400">Código</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-400">Cliente</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-400">Entrada</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-400">Salida</th>
-                        <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-400">Noch.</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-400">Origen</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-400">Tarifa</th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-zinc-400">Bruto</th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-zinc-400">Comisión</th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-zinc-400">Neto</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-400">Estado pago</th>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Cliente</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Entrada</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Salida</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Noch.</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Origen</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tarifa</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Total</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado pago</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-50">
+                    <tbody className="divide-y divide-slate-100">
                       {reservas.map(r => (
-                        <tr key={r.id} className="hover:bg-zinc-50/80 transition-colors">
-                          <td className="px-4 py-3 font-mono text-[11px] text-zinc-400">{r.codigo}</td>
-                          <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">{r.nombre} {r.apellidos}</td>
-                          <td className="px-4 py-3 text-zinc-600 whitespace-nowrap">{fmtDate(r.fecha_entrada)}</td>
-                          <td className="px-4 py-3 text-zinc-600 whitespace-nowrap">{fmtDate(r.fecha_salida)}</td>
-                          <td className="px-4 py-3 text-center text-zinc-500">{r.noches}</td>
-                          <td className="px-4 py-3 text-zinc-500">{ORIGEN_SHORT[r.origen] ?? r.origen}</td>
+                        <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">{r.nombre_cliente} {r.apellidos_cliente}</td>
+                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(r.fecha_entrada)}</td>
+                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(r.fecha_salida)}</td>
+                          <td className="px-4 py-3 text-center text-slate-500">{r.noches}</td>
+                          <td className="px-4 py-3 text-slate-500">{ORIGEN_SHORT[r.origen] ?? r.origen}</td>
                           <td className="px-4 py-3">
-                            <span className={`text-xs font-semibold ${r.tarifa === 'FLEXIBLE' ? 'text-emerald-600' : 'text-amber-700'}`}>
+                            <span className={`text-xs font-medium ${r.tarifa === 'FLEXIBLE' ? 'text-emerald-600' : 'text-amber-700'}`}>
                               {r.tarifa === 'FLEXIBLE' ? 'Flexible' : 'No reemb.'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right font-bold text-zinc-900 whitespace-nowrap">{fmt(r.total)}</td>
-                          <td className="px-4 py-3 text-right text-red-600 whitespace-nowrap">
-                            {r.comision_plataforma > 0 ? fmt(r.comision_plataforma) : <span className="text-zinc-300">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-emerald-700 whitespace-nowrap">
-                            {fmt(r.total - (r.comision_plataforma ?? 0))}
-                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">{fmt(r.importe_total)}</td>
                           <td className="px-4 py-3">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${PAGO_STYLE[r.estado_pago] ?? 'bg-zinc-100 text-zinc-500'}`}>
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${PAGO_STYLE[r.estado_pago] ?? 'bg-slate-100 text-slate-500'}`}>
                               {PAGO_LABEL[r.estado_pago] ?? r.estado_pago}
                             </span>
                           </td>
@@ -457,11 +438,9 @@ export const IncomePage: React.FC = () => {
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="border-t-2 border-zinc-200 bg-zinc-50">
-                        <td colSpan={7} className="px-4 py-3 text-sm font-bold text-zinc-900">Total período</td>
-                        <td className="px-4 py-3 text-right text-sm font-bold text-zinc-900 whitespace-nowrap">{fmt(totalFacturado)}</td>
-                        <td className="px-4 py-3 text-right text-sm font-bold text-red-600 whitespace-nowrap">{totalComisiones > 0 ? fmt(totalComisiones) : '—'}</td>
-                        <td className="px-4 py-3 text-right text-sm font-bold text-emerald-700 whitespace-nowrap">{fmt(totalNeto)}</td>
+                      <tr className="border-t-2 border-slate-200 bg-slate-50">
+                        <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-slate-900">Total período</td>
+                        <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900 whitespace-nowrap">{fmt(totalFacturado)}</td>
                         <td></td>
                       </tr>
                     </tfoot>
@@ -488,13 +467,13 @@ function StatCard({ label, value, icon, color, sub }: {
   label: string; value: string; icon: React.ReactNode; color: string; sub?: string
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className={`w-fit rounded-xl p-2 mb-3 ${COLOR_MAP[color] ?? 'bg-zinc-50 text-zinc-500'}`}>
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className={`w-fit rounded-lg p-2 mb-3 ${COLOR_MAP[color] ?? 'bg-slate-50 text-slate-500'}`}>
         {icon}
       </div>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-zinc-900">{value}</p>
-      {sub && <p className="mt-1 text-xs text-zinc-400">{sub}</p>}
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
     </div>
   )
 }

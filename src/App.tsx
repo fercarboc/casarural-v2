@@ -40,6 +40,7 @@ import { IncomePage } from './admin/pages/IncomePage';
 import { InvoicesPage } from './admin/pages/InvoicesPage';
 import { ConfigPage } from './admin/pages/ConfigPage';
 import { ICalPage } from './admin/pages/ICalPage';
+import { UnidadesPage } from './admin/pages/UnidadesPage';
 
 import { ReservationViewPage } from './public/pages/ReservationViewPage';
 import ReservaConfirmada from './public/pages/ReservaConfirmada';
@@ -187,6 +188,7 @@ export default function App() {
             <Route path="ingresos" element={<IncomePage />} />
             <Route path="facturas" element={<InvoicesPage />} />
             <Route path="configuracion" element={<ConfigPage />} />
+            <Route path="unidades" element={<UnidadesPage />} />
             <Route path="ical" element={<ICalPage />} />
           </Route>
         </Routes>

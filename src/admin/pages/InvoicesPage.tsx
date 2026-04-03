@@ -35,7 +35,7 @@ const ESTADO_LABELS: Record<string, string> = {
 
 function EstadoBadge({ estado }: { estado: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${ESTADO_STYLES[estado] ?? 'bg-zinc-50 text-zinc-600'}`}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${ESTADO_STYLES[estado] ?? 'bg-slate-50 text-slate-600'}`}>
       {ESTADO_LABELS[estado] ?? estado}
     </span>
   );
@@ -214,41 +214,41 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+      <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
         {/* header */}
-        <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
-          <h2 className="text-lg font-bold text-zinc-900">Nueva factura</h2>
-          <button onClick={onClose} className="rounded-lg p-1 hover:bg-zinc-100">
-            <X size={18} className="text-zinc-500" />
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h2 className="text-lg font-bold text-slate-900">Nueva factura</h2>
+          <button onClick={onClose} className="rounded-lg p-1 hover:bg-slate-100">
+            <X size={18} className="text-slate-500" />
           </button>
         </div>
 
         <div className="space-y-5 p-6">
           {/* reserva selector */}
           <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
               Reserva confirmada
             </label>
             {loading ? (
-              <div className="flex items-center gap-2 text-sm text-zinc-400">
+              <div className="flex items-center gap-2 text-sm text-slate-400">
                 <Loader2 size={14} className="animate-spin" /> Cargando...
               </div>
             ) : reservas.length === 0 ? (
-              <p className="text-sm text-zinc-500">No hay reservas confirmadas pendientes de facturar.</p>
+              <p className="text-sm text-slate-500">No hay reservas confirmadas pendientes de facturar.</p>
             ) : (
-              <div className="space-y-2 max-h-52 overflow-y-auto rounded-xl border border-zinc-200 p-1">
+              <div className="space-y-2 max-h-52 overflow-y-auto rounded-xl border border-slate-200 p-1">
                 {reservas.map(r => (
                   <button
                     key={r.id}
                     onClick={() => selectReserva(r)}
                     className={`w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                       selected?.id === r.id
-                        ? 'bg-zinc-900 text-white'
-                        : 'hover:bg-zinc-50 text-zinc-900'
+                        ? 'bg-brand-600 text-white'
+                        : 'hover:bg-slate-50 text-slate-900'
                     }`}
                   >
                     <span className="font-bold">{r.codigo}</span>
-                    <span className={`ml-2 ${selected?.id === r.id ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                    <span className={`ml-2 ${selected?.id === r.id ? 'text-slate-300' : 'text-slate-500'}`}>
                       {r.nombre} {r.apellidos} · {fmtDate(r.fecha_entrada)} – {fmtDate(r.fecha_salida)} · {fmtEur(Number(r.total))}
                     </span>
                   </button>
@@ -260,39 +260,39 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
           {selected && (
             <>
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
                   Nombre / Razón social *
                 </label>
                 <input
                   value={nombre}
                   onChange={e => setNombre(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   placeholder="Nombre completo o razón social"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">NIF / DNI</label>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">NIF / DNI</label>
                   <input
                     value={nif}
                     onChange={e => setNif(e.target.value)}
-                    className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                     placeholder="12345678A"
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">Importe</label>
-                  <div className="flex h-[42px] items-center rounded-xl border border-zinc-100 bg-zinc-50 px-4 text-sm font-bold text-zinc-900">
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Importe</label>
+                  <div className="flex h-[42px] items-center rounded-lg border border-slate-100 bg-slate-50 px-4 text-sm font-bold text-slate-900">
                     {fmtEur(Number(selected.total))}
                   </div>
                 </div>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">Dirección fiscal</label>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Dirección fiscal</label>
                 <input
                   value={direccion}
                   onChange={e => setDireccion(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   placeholder="Calle, CP, Ciudad"
                 />
               </div>
@@ -308,14 +308,14 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
         </div>
 
         {/* footer */}
-        <div className="flex justify-end gap-3 border-t border-zinc-100 px-6 py-4">
-          <button onClick={onClose} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">
+        <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+          <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
             Cancelar
           </button>
           <button
             onClick={handleCreate}
             disabled={!selected || !nombre.trim() || creating}
-            className="flex items-center gap-2 rounded-xl bg-zinc-900 px-5 py-2 text-sm font-bold text-white shadow-lg shadow-zinc-900/20 transition-all hover:bg-zinc-800 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-brand-700 disabled:opacity-50"
           >
             {creating && <Loader2 size={14} className="animate-spin" />}
             Emitir factura
@@ -400,13 +400,13 @@ function CobrarRestoModal({
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const header = (title: string) => (
-    <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
+    <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
       <div>
-        <h2 className="text-lg font-bold text-zinc-900">{title}</h2>
-        <p className="text-xs text-zinc-400 mt-0.5">Reserva {reservaCodigo}</p>
+        <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+        <p className="text-xs text-slate-400 mt-0.5">Reserva {reservaCodigo}</p>
       </div>
-      <button onClick={onClose} className="rounded-lg p-1 hover:bg-zinc-100">
-        <X size={18} className="text-zinc-500" />
+      <button onClick={onClose} className="rounded-lg p-1 hover:bg-slate-100">
+        <X size={18} className="text-slate-500" />
       </button>
     </div>
   );
@@ -414,31 +414,31 @@ function CobrarRestoModal({
   // ── Paso 0: elegir método ──────────────────────────────────────────────────
   if (step === 'method') return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         {header('Cobrar resto pendiente')}
         <div className="p-6 space-y-5">
-          <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-center">
-            <p className="text-xs text-zinc-400 uppercase tracking-wider font-bold">Resto pendiente</p>
-            <p className="text-3xl font-bold text-zinc-900 mt-1">{fmtEur(importePendiente)}</p>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-center">
+            <p className="text-xs text-slate-400 uppercase tracking-wider font-bold">Resto pendiente</p>
+            <p className="text-3xl font-bold text-slate-900 mt-1">{fmtEur(importePendiente)}</p>
           </div>
-          <p className="text-sm font-semibold text-zinc-600 text-center">¿Cómo se realiza el cobro?</p>
+          <p className="text-sm font-semibold text-slate-600 text-center">¿Cómo se realiza el cobro?</p>
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={handleStripe}
               disabled={busy}
-              className="flex flex-col items-center gap-2 rounded-2xl border-2 border-zinc-200 px-4 py-5 text-sm font-bold text-zinc-700 hover:border-zinc-900 hover:bg-zinc-50 transition-all disabled:opacity-50"
+              className="flex flex-col items-center gap-2 rounded-xl border-2 border-slate-200 px-4 py-5 text-sm font-bold text-slate-700 hover:border-brand-600 hover:bg-slate-50 transition-all disabled:opacity-50"
             >
               {busy ? <Loader2 size={22} className="animate-spin" /> : <CreditCard size={22} className="text-violet-600" />}
               <span>Pagar por Stripe</span>
-              <span className="text-[10px] font-normal text-zinc-400">Enlace al cliente</span>
+              <span className="text-[10px] font-normal text-slate-400">Enlace al cliente</span>
             </button>
             <button
               onClick={() => setStep('manual')}
-              className="flex flex-col items-center gap-2 rounded-2xl border-2 border-zinc-200 px-4 py-5 text-sm font-bold text-zinc-700 hover:border-zinc-900 hover:bg-zinc-50 transition-all"
+              className="flex flex-col items-center gap-2 rounded-xl border-2 border-slate-200 px-4 py-5 text-sm font-bold text-slate-700 hover:border-brand-600 hover:bg-slate-50 transition-all"
             >
               <Banknote size={22} className="text-emerald-600" />
               <span>Registrar manualmente</span>
-              <span className="text-[10px] font-normal text-zinc-400">Efectivo / Transferencia</span>
+              <span className="text-[10px] font-normal text-slate-400">Efectivo / Transferencia</span>
             </button>
           </div>
           {error && (
@@ -447,8 +447,8 @@ function CobrarRestoModal({
             </div>
           )}
         </div>
-        <div className="border-t border-zinc-100 px-6 py-4 flex justify-end">
-          <button onClick={onClose} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">
+        <div className="border-t border-slate-100 px-6 py-4 flex justify-end">
+          <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
             Cancelar
           </button>
         </div>
@@ -459,7 +459,7 @@ function CobrarRestoModal({
   // ── Paso Stripe: confirmación ──────────────────────────────────────────────
   if (step === 'stripe-sent') return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         {header('Enlace de pago enviado')}
         <div className="p-6 space-y-4">
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-8 text-center">
@@ -470,10 +470,10 @@ function CobrarRestoModal({
             </p>
           </div>
         </div>
-        <div className="border-t border-zinc-100 px-6 py-4 flex justify-end">
+        <div className="border-t border-slate-100 px-6 py-4 flex justify-end">
           <button
             onClick={() => onCobrado({ pagoRegistrado: false })}
-            className="rounded-xl bg-zinc-900 px-5 py-2 text-sm font-bold text-white hover:bg-zinc-800"
+            className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-bold text-white hover:bg-brand-700"
           >
             Cerrar
           </button>
@@ -485,26 +485,26 @@ function CobrarRestoModal({
   // ── Paso 1: formulario manual ──────────────────────────────────────────────
   if (step === 'manual') return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         {header('Registrar cobro manual')}
         <div className="space-y-4 p-6">
           {/* Importe */}
           <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">Importe (con IVA)</label>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Importe (con IVA)</label>
             <input
               type="number" value={importe} min={0} step={0.01}
               onChange={e => setImporte(Number(e.target.value))}
-              className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+              className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
           {/* Método + Fecha */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">Método</label>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Método</label>
               <select
                 value={metodo}
                 onChange={e => setMetodo(e.target.value as typeof metodo)}
-                className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               >
                 <option value="EFECTIVO">Efectivo</option>
                 <option value="TRANSFERENCIA">Transferencia</option>
@@ -512,28 +512,28 @@ function CobrarRestoModal({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">Fecha de cobro</label>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Fecha de cobro</label>
               <input
                 type="date" value={fecha}
                 onChange={e => setFecha(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </div>
           </div>
           {/* Notas */}
           <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-zinc-500">Notas (opcional)</label>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Notas (opcional)</label>
             <input
               value={notas} onChange={e => setNotas(e.target.value)}
               placeholder="Ej: Cobrado a la llegada"
-              className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+              className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
           {/* Desglose IVA */}
-          <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 space-y-1 text-sm">
-            <div className="flex justify-between text-zinc-500"><span>Base imponible</span><span>{fmtEur(base)}</span></div>
-            <div className="flex justify-between text-zinc-500"><span>IVA 10%</span><span>{fmtEur(iva)}</span></div>
-            <div className="flex justify-between font-bold text-zinc-900 border-t border-zinc-200 pt-1 mt-1"><span>Total</span><span>{fmtEur(importe)}</span></div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 space-y-1 text-sm">
+            <div className="flex justify-between text-slate-500"><span>Base imponible</span><span>{fmtEur(base)}</span></div>
+            <div className="flex justify-between text-slate-500"><span>IVA 10%</span><span>{fmtEur(iva)}</span></div>
+            <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-1 mt-1"><span>Total</span><span>{fmtEur(importe)}</span></div>
           </div>
           {error && (
             <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -541,14 +541,14 @@ function CobrarRestoModal({
             </div>
           )}
         </div>
-        <div className="flex justify-between border-t border-zinc-100 px-6 py-4">
-          <button onClick={() => setStep('method')} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">
+        <div className="flex justify-between border-t border-slate-100 px-6 py-4">
+          <button onClick={() => setStep('method')} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
             ← Volver
           </button>
           <button
             onClick={handleCobroManual}
             disabled={busy || importe <= 0}
-            className="flex items-center gap-2 rounded-xl bg-zinc-900 px-5 py-2 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-50"
           >
             {busy && <Loader2 size={14} className="animate-spin" />}
             Registrar cobro →
@@ -561,7 +561,7 @@ function CobrarRestoModal({
   // ── Paso 2: ¿generar factura? ──────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         {header('Cobro registrado')}
         <div className="p-6 space-y-5">
           <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
@@ -578,18 +578,18 @@ function CobrarRestoModal({
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm font-semibold text-zinc-700 text-center">¿Deseas generar la factura del resto?</p>
+              <p className="text-sm font-semibold text-slate-700 text-center">¿Deseas generar la factura del resto?</p>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => onCobrado({ pagoRegistrado: true })}
-                  className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+                  className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
                 >
                   No, solo el cobro
                 </button>
                 <button
                   onClick={handleGenerarFactura}
                   disabled={busy}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-50"
                 >
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
                   Sí, generar factura
@@ -710,12 +710,12 @@ export const InvoicesPage: React.FC = () => {
       {/* Header */}
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-zinc-900">Facturas</h1>
-          <p className="text-zinc-500">Documentos fiscales de reservas</p>
+          <h1 className="text-2xl font-bold text-slate-900">Facturas</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Documentos fiscales de reservas</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-zinc-900/20 transition-all hover:bg-zinc-800"
+          className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-brand-700"
         >
           <Plus size={18} />
           Nueva factura
@@ -729,31 +729,31 @@ export const InvoicesPage: React.FC = () => {
           { label: 'Emitidas', value: String(emitidas), sub: 'pendientes de enviar' },
           { label: 'Enviadas', value: String(enviadas), sub: 'al cliente' },
         ].map(card => (
-          <div key={card.label} className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">{card.label}</p>
-            <p className="mt-1.5 text-2xl font-bold text-zinc-900">{card.value}</p>
-            <p className="mt-0.5 text-xs text-zinc-400">{card.sub}</p>
+          <div key={card.label} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{card.label}</p>
+            <p className="mt-1.5 text-2xl font-bold text-slate-900">{card.value}</p>
+            <p className="mt-0.5 text-xs text-slate-400">{card.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Search + filter */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
             type="text"
             placeholder="Buscar por número, cliente o reserva…"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full rounded-xl border border-zinc-100 bg-zinc-50 pl-10 pr-4 py-2.5 text-sm font-medium text-zinc-900 focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-4 py-2.5 text-sm font-medium text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
         </div>
         {/* Mes / Año */}
         <select
           value={filterMes}
           onChange={e => setFilterMes(e.target.value)}
-          className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5 text-sm font-medium text-zinc-600 focus:outline-none"
+          className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none"
         >
           <option value="">Todos los meses</option>
           {MESES.map((m, i) => (
@@ -763,7 +763,7 @@ export const InvoicesPage: React.FC = () => {
         <select
           value={filterAño}
           onChange={e => setFilterAño(e.target.value)}
-          className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5 text-sm font-medium text-zinc-600 focus:outline-none"
+          className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none"
         >
           <option value="">Todos los años</option>
           {AÑOS.map(a => <option key={a} value={String(a)}>{a}</option>)}
@@ -774,7 +774,7 @@ export const InvoicesPage: React.FC = () => {
               key={e}
               onClick={() => setFilterEstado(e)}
               className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
-                filterEstado === e ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                filterEstado === e ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               {e === 'TODAS' ? 'Todas' : ESTADO_LABELS[e]}
@@ -784,13 +784,13 @@ export const InvoicesPage: React.FC = () => {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
         {loading ? (
           <div className="flex h-48 items-center justify-center">
-            <Loader2 className="h-7 w-7 animate-spin text-zinc-300" />
+            <Loader2 className="h-7 w-7 animate-spin text-slate-300" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex h-48 flex-col items-center justify-center gap-2 text-zinc-400">
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-slate-400">
             <FileText size={28} />
             <p className="text-sm font-medium">
               {facturas.length === 0 ? 'Aún no hay facturas emitidas' : 'Sin resultados'}
@@ -798,42 +798,42 @@ export const InvoicesPage: React.FC = () => {
           </div>
         ) : (
           <table className="w-full text-left text-sm">
-            <thead className="bg-zinc-50 border-b border-zinc-200">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-zinc-400">Número</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-zinc-400">Cliente</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-zinc-400">Reserva</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-zinc-400">Fecha emisión</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-zinc-400">Importe</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-zinc-400">Estado</th>
+                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Número</th>
+                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Cliente</th>
+                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Reserva</th>
+                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fecha emisión</th>
+                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Importe</th>
+                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Estado</th>
                 <th className="px-6 py-4" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody className="divide-y divide-slate-100">
               {filtered.map(f => (
                 <tr
                   key={f.id}
-                  className={`transition-colors ${f.estado === 'ANULADA' ? 'opacity-50 bg-zinc-50/60' : 'hover:bg-zinc-50'}`}
+                  className={`transition-colors ${f.estado === 'ANULADA' ? 'opacity-50 bg-slate-50/60' : 'hover:bg-slate-50'}`}
                 >
                   <td className="px-6 py-4">
-                    <p className="font-bold text-zinc-900">{f.numero}</p>
+                    <p className="font-bold text-slate-900">{f.numero}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-medium text-zinc-900">{f.nombre}</p>
-                    {f.nif && <p className="text-[11px] text-zinc-400">{f.nif}</p>}
+                    <p className="font-medium text-slate-900">{f.nombre}</p>
+                    {f.nif && <p className="text-[11px] text-slate-400">{f.nif}</p>}
                   </td>
                   <td className="px-6 py-4">
                     {f.reserva_codigo ? (
                       <>
-                        <p className="font-medium text-zinc-900">{f.reserva_codigo}</p>
-                        <p className="text-[11px] text-zinc-400">
+                        <p className="font-medium text-slate-900">{f.reserva_codigo}</p>
+                        <p className="text-[11px] text-slate-400">
                           {fmtDate(f.reserva_fecha_entrada)} – {fmtDate(f.reserva_fecha_salida)}
                         </p>
                       </>
-                    ) : <span className="text-zinc-400">—</span>}
+                    ) : <span className="text-slate-400">—</span>}
                   </td>
-                  <td className="px-6 py-4 font-medium text-zinc-600">{fmtDate(f.fecha_emision)}</td>
-                  <td className="px-6 py-4 font-bold text-zinc-900">{fmtEur(f.total)}</td>
+                  <td className="px-6 py-4 font-medium text-slate-600">{fmtDate(f.fecha_emision)}</td>
+                  <td className="px-6 py-4 font-bold text-slate-900">{fmtEur(f.total)}</td>
                   <td className="px-6 py-4"><EstadoBadge estado={f.estado} /></td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-1">
@@ -866,7 +866,7 @@ export const InvoicesPage: React.FC = () => {
                         onClick={() => handleDescargarPDF(f)}
                         disabled={pdfLoading === f.id}
                         title="Descargar PDF"
-                        className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50"
+                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
                       >
                         {pdfLoading === f.id
                           ? <Loader2 size={16} className="animate-spin" />
@@ -876,7 +876,7 @@ export const InvoicesPage: React.FC = () => {
                       <button
                         onClick={() => imprimirFactura(f)}
                         title="Imprimir"
-                        className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                        className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900"
                       >
                         <Printer size={16} />
                       </button>
@@ -886,33 +886,33 @@ export const InvoicesPage: React.FC = () => {
                         <div className="relative">
                           <button
                             onClick={() => setActionMenu(actionMenu === f.id ? null : f.id)}
-                            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900"
                           >
                             <ChevronDown size={16} />
                           </button>
                           {actionMenu === f.id && (
                             <>
                               <div className="fixed inset-0 z-10" onClick={() => setActionMenu(null)} />
-                              <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-zinc-200 bg-white py-1 shadow-xl">
+                              <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
                                 {f.estado !== 'ENVIADA' && (
                                   <button
                                     onClick={() => handleUpdateEstado(f.id, 'ENVIADA')}
-                                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50"
+                                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
                                   >
-                                    <Mail size={14} className="text-zinc-400" />
+                                    <Mail size={14} className="text-slate-400" />
                                     Marcar como enviada
                                   </button>
                                 )}
                                 {f.estado !== 'EMITIDA' && (
                                   <button
                                     onClick={() => handleUpdateEstado(f.id, 'EMITIDA')}
-                                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-zinc-700 hover:bg-zinc-50"
+                                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
                                   >
-                                    <CheckCircle2 size={14} className="text-zinc-400" />
+                                    <CheckCircle2 size={14} className="text-slate-400" />
                                     Marcar como emitida
                                   </button>
                                 )}
-                                <div className="my-1 border-t border-zinc-100" />
+                                <div className="my-1 border-t border-slate-100" />
                                 <button
                                   onClick={() => handleUpdateEstado(f.id, 'ANULADA')}
                                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"

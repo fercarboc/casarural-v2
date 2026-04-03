@@ -94,7 +94,7 @@ export const createMockReservation = async (data: Omit<Reservation, 'id' | 'crea
   return newRes;
 };
 
-export const updateMockReservation = async (id: string, data: Partial<Reservation>) => {
+export const updateMockReservation = async (id: string, data: Record<string, any>) => {
   localReservations = localReservations.map(res => 
     res.id === id ? { ...res, ...data } : res
   );

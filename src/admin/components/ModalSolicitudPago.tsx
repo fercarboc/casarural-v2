@@ -86,45 +86,45 @@ export function ModalSolicitudPago({ reserva, onClose, onSuccess }: Props) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-zinc-100">
+        <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-zinc-100">
-              <CreditCard size={18} className="text-zinc-600" />
+            <div className="p-2 rounded-xl bg-slate-100">
+              <CreditCard size={18} className="text-slate-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-zinc-900">Solicitud de pago Stripe</h2>
-              <p className="text-xs text-zinc-400">{reserva.nombre} {reserva.apellidos}</p>
+              <h2 className="text-base font-bold text-slate-900">Solicitud de pago Stripe</h2>
+              <p className="text-xs text-slate-400">{reserva.nombre} {reserva.apellidos}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-700">
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-700">
             <X size={20} />
           </button>
         </div>
 
         <div className="p-6 space-y-4">
           {/* Resumen */}
-          <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-4 text-sm space-y-1.5">
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm space-y-1.5">
             <div className="flex justify-between">
-              <span className="text-zinc-500">Reserva</span>
-              <span className="font-mono font-bold text-zinc-700">{reserva.codigo}</span>
+              <span className="text-slate-500">Reserva</span>
+              <span className="font-mono font-bold text-slate-700">{reserva.codigo}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-zinc-500">Entrada</span>
-              <span className="text-zinc-700">{fmtDate(reserva.fecha_entrada)}</span>
+              <span className="text-slate-500">Entrada</span>
+              <span className="text-slate-700">{fmtDate(reserva.fecha_entrada)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-zinc-500">Total reserva</span>
-              <span className="font-bold text-zinc-900">{reserva.total.toFixed(2)} €</span>
+              <span className="text-slate-500">Total reserva</span>
+              <span className="font-bold text-slate-900">{reserva.total.toFixed(2)} €</span>
             </div>
-            <div className="flex justify-between border-t border-zinc-200 pt-1.5 mt-1.5">
-              <span className="text-zinc-500">Pendiente de pago</span>
+            <div className="flex justify-between border-t border-slate-200 pt-1.5 mt-1.5">
+              <span className="text-slate-500">Pendiente de pago</span>
               <span className="font-bold text-amber-700">{pendiente.toFixed(2)} €</span>
             </div>
           </div>
 
           {/* Importe */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
               Importe del enlace de pago (€)
             </label>
             <div className="relative">
@@ -134,11 +134,11 @@ export function ModalSolicitudPago({ reserva, onClose, onSuccess }: Props) {
                 onChange={e => setImporte(e.target.value)}
                 step="0.01"
                 min="0.01"
-                className="w-full border border-zinc-200 rounded-xl px-4 py-3 pr-10 text-right text-lg font-bold focus:outline-none focus:ring-2 focus:ring-zinc-400"
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 pr-10 text-right text-lg font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 font-medium">€</span>
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">€</span>
             </div>
-            <p className="mt-1.5 text-xs text-zinc-400">
+            <p className="mt-1.5 text-xs text-slate-400">
               Se generará un enlace de pago Stripe por este importe y se enviará a <strong>{reserva.email}</strong>
             </p>
           </div>
@@ -154,11 +154,11 @@ export function ModalSolicitudPago({ reserva, onClose, onSuccess }: Props) {
         {/* Footer */}
         <div className="flex gap-3 px-6 pb-6">
           <button onClick={onClose} disabled={loading}
-            className="flex-1 rounded-xl border border-zinc-200 py-3 text-sm font-bold text-zinc-600 hover:bg-zinc-50 disabled:opacity-50">
+            className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
             Cancelar
           </button>
           <button onClick={handleSend} disabled={loading || sent}
-            className="flex-1 rounded-xl bg-zinc-900 py-3 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50 flex items-center justify-center gap-2">
+            className="flex-1 rounded-xl bg-brand-600 py-3 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-2">
             {sent
               ? <><Check size={15} /> Enviado</>
               : loading

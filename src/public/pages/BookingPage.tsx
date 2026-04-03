@@ -10,7 +10,7 @@ import { AvailabilityCalendar } from '../components/AvailabilityCalendar';
 import { BookingCheckoutSection, CustomerFormData } from '../components/BookingCheckoutSection';
 import { bookingService } from '../../services/booking.service';
 import { calendarService } from '../../services/calendar.service';
-import { configService, AppConfig, getMinStayForDate } from '../../services/config.service';
+import { configService, AppConfig, getMinStayForDate, getPricingForDate } from '../../services/config.service';
 import { RateType } from '../../shared/types';
 import { PriceBreakdown } from '../../shared/types/booking';
 import { MetaTags } from '../components/MetaTags';
@@ -79,12 +79,14 @@ export default function BookingPage() {
     setIsSearching(true);
     setShowCheckout(false);
     try {
-      const availability = await bookingService.getAvailability(checkIn!, checkOut!);
+      const unidadId = appConfig?.unidades[0]?.id;
+      const availability = await bookingService.getAvailability(checkIn!, checkOut!, unidadId);
       const allAvailable = availability.every(d => d.isAvailable);
       setIsAvailable(allAvailable);
       if (allAvailable) {
-        setFlexibleBreakdown(bookingService.calculatePrice(checkIn!, checkOut!, guests, 'FLEXIBLE', appConfig?.pricing));
-        setNonRefundableBreakdown(bookingService.calculatePrice(checkIn!, checkOut!, guests, 'NON_REFUNDABLE', appConfig?.pricing));
+        const pricing = appConfig ? getPricingForDate(checkIn!, appConfig) : null;
+        setFlexibleBreakdown(bookingService.calculatePrice(checkIn!, checkOut!, guests, 'FLEXIBLE', pricing));
+        setNonRefundableBreakdown(bookingService.calculatePrice(checkIn!, checkOut!, guests, 'NON_REFUNDABLE', pricing));
       }
     } catch (err) {
       console.error('Error checking availability', err);
@@ -97,10 +99,11 @@ export default function BookingPage() {
   // Recalculate when guests change
   useEffect(() => {
     if (checkIn && checkOut && hasSearched && isAvailable) {
-      setFlexibleBreakdown(bookingService.calculatePrice(checkIn, checkOut, guests, 'FLEXIBLE', appConfig?.pricing));
-      setNonRefundableBreakdown(bookingService.calculatePrice(checkIn, checkOut, guests, 'NON_REFUNDABLE', appConfig?.pricing));
+      const pricing = appConfig ? getPricingForDate(checkIn, appConfig) : null;
+      setFlexibleBreakdown(bookingService.calculatePrice(checkIn, checkOut, guests, 'FLEXIBLE', pricing));
+      setNonRefundableBreakdown(bookingService.calculatePrice(checkIn, checkOut, guests, 'NON_REFUNDABLE', pricing));
     }
-  }, [guests, checkIn, checkOut, hasSearched, isAvailable, appConfig?.pricing]);
+  }, [guests, checkIn, checkOut, hasSearched, isAvailable, appConfig]);
 
   const handleContinueToCheckout = () => {
     setShowCheckout(true);
@@ -129,22 +132,28 @@ export default function BookingPage() {
         throw new Error('La conexión con el servidor no está configurada. Contacta con el alojamiento.');
       }
 
-      // PASO 1 — Crear pre-reserva (Edge Function)
+      const propertyId = appConfig?.property.id;
+      const unidadId   = appConfig?.unidades[0]?.id;
+      if (!propertyId || !unidadId) {
+        throw new Error('Configuración de la propiedad no disponible. Recarga la página.');
+      }
+
+      // PASO 1 — Crear pre-reserva (Edge Function v2)
       const { data: preReserva, error: preError } = await supabase.functions.invoke(
         'create-pre-reservation',
         {
           body: {
-            checkIn:  fmt(checkIn),
-            checkOut: fmt(checkOut),
-            guests,
+            checkIn:     fmt(checkIn),
+            checkOut:    fmt(checkOut),
             rateType,
-            menores: form.menores ?? 0,
+            property_id: propertyId,
+            unidades:    [{ unidad_id: unidadId, num_huespedes: guests }],
             guestData: {
-              nombre:    form.nombre,
-              apellidos: form.apellidos,
-              email:     form.email,
-              telefono:  form.telefono,
-              dni:       form.numero_documento ?? '',
+              nombre_cliente:    form.nombre,
+              apellidos_cliente: form.apellidos,
+              email_cliente:     form.email,
+              telefono_cliente:  form.telefono,
+              nif_cliente:       form.numero_documento ?? '',
             },
           },
         }

@@ -104,7 +104,7 @@ export const ContactoPage: React.FC = () => {
                   Hemos recibido tu consulta. Te responderemos en menos de 24 horas en el email <strong>{form.email}</strong>.
                 </p>
                 <button
-                  onClick={() => { setSent(false); setForm({ nombre: '', email: '', asunto: '', mensaje: '' }); }}
+                  onClick={() => { setSent(false); setForm({ nombre: '', email: '', telefono: '', asunto: '', mensaje: '' }); }}
                   className="mt-4 text-sm text-emerald-700 font-medium hover:underline"
                 >
                   Enviar otra consulta

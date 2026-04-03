@@ -15,32 +15,68 @@ function expandDateRange(startStr: string, endStr: string): string[] {
 }
 
 export const calendarService = {
-  async getOccupiedDates(): Promise<string[]> {
+  /**
+   * Devuelve fechas ocupadas como array de strings 'yyyy-MM-dd'.
+   * Si se pasa unidad_id, filtra solo esa unidad (via reserva_unidades + bloqueos).
+   * Sin unidad_id devuelve todas las fechas ocupadas de la propiedad.
+   */
+  async getOccupiedDates(unidad_id?: string): Promise<string[]> {
     if (isMockMode) {
       return getMockOccupiedDates();
     }
 
     const occupied = new Set<string>();
 
-    // Fechas bloqueadas por reservas confirmadas / pendientes de pago
-    const { data: reservas } = await supabase
-      .from('reservas')
-      .select('fecha_entrada, fecha_salida')
-      .in('estado', ['CONFIRMED', 'PENDING_PAYMENT']);
+    if (unidad_id) {
+      // ── Modo por unidad ─────────────────────────────────
+      const { data: ru } = await supabase
+        .from('reserva_unidades')
+        .select('reserva_id')
+        .eq('unidad_id', unidad_id);
 
-    for (const r of reservas ?? []) {
-      expandDateRange(r.fecha_entrada, r.fecha_salida).forEach(d => occupied.add(d));
-    }
+      const reservaIds = (ru ?? []).map((r: any) => r.reserva_id);
 
-    // Bloqueos manuales del admin
-    const { data: bloqueos } = await supabase
-      .from('bloqueos')
-      .select('fecha_inicio, fecha_fin');
+      if (reservaIds.length > 0) {
+        const { data: reservas } = await supabase
+          .from('reservas')
+          .select('fecha_entrada, fecha_salida')
+          .in('id', reservaIds)
+          .in('estado', ['CONFIRMED', 'PENDING_PAYMENT']);
 
-    for (const b of bloqueos ?? []) {
-      expandDateRange(b.fecha_inicio, b.fecha_fin).forEach(d => occupied.add(d));
+        for (const r of reservas ?? []) {
+          expandDateRange(r.fecha_entrada, r.fecha_salida).forEach(d => occupied.add(d));
+        }
+      }
+
+      const { data: bloqueos } = await supabase
+        .from('bloqueos')
+        .select('fecha_inicio, fecha_fin')
+        .eq('unidad_id', unidad_id);
+
+      for (const b of bloqueos ?? []) {
+        expandDateRange(b.fecha_inicio, b.fecha_fin).forEach(d => occupied.add(d));
+      }
+
+    } else {
+      // ── Modo global: todas las unidades ─────────────────
+      const { data: reservas } = await supabase
+        .from('reservas')
+        .select('fecha_entrada, fecha_salida')
+        .in('estado', ['CONFIRMED', 'PENDING_PAYMENT']);
+
+      for (const r of reservas ?? []) {
+        expandDateRange(r.fecha_entrada, r.fecha_salida).forEach(d => occupied.add(d));
+      }
+
+      const { data: bloqueos } = await supabase
+        .from('bloqueos')
+        .select('fecha_inicio, fecha_fin');
+
+      for (const b of bloqueos ?? []) {
+        expandDateRange(b.fecha_inicio, b.fecha_fin).forEach(d => occupied.add(d));
+      }
     }
 
     return Array.from(occupied);
-  }
+  },
 };

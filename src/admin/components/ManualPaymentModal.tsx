@@ -1,6 +1,6 @@
 // src/admin/components/ManualPaymentModal.tsx
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '../../integrations/supabase/client';
 
 interface Props {
   reserva: {
@@ -139,7 +139,7 @@ export function ManualPaymentModal({ reserva, onClose, onSuccess }: Props) {
                 step="0.01"
                 min="0.01"
                 max={pendiente}
-                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 pr-10 text-right text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-stone-500"
+                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 pr-10 text-right text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">€</span>
             </div>
@@ -158,7 +158,7 @@ export function ManualPaymentModal({ reserva, onClose, onSuccess }: Props) {
               type="date"
               value={fecha}
               onChange={e => setFecha(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-stone-500"
+              className="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
 
@@ -172,7 +172,7 @@ export function ManualPaymentModal({ reserva, onClose, onSuccess }: Props) {
               value={notas}
               onChange={e => setNotas(e.target.value)}
               placeholder={metodo === 'BIZUM' ? 'Nº concepto Bizum...' : metodo === 'TRANSFERENCIA' ? 'Nº referencia transferencia...' : 'Notas adicionales...'}
-              className="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-stone-500"
+              className="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
 

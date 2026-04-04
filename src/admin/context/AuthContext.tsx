@@ -1,88 +1,94 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js';
 import { supabase } from '../../services/supabase';
-import { User } from '@supabase/supabase-js';
-import { isMockMode } from '../../integrations/supabase/client';
 
 interface AuthContextType {
+  session: Session | null;
   user: User | null;
   loading: boolean;
   signOut: () => Promise<void>;
-  signInMock: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const MOCK_USER: User = {
-  id: 'mock-admin-id',
-  email: 'admin@larasilla.com',
-  app_metadata: {},
-  user_metadata: { full_name: 'Admin La Rasilla' },
-  aud: 'authenticated',
-  created_at: new Date().toISOString()
-} as User;
+interface AuthProviderProps {
+  children: React.ReactNode;
+}
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (isMockMode) {
-      const mockSession = localStorage.getItem('mock_session');
-      if (mockSession) {
-        setUser(MOCK_USER);
+    let mounted = true;
+
+    const init = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('Auth session error:', error.message);
+        }
+
+        if (!mounted) return;
+
+        setSession(data.session ?? null);
+        setLoading(false);
+      } catch (err) {
+        console.error('Supabase initialization error:', err);
+        if (mounted) {
+          setSession(null);
+          setLoading(false);
+        }
       }
-      setLoading(false);
-      return;
-    }
+    };
 
-    try {
-      // Check active session
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }).catch(err => {
-        console.error("Auth session error:", err);
-        setLoading(false);
-      });
+    init();
 
-      // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      (_event: AuthChangeEvent, nextSession: Session | null) => {
+        if (!mounted) return;
+        setSession(nextSession ?? null);
         setLoading(false);
-      });
+      }
+    );
 
-      return () => subscription.unsubscribe();
-    } catch (err) {
-      console.error("Supabase initialization error:", err);
-      setLoading(false);
-    }
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const signOut = async () => {
-    if (isMockMode) {
-      localStorage.removeItem('mock_session');
-      setUser(null);
-      return;
-    }
-    await supabase.auth.signOut();
-  };
+  const value = useMemo<AuthContextType>(
+    () => ({
+      session,
+      user: session?.user ?? null,
+      loading,
+      signOut: async () => {
+        const { error } = await supabase.auth.signOut();
 
-  const signInMock = () => {
-    localStorage.setItem('mock_session', 'true');
-    setUser(MOCK_USER);
-  };
+        if (error) {
+          console.error('Sign out error:', error.message);
+          throw error;
+        }
 
-  return (
-    <AuthContext.Provider value={{ user, loading, signOut, signInMock }}>
-      {children}
-    </AuthContext.Provider>
+        setSession(null);
+      },
+    }),
+    [session, loading]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
+
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
+
   return context;
 };

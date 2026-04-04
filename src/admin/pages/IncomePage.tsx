@@ -1,6 +1,19 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { Download, TrendingUp, CreditCard, Users, Loader2 } from 'lucide-react'
-import { format, parseISO, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
+import {
+  Download,
+  TrendingUp,
+  CreditCard,
+  Users,
+  Loader2,
+} from 'lucide-react'
+import {
+  format,
+  parseISO,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+} from 'date-fns'
 import { es } from 'date-fns/locale'
 import { supabase } from '../../integrations/supabase/client'
 
@@ -9,67 +22,104 @@ type Periodo = 'mes' | 'anio' | 'custom'
 
 interface ReservaIngreso {
   id: string
-  nombre_cliente: string; apellidos_cliente: string
-  fecha_entrada: string; fecha_salida: string
-  noches: number; num_huespedes: number
-  origen: string; tarifa: string
+  nombre_cliente: string
+  apellidos_cliente: string
+  fecha_entrada: string
+  fecha_salida: string
+  noches: number
+  num_huespedes: number
+  origen: string
+  tarifa: string
   importe_total: number
-  estado: string; estado_pago: string
+  estado: string
+  estado_pago: string
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 const ORIGEN_SHORT: Record<string, string> = {
-  DIRECT_WEB: 'Web', BOOKING_ICAL: 'Booking', AIRBNB_ICAL: 'Airbnb',
-  ESCAPADARURAL_ICAL: 'Escapada', ADMIN: 'Admin',
+  DIRECT_WEB: 'Web',
+  BOOKING_ICAL: 'Booking',
+  AIRBNB_ICAL: 'Airbnb',
+  ESCAPADARURAL_ICAL: 'Escapada',
+  ADMIN: 'Admin',
 }
+
 const PAGO_LABEL: Record<string, string> = {
-  UNPAID: 'Sin pagar', PARTIAL: 'Señal pagada', PAID: 'Pagado', REFUNDED: 'Devuelto',
+  UNPAID: 'Sin pagar',
+  PARTIAL: 'Señal pagada',
+  PAID: 'Pagado',
+  REFUNDED: 'Devuelto',
 }
+
 const PAGO_STYLE: Record<string, string> = {
-  UNPAID: 'bg-slate-100 text-slate-500',
-  PARTIAL: 'bg-blue-50 text-blue-700',
-  PAID: 'bg-emerald-50 text-emerald-700',
-  REFUNDED: 'bg-violet-50 text-violet-700',
+  UNPAID: 'bg-slate-500/10 text-slate-300 border border-slate-500/20',
+  PARTIAL: 'bg-blue-500/10 text-blue-300 border border-blue-500/20',
+  PAID: 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20',
+  REFUNDED: 'bg-violet-500/10 text-violet-300 border border-violet-500/20',
 }
 
 const today = new Date()
 
 function fmt(n: number) {
-  return n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+  return (
+    n.toLocaleString('es-ES', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }) + ' €'
+  )
 }
+
 function fmtDate(d: string) {
   return format(parseISO(d), 'd MMM yyyy', { locale: es })
 }
-function getRangeForPeriodo(periodo: Periodo, customFrom: string, customTo: string): [Date, Date] {
+
+function getRangeForPeriodo(
+  periodo: Periodo,
+  customFrom: string,
+  customTo: string
+): [Date, Date] {
   if (periodo === 'mes') return [startOfMonth(today), endOfMonth(today)]
   if (periodo === 'anio') return [startOfYear(today), endOfYear(today)]
+
   return [
     customFrom ? new Date(customFrom) : startOfMonth(today),
-    customTo   ? new Date(customTo)   : endOfMonth(today),
+    customTo ? new Date(customTo) : endOfMonth(today),
   ]
 }
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 export const IncomePage: React.FC = () => {
-  const [periodo, setPeriodo]       = useState<Periodo>('mes')
+  const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [customFrom, setCustomFrom] = useState('')
-  const [customTo, setCustomTo]     = useState('')
-  const [applied, setApplied]       = useState<{ periodo: Periodo; customFrom: string; customTo: string }>(
-    { periodo: 'mes', customFrom: '', customTo: '' }
-  )
-  const [reservas, setReservas]     = useState<ReservaIngreso[]>([])
-  const [loading, setLoading]       = useState(true)
+  const [customTo, setCustomTo] = useState('')
+  const [applied, setApplied] = useState<{
+    periodo: Periodo
+    customFrom: string
+    customTo: string
+  }>({
+    periodo: 'mes',
+    customFrom: '',
+    customTo: '',
+  })
+  const [reservas, setReservas] = useState<ReservaIngreso[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // ── Carga de datos ────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true)
-    const [from, to] = getRangeForPeriodo(applied.periodo, applied.customFrom, applied.customTo)
+
+    const [from, to] = getRangeForPeriodo(
+      applied.periodo,
+      applied.customFrom,
+      applied.customTo
+    )
     const fromStr = from.toISOString().substring(0, 10)
-    const toStr   = to.toISOString().substring(0, 10)
+    const toStr = to.toISOString().substring(0, 10)
 
     const { data } = await supabase
       .from('reservas')
-      .select('id,nombre_cliente,apellidos_cliente,fecha_entrada,fecha_salida,noches,num_huespedes,origen,tarifa,importe_total,estado,estado_pago')
+      .select(
+        'id,nombre_cliente,apellidos_cliente,fecha_entrada,fecha_salida,noches,num_huespedes,origen,tarifa,importe_total,estado,estado_pago'
+      )
       .gte('fecha_entrada', fromStr)
       .lte('fecha_entrada', toStr)
       .neq('estado', 'CANCELLED')
@@ -80,60 +130,83 @@ export const IncomePage: React.FC = () => {
     setLoading(false)
   }, [applied])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
-  // ── Cálculos de resumen ───────────────────────────────────────────────────
-  const totalFacturado    = reservas.reduce((s, r) => s + r.importe_total, 0)
-  const totalCobrado      = reservas.filter(r => r.estado_pago === 'PAID').reduce((s, r) => s + r.importe_total, 0)
-  const totalPendiente    = reservas.filter(r => r.estado_pago !== 'PAID' && r.estado_pago !== 'REFUNDED').reduce((s, r) => s + r.importe_total, 0)
-  const totalNoches       = reservas.reduce((s, r) => s + r.noches, 0)
-  const precioMedioNoche  = totalNoches > 0 ? totalFacturado / totalNoches : 0
+  const totalFacturado = reservas.reduce((s, r) => s + r.importe_total, 0)
+  const totalCobrado = reservas
+    .filter((r) => r.estado_pago === 'PAID')
+    .reduce((s, r) => s + r.importe_total, 0)
 
-  // ── Desglose mensual (solo vista año) ────────────────────────────────────
+  const totalPendiente = reservas
+    .filter((r) => r.estado_pago !== 'PAID' && r.estado_pago !== 'REFUNDED')
+    .reduce((s, r) => s + r.importe_total, 0)
+
+  const totalNoches = reservas.reduce((s, r) => s + r.noches, 0)
+  const precioMedioNoche = totalNoches > 0 ? totalFacturado / totalNoches : 0
+
   const monthlyGroups = useMemo(() => {
     if (applied.periodo !== 'anio') return null
-    const groups: Record<string, { label: string; count: number; total: number; cobrado: number }> = {}
-    reservas.forEach(r => {
+
+    const groups: Record<
+      string,
+      { label: string; count: number; total: number; cobrado: number }
+    > = {}
+
+    reservas.forEach((r) => {
       const key = r.fecha_entrada.substring(0, 7)
       if (!groups[key]) {
         const [y, m] = key.split('-').map(Number)
-        groups[key] = { label: format(new Date(y, m - 1, 1), 'MMMM yyyy', { locale: es }), count: 0, total: 0, cobrado: 0 }
+        groups[key] = {
+          label: format(new Date(y, m - 1, 1), 'MMMM yyyy', { locale: es }),
+          count: 0,
+          total: 0,
+          cobrado: 0,
+        }
       }
       groups[key].count++
-      groups[key].total   += r.importe_total
+      groups[key].total += r.importe_total
       groups[key].cobrado += r.estado_pago === 'PAID' ? r.importe_total : 0
     })
+
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
   }, [reservas, applied.periodo])
 
-  // ── Etiqueta de período ───────────────────────────────────────────────────
   const periodoLabel =
-    applied.periodo === 'mes'  ? format(today, 'MMMM yyyy', { locale: es })
-    : applied.periodo === 'anio' ? `Año ${today.getFullYear()}`
-    : `${applied.customFrom} — ${applied.customTo}`
+    applied.periodo === 'mes'
+      ? format(today, 'MMMM yyyy', { locale: es })
+      : applied.periodo === 'anio'
+        ? `Año ${today.getFullYear()}`
+        : `${applied.customFrom} — ${applied.customTo}`
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
   function handlePeriodo(p: Periodo) {
     setPeriodo(p)
-    if (p !== 'custom') setApplied({ periodo: p, customFrom: '', customTo: '' })
+    if (p !== 'custom') {
+      setApplied({ periodo: p, customFrom: '', customTo: '' })
+    }
   }
+
   function applyCustom() {
     if (!customFrom || !customTo) return
     setApplied({ periodo: 'custom', customFrom, customTo })
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Estilos de impresión ────────────────────────────────────────── */}
       <style>{`
         @media print {
           body * { visibility: hidden; }
           #income-report {
             display: block !important;
             visibility: visible;
-            position: absolute; left: 0; top: 0; right: 0;
-            background: white; padding: 1.5cm 2cm; box-sizing: border-box;
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            background: white;
+            padding: 1.5cm 2cm;
+            box-sizing: border-box;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             color: #18181b;
           }
@@ -154,23 +227,24 @@ export const IncomePage: React.FC = () => {
         }
       `}</style>
 
-      {/* ── Zona de impresión (oculta en pantalla) ─────────────────────── */}
       <div id="income-report" style={{ display: 'none' }}>
         <h1>Informe de Ingresos — La Rasilla</h1>
         <p className="print-meta">
-          Castillo Pedroso, 39699 · Corvera de Toranzo, Cantabria · contacto@casarurallarasilla.com
+          Castillo Pedroso, 39699 · Corvera de Toranzo, Cantabria ·
+          contacto@casarurallarasilla.com
           <br />
           Período: <strong style={{ textTransform: 'capitalize' }}>{periodoLabel}</strong>
-          &nbsp;·&nbsp;Generado: {format(today, "d 'de' MMMM yyyy", { locale: es })}
+          &nbsp;·&nbsp;Generado:{' '}
+          {format(today, "d 'de' MMMM yyyy", { locale: es })}
         </p>
 
         <div className="stat-grid">
           {[
-            { lbl: 'Total facturado',       val: fmt(totalFacturado) },
-            { lbl: 'Cobrado',               val: fmt(totalCobrado) },
-            { lbl: 'Pendiente de cobro',    val: fmt(totalPendiente) },
-            { lbl: 'Precio medio / noche',  val: fmt(precioMedioNoche) },
-          ].map(s => (
+            { lbl: 'Total facturado', val: fmt(totalFacturado) },
+            { lbl: 'Cobrado', val: fmt(totalCobrado) },
+            { lbl: 'Pendiente de cobro', val: fmt(totalPendiente) },
+            { lbl: 'Precio medio / noche', val: fmt(precioMedioNoche) },
+          ].map((s) => (
             <div key={s.lbl} className="stat-box">
               <div className="stat-lbl">{s.lbl}</div>
               <div className="stat-val">{s.val}</div>
@@ -178,15 +252,16 @@ export const IncomePage: React.FC = () => {
           ))}
         </div>
 
-        {/* Desglose mensual en informe anual */}
         {monthlyGroups && monthlyGroups.length > 0 && (
           <>
             <p className="section-title">Desglose mensual</p>
             <table>
               <thead>
                 <tr>
-                  <th>Mes</th><th className="tc">Reservas</th>
-                  <th className="tr">Total facturado</th><th className="tr">Cobrado</th>
+                  <th>Mes</th>
+                  <th className="tc">Reservas</th>
+                  <th className="tr">Total facturado</th>
+                  <th className="tr">Cobrado</th>
                 </tr>
               </thead>
               <tbody>
@@ -213,21 +288,30 @@ export const IncomePage: React.FC = () => {
         <table>
           <thead>
             <tr>
-              <th>Cliente</th><th>Entrada</th><th>Salida</th>
-              <th className="tc">Noch.</th><th>Origen</th><th>Tarifa</th>
-              <th className="tr">Total</th><th>Estado pago</th>
+              <th>Cliente</th>
+              <th>Entrada</th>
+              <th>Salida</th>
+              <th className="tc">Noch.</th>
+              <th>Origen</th>
+              <th>Tarifa</th>
+              <th className="tr">Total</th>
+              <th>Estado pago</th>
             </tr>
           </thead>
           <tbody>
-            {reservas.map(r => (
+            {reservas.map((r) => (
               <tr key={r.id}>
-                <td>{r.nombre_cliente} {r.apellidos_cliente}</td>
+                <td>
+                  {r.nombre_cliente} {r.apellidos_cliente}
+                </td>
                 <td>{fmtDate(r.fecha_entrada)}</td>
                 <td>{fmtDate(r.fecha_salida)}</td>
                 <td className="tc">{r.noches}</td>
                 <td>{ORIGEN_SHORT[r.origen] ?? r.origen}</td>
                 <td>{r.tarifa === 'FLEXIBLE' ? 'Flexible' : 'No reemb.'}</td>
-                <td className="tr" style={{ fontWeight: 700 }}>{fmt(r.importe_total)}</td>
+                <td className="tr" style={{ fontWeight: 700 }}>
+                  {fmt(r.importe_total)}
+                </td>
                 <td>{PAGO_LABEL[r.estado_pago] ?? r.estado_pago}</td>
               </tr>
             ))}
@@ -240,36 +324,38 @@ export const IncomePage: React.FC = () => {
         </table>
       </div>
 
-      {/* ── UI normal ──────────────────────────────────────────────────────── */}
       <div className="space-y-6">
+        <header className="rounded-3xl border border-sidebar-border bg-sidebar-bg px-6 py-6 shadow-[0_10px_40px_rgba(0,0,0,0.20)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Ingresos</h1>
+              <p className="mt-1 text-sm capitalize text-slate-400">{periodoLabel}</p>
+            </div>
 
-        {/* Header */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Ingresos</h1>
-            <p className="text-sm text-slate-500 mt-1 capitalize">{periodoLabel}</p>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-admin-card px-4 py-3 text-sm font-medium text-slate-200 transition-all hover:bg-sidebar-hover"
+            >
+              <Download size={15} />
+              Descargar PDF
+            </button>
           </div>
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <Download size={15} /> Descargar PDF
-          </button>
-        </div>
+        </header>
 
-        {/* Filtros de período */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden shadow-sm">
-            {([
-              { v: 'mes'    as Periodo, label: 'Este mes' },
-              { v: 'anio'   as Periodo, label: 'Este año' },
+        <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-sidebar-border bg-sidebar-bg p-4 shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
+          <div className="flex overflow-hidden rounded-xl border border-sidebar-border bg-admin-card">
+            {[
+              { v: 'mes' as Periodo, label: 'Este mes' },
+              { v: 'anio' as Periodo, label: 'Este año' },
               { v: 'custom' as Periodo, label: 'Personalizado' },
-            ]).map(({ v, label }) => (
+            ].map(({ v, label }) => (
               <button
                 key={v}
                 onClick={() => handlePeriodo(v)}
-                className={`px-4 py-2 text-sm font-medium transition-all border-r border-slate-200 last:border-r-0 ${
-                  periodo === v ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+                className={`border-r border-sidebar-border px-4 py-3 text-sm font-medium transition-all last:border-r-0 ${
+                  periodo === v
+                    ? 'bg-brand-600 text-white'
+                    : 'text-slate-300 hover:bg-sidebar-hover'
                 }`}
               >
                 {label}
@@ -280,28 +366,30 @@ export const IncomePage: React.FC = () => {
           {periodo === 'custom' && (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500">Desde</span>
+                <span className="text-xs font-medium text-slate-400">Desde</span>
                 <input
                   type="date"
                   value={customFrom}
-                  onChange={e => setCustomFrom(e.target.value)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-brand-400 shadow-sm"
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className={darkInputCls}
                 />
               </div>
+
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500">Hasta</span>
+                <span className="text-xs font-medium text-slate-400">Hasta</span>
                 <input
                   type="date"
                   value={customTo}
                   min={customFrom}
-                  onChange={e => setCustomTo(e.target.value)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-brand-400 shadow-sm"
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className={darkInputCls}
                 />
               </div>
+
               <button
                 onClick={applyCustom}
                 disabled={!customFrom || !customTo}
-                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-40 transition-all shadow-sm"
+                className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-brand-700 disabled:opacity-40"
               >
                 Aplicar
               </button>
@@ -310,36 +398,43 @@ export const IncomePage: React.FC = () => {
         </div>
 
         {loading ? (
-          <div className="flex h-40 items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
+          <div className="flex h-40 items-center justify-center rounded-3xl border border-sidebar-border bg-sidebar-bg">
+            <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
           </div>
         ) : (
           <>
-            {/* Tarjetas de resumen */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
-                label="Bruto facturado"
+                label="BRUTO FACTURADO"
                 value={fmt(totalFacturado)}
                 icon={<TrendingUp size={16} />}
                 color="violet"
                 sub={`${reservas.length} reservas`}
               />
               <StatCard
-                label="Cobrado (pagado)"
+                label="COBRADO (PAGADO)"
                 value={fmt(totalCobrado)}
                 icon={<CreditCard size={16} />}
                 color="emerald"
-                sub={totalFacturado > 0 ? `${Math.round(totalCobrado / totalFacturado * 100)}% del total` : '—'}
+                sub={
+                  totalFacturado > 0
+                    ? `${Math.round((totalCobrado / totalFacturado) * 100)}% del total`
+                    : '—'
+                }
               />
               <StatCard
-                label="Pendiente de cobro"
+                label="PENDIENTE DE COBRO"
                 value={fmt(totalPendiente)}
                 icon={<TrendingUp size={16} />}
                 color="amber"
-                sub={totalPendiente > 0 ? `${reservas.filter(r => r.estado_pago !== 'PAID' && r.estado_pago !== 'REFUNDED').length} reservas` : 'Todo cobrado'}
+                sub={
+                  totalPendiente > 0
+                    ? `${reservas.filter((r) => r.estado_pago !== 'PAID' && r.estado_pago !== 'REFUNDED').length} reservas`
+                    : 'Todo cobrado'
+                }
               />
               <StatCard
-                label="Precio medio / noche"
+                label="PRECIO MEDIO / NOCHE"
                 value={fmt(precioMedioNoche)}
                 icon={<Users size={16} />}
                 color="blue"
@@ -347,41 +442,75 @@ export const IncomePage: React.FC = () => {
               />
             </div>
 
-            {/* Desglose mensual (solo vista año) */}
             {monthlyGroups && monthlyGroups.length > 0 && (
-              <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="bg-slate-50 border-b border-slate-100 px-6 py-4">
-                  <h3 className="text-sm font-semibold text-slate-700">Desglose mensual {today.getFullYear()}</h3>
+              <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-bg shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
+                <div className="border-b border-sidebar-border bg-admin-card/70 px-6 py-4">
+                  <h3 className="text-sm font-semibold text-white">
+                    Desglose mensual {today.getFullYear()}
+                  </h3>
                 </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Mes</th>
-                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Reservas</th>
-                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Total facturado</th>
-                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Cobrado</th>
-                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Pendiente</th>
+                      <tr className="border-b border-sidebar-border bg-admin-card/70">
+                        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Mes
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Reservas
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Total facturado
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Cobrado
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Pendiente
+                        </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+
+                    <tbody className="divide-y divide-sidebar-border">
                       {monthlyGroups.map(([key, g]) => (
-                        <tr key={key} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-3 font-medium text-slate-900 capitalize">{g.label}</td>
-                          <td className="px-6 py-3 text-right text-slate-500">{g.count}</td>
-                          <td className="px-6 py-3 text-right font-semibold text-slate-900">{fmt(g.total)}</td>
-                          <td className="px-6 py-3 text-right font-medium text-emerald-700">{fmt(g.cobrado)}</td>
-                          <td className="px-6 py-3 text-right text-amber-700">{fmt(Math.max(0, g.total - g.cobrado))}</td>
+                        <tr key={key} className="transition-colors hover:bg-sidebar-hover/60">
+                          <td className="px-6 py-3 font-medium capitalize text-slate-100">
+                            {g.label}
+                          </td>
+                          <td className="px-6 py-3 text-right text-slate-400">
+                            {g.count}
+                          </td>
+                          <td className="px-6 py-3 text-right font-semibold text-white">
+                            {fmt(g.total)}
+                          </td>
+                          <td className="px-6 py-3 text-right font-medium text-emerald-300">
+                            {fmt(g.cobrado)}
+                          </td>
+                          <td className="px-6 py-3 text-right text-amber-300">
+                            {fmt(Math.max(0, g.total - g.cobrado))}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
+
                     <tfoot>
-                      <tr className="border-t-2 border-slate-200 bg-slate-50">
-                        <td className="px-6 py-3 text-sm font-semibold text-slate-900">Total año</td>
-                        <td className="px-6 py-3 text-right text-sm font-semibold text-slate-900">{reservas.length}</td>
-                        <td className="px-6 py-3 text-right text-sm font-semibold text-slate-900">{fmt(totalFacturado)}</td>
-                        <td className="px-6 py-3 text-right text-sm font-semibold text-emerald-700">{fmt(totalCobrado)}</td>
-                        <td className="px-6 py-3 text-right text-sm font-semibold text-amber-700">{fmt(totalPendiente)}</td>
+                      <tr className="border-t-2 border-sidebar-border bg-admin-card/70">
+                        <td className="px-6 py-3 text-sm font-semibold text-white">
+                          Total año
+                        </td>
+                        <td className="px-6 py-3 text-right text-sm font-semibold text-white">
+                          {reservas.length}
+                        </td>
+                        <td className="px-6 py-3 text-right text-sm font-semibold text-white">
+                          {fmt(totalFacturado)}
+                        </td>
+                        <td className="px-6 py-3 text-right text-sm font-semibold text-emerald-300">
+                          {fmt(totalCobrado)}
+                        </td>
+                        <td className="px-6 py-3 text-right text-sm font-semibold text-amber-300">
+                          {fmt(totalPendiente)}
+                        </td>
                       </tr>
                     </tfoot>
                   </table>
@@ -389,58 +518,112 @@ export const IncomePage: React.FC = () => {
               </div>
             )}
 
-            {/* Tabla de reservas */}
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-              <div className="bg-slate-50 border-b border-slate-100 px-6 py-4 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">Detalle de reservas</h3>
-                <span className="text-xs text-slate-400">{reservas.length} reservas · {totalNoches} noches</span>
+            <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-bg shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
+              <div className="flex items-center justify-between border-b border-sidebar-border bg-admin-card/70 px-6 py-4">
+                <h3 className="text-sm font-semibold text-white">
+                  Detalle de reservas
+                </h3>
+                <span className="text-xs text-slate-500">
+                  {reservas.length} reservas · {totalNoches} noches
+                </span>
               </div>
 
               {reservas.length === 0 ? (
-                <div className="px-6 py-12 text-center text-sm text-slate-400">
+                <div className="px-6 py-12 text-center text-sm text-slate-500">
                   No hay reservas en el período seleccionado.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Cliente</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Entrada</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Salida</th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Noch.</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Origen</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tarifa</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Total</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado pago</th>
+                      <tr className="border-b border-sidebar-border bg-admin-card/70">
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Cliente
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Entrada
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Salida
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Noch.
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Origen
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Tarifa
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Total
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Estado pago
+                        </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {reservas.map(r => (
-                        <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">{r.nombre_cliente} {r.apellidos_cliente}</td>
-                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(r.fecha_entrada)}</td>
-                          <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(r.fecha_salida)}</td>
-                          <td className="px-4 py-3 text-center text-slate-500">{r.noches}</td>
-                          <td className="px-4 py-3 text-slate-500">{ORIGEN_SHORT[r.origen] ?? r.origen}</td>
+
+                    <tbody className="divide-y divide-sidebar-border">
+                      {reservas.map((r) => (
+                        <tr
+                          key={r.id}
+                          className="transition-colors hover:bg-sidebar-hover/60"
+                        >
+                          <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-100">
+                            {r.nombre_cliente} {r.apellidos_cliente}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-slate-400">
+                            {fmtDate(r.fecha_entrada)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-slate-400">
+                            {fmtDate(r.fecha_salida)}
+                          </td>
+                          <td className="px-4 py-3 text-center text-slate-400">
+                            {r.noches}
+                          </td>
+                          <td className="px-4 py-3 text-slate-400">
+                            {ORIGEN_SHORT[r.origen] ?? r.origen}
+                          </td>
                           <td className="px-4 py-3">
-                            <span className={`text-xs font-medium ${r.tarifa === 'FLEXIBLE' ? 'text-emerald-600' : 'text-amber-700'}`}>
+                            <span
+                              className={`text-xs font-medium ${
+                                r.tarifa === 'FLEXIBLE'
+                                  ? 'text-emerald-300'
+                                  : 'text-amber-300'
+                              }`}
+                            >
                               {r.tarifa === 'FLEXIBLE' ? 'Flexible' : 'No reemb.'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">{fmt(r.importe_total)}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-white">
+                            {fmt(r.importe_total)}
+                          </td>
                           <td className="px-4 py-3">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${PAGO_STYLE[r.estado_pago] ?? 'bg-slate-100 text-slate-500'}`}>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                PAGO_STYLE[r.estado_pago] ??
+                                'border border-slate-500/20 bg-slate-500/10 text-slate-300'
+                              }`}
+                            >
                               {PAGO_LABEL[r.estado_pago] ?? r.estado_pago}
                             </span>
                           </td>
                         </tr>
                       ))}
                     </tbody>
+
                     <tfoot>
-                      <tr className="border-t-2 border-slate-200 bg-slate-50">
-                        <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-slate-900">Total período</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900 whitespace-nowrap">{fmt(totalFacturado)}</td>
+                      <tr className="border-t-2 border-sidebar-border bg-admin-card/70">
+                        <td
+                          colSpan={6}
+                          className="px-4 py-3 text-sm font-semibold text-white"
+                        >
+                          Total período
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-white">
+                          {fmt(totalFacturado)}
+                        </td>
                         <td></td>
                       </tr>
                     </tfoot>
@@ -457,23 +640,42 @@ export const IncomePage: React.FC = () => {
 
 // ─── Sub-componentes ───────────────────────────────────────────────────────────
 const COLOR_MAP: Record<string, string> = {
-  emerald: 'bg-emerald-50 text-emerald-700',
-  amber:   'bg-amber-50   text-amber-700',
-  blue:    'bg-blue-50    text-blue-700',
-  violet:  'bg-violet-50  text-violet-700',
+  emerald: 'bg-emerald-500/10 text-emerald-300',
+  amber: 'bg-amber-500/10 text-amber-300',
+  blue: 'bg-blue-500/10 text-blue-300',
+  violet: 'bg-violet-500/10 text-violet-300',
 }
 
-function StatCard({ label, value, icon, color, sub }: {
-  label: string; value: string; icon: React.ReactNode; color: string; sub?: string
+function StatCard({
+  label,
+  value,
+  icon,
+  color,
+  sub,
+}: {
+  label: string
+  value: string
+  icon: React.ReactNode
+  color: string
+  sub?: string
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className={`w-fit rounded-lg p-2 mb-3 ${COLOR_MAP[color] ?? 'bg-slate-50 text-slate-500'}`}>
+    <div className="rounded-3xl border border-sidebar-border bg-sidebar-bg p-5 shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
+      <div
+        className={`mb-3 w-fit rounded-xl p-2 ${
+          COLOR_MAP[color] ?? 'bg-slate-500/10 text-slate-400'
+        }`}
+      >
         {icon}
       </div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-bold text-white">{value}</p>
       {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
     </div>
   )
 }
+
+const darkInputCls =
+  'rounded-xl border border-sidebar-border bg-admin-card px-3 py-3 text-sm text-slate-100 focus:outline-none focus:border-brand-400'

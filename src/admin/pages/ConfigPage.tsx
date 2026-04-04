@@ -1,12 +1,30 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
-  Save, AlertCircle, CheckCircle2,
-  Home, Mail, Phone, Globe, MapPin, Loader2, ExternalLink
+  Save,
+  AlertCircle,
+  CheckCircle2,
+  Home,
+  Mail,
+  Phone,
+  Globe,
+  MapPin,
+  Loader2,
+  ExternalLink,
+  Type,
+  Scale,
+  ShieldCheck,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../integrations/supabase/client'
 
-// ── Tipos ──────────────────────────────────────────────────────────────────────
+interface CancellationRule {
+  from_days: number
+  to_days: number
+  refund_pct: number
+}
+
 interface Property {
   id: string
   nombre: string
@@ -19,70 +37,222 @@ interface Property {
   telefono: string | null
   email: string | null
   web: string | null
+  logo_url: string | null
+  activa: boolean | null
+  stripe_account_id: string | null
+  stripe_webhook_secret: string | null
   resend_from_email: string | null
   resend_from_name: string | null
+  site_title: string | null
+  site_tagline: string | null
+
+  logo_alt: string | null
+  footer_text: string | null
+  meta_title: string | null
+  meta_description: string | null
+
+  legal_business_name: string | null
+  legal_tax_id: string | null
+  legal_address: string | null
+  legal_email: string | null
+  legal_phone: string | null
+  legal_registry_info: string | null
+
+  non_refundable_discount_pct: number | null
+  flexible_deposit_pct: number | null
+  cancellation_policy_json: CancellationRule[] | null
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 const PROPERTY_SLUG = 'la-rasilla'
 
-// ── Componente principal ───────────────────────────────────────────────────────
+const DEFAULT_CANCELLATION_RULES: CancellationRule[] = [
+  { from_days: 60, to_days: 9999, refund_pct: 100 },
+  { from_days: 45, to_days: 59, refund_pct: 50 },
+  { from_days: 30, to_days: 44, refund_pct: 25 },
+  { from_days: 0, to_days: 29, refund_pct: 0 },
+]
+
 export function ConfigPage() {
   const [property, setProperty] = useState<Property | null>(null)
-  const [loading, setLoading]   = useState(true)
-  const [status, setStatus]     = useState<SaveStatus>('idle')
+  const [loading, setLoading] = useState(true)
+  const [status, setStatus] = useState<SaveStatus>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
   const loadData = useCallback(async () => {
     setLoading(true)
+    setErrorMsg('')
+
     const { data, error } = await supabase
       .from('properties')
-      .select('id,nombre,slug,descripcion,direccion,localidad,provincia,pais,telefono,email,web,resend_from_email,resend_from_name')
+      .select(`
+        id,
+        nombre,
+        slug,
+        descripcion,
+        direccion,
+        localidad,
+        provincia,
+        pais,
+        telefono,
+        email,
+        web,
+        logo_url,
+        activa,
+        stripe_account_id,
+        stripe_webhook_secret,
+        resend_from_email,
+        resend_from_name,
+        site_title,
+        site_tagline,
+        logo_alt,
+        footer_text,
+        meta_title,
+        meta_description,
+        legal_business_name,
+        legal_tax_id,
+        legal_address,
+        legal_email,
+        legal_phone,
+        legal_registry_info,
+        non_refundable_discount_pct,
+        flexible_deposit_pct,
+        cancellation_policy_json
+      `)
       .eq('slug', PROPERTY_SLUG)
       .single()
 
-    if (error) setErrorMsg(error.message)
-    else setProperty(data)
+    if (error) {
+      setErrorMsg(error.message)
+      setProperty(null)
+      setLoading(false)
+      return
+    }
+
+    setProperty({
+      ...data,
+      cancellation_policy_json:
+        Array.isArray(data.cancellation_policy_json) && data.cancellation_policy_json.length > 0
+          ? data.cancellation_policy_json
+          : DEFAULT_CANCELLATION_RULES,
+    })
+
     setLoading(false)
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  function upd<K extends keyof Property>(key: K, value: Property[K]) {
+    setProperty((prev) => (prev ? { ...prev, [key]: value } : prev))
+  }
+
+  const updateRule = (
+    index: number,
+    field: keyof CancellationRule,
+    value: number
+  ) => {
+    setProperty((prev) => {
+      if (!prev) return prev
+      const rules = [...(prev.cancellation_policy_json ?? [])]
+      rules[index] = {
+        ...rules[index],
+        [field]: value,
+      }
+      return { ...prev, cancellation_policy_json: rules }
+    })
+  }
+
+  const addRule = () => {
+    setProperty((prev) => {
+      if (!prev) return prev
+      const rules = [...(prev.cancellation_policy_json ?? [])]
+      rules.push({ from_days: 0, to_days: 0, refund_pct: 0 })
+      return { ...prev, cancellation_policy_json: rules }
+    })
+  }
+
+  const removeRule = (index: number) => {
+    setProperty((prev) => {
+      if (!prev) return prev
+      const rules = [...(prev.cancellation_policy_json ?? [])]
+      rules.splice(index, 1)
+      return { ...prev, cancellation_policy_json: rules }
+    })
+  }
 
   const handleSave = async () => {
     if (!property) return
-    setStatus('saving'); setErrorMsg('')
+
+    setStatus('saving')
+    setErrorMsg('')
+
+    const cleanedRules = (property.cancellation_policy_json ?? []).map((rule) => ({
+      from_days: Number(rule.from_days) || 0,
+      to_days: Number(rule.to_days) || 0,
+      refund_pct: Number(rule.refund_pct) || 0,
+    }))
 
     const { error } = await supabase
       .from('properties')
       .update({
-        nombre:           property.nombre,
-        descripcion:      property.descripcion,
-        direccion:        property.direccion,
-        localidad:        property.localidad,
-        provincia:        property.provincia,
-        pais:             property.pais,
-        telefono:         property.telefono,
-        email:            property.email,
-        web:              property.web,
+        nombre: property.nombre,
+        descripcion: property.descripcion,
+        direccion: property.direccion,
+        localidad: property.localidad,
+        provincia: property.provincia,
+        pais: property.pais,
+        telefono: property.telefono,
+        email: property.email,
+        web: property.web,
+        logo_url: property.logo_url,
         resend_from_email: property.resend_from_email,
-        resend_from_name:  property.resend_from_name,
-        updated_at:       new Date().toISOString(),
+        resend_from_name: property.resend_from_name,
+        site_title: property.site_title,
+        site_tagline: property.site_tagline,
+        logo_alt: property.logo_alt,
+        footer_text: property.footer_text,
+        meta_title: property.meta_title,
+        meta_description: property.meta_description,
+        legal_business_name: property.legal_business_name,
+        legal_tax_id: property.legal_tax_id,
+        legal_address: property.legal_address,
+        legal_email: property.legal_email,
+        legal_phone: property.legal_phone,
+        legal_registry_info: property.legal_registry_info,
+        non_refundable_discount_pct:
+          property.non_refundable_discount_pct === null ||
+          property.non_refundable_discount_pct === undefined ||
+          property.non_refundable_discount_pct === ('' as any)
+            ? null
+            : Number(property.non_refundable_discount_pct),
+        flexible_deposit_pct:
+          property.flexible_deposit_pct === null ||
+          property.flexible_deposit_pct === undefined ||
+          property.flexible_deposit_pct === ('' as any)
+            ? null
+            : Number(property.flexible_deposit_pct),
+        cancellation_policy_json: cleanedRules,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', property.id)
 
-    if (error) { setStatus('error'); setErrorMsg(error.message) }
-    else { setStatus('saved'); setTimeout(() => setStatus('idle'), 3000) }
-  }
+    if (error) {
+      setStatus('error')
+      setErrorMsg(error.message)
+      return
+    }
 
-  function upd<K extends keyof Property>(k: K, v: Property[K]) {
-    setProperty(p => p ? { ...p, [k]: v } : p)
+    setStatus('saved')
+    setTimeout(() => setStatus('idle'), 3000)
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-slate-400">
-        <Loader2 className="animate-spin mr-2" size={20} />
+      <div className="flex h-64 items-center justify-center text-slate-400">
+        <Loader2 className="mr-2 animate-spin" size={20} />
         Cargando configuración…
       </div>
     )
@@ -90,156 +260,482 @@ export function ConfigPage() {
 
   if (!property) {
     return (
-      <div className="p-6 text-red-600 bg-red-50 rounded-lg">
+      <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-red-300">
         Error cargando configuración: {errorMsg}
       </div>
     )
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="rounded-3xl border border-sidebar-border bg-sidebar-bg px-6 py-6 shadow-[0_10px_40px_rgba(0,0,0,0.25)]">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-white">Configuración</h1>
+            <p className="mt-2 text-sm text-slate-400">
+              Marca pública, contacto, datos legales y políticas de reserva.
+            </p>
+            <div className="mt-3 inline-flex items-center rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-300">
+              slug: {property.slug}
+            </div>
+          </div>
 
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Configuración</h1>
-          <p className="text-sm text-slate-500 mt-1">Datos de la propiedad <span className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">{property.slug}</span></p>
+          <button
+            onClick={handleSave}
+            disabled={status === 'saving'}
+            className={[
+              'inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition-all shadow-sm',
+              status === 'saved'
+                ? 'bg-emerald-600 text-white'
+                : status === 'error'
+                ? 'bg-red-600 text-white'
+                : 'bg-brand-600 text-white hover:bg-brand-700',
+              status === 'saving' ? 'opacity-80' : '',
+            ].join(' ')}
+          >
+            {status === 'saving' && <Loader2 className="animate-spin" size={16} />}
+            {status === 'saved' && <CheckCircle2 size={16} />}
+            {status === 'error' && <AlertCircle size={16} />}
+            {status === 'idle' && <Save size={16} />}
+            {status === 'saving'
+              ? 'Guardando…'
+              : status === 'saved'
+              ? 'Guardado'
+              : status === 'error'
+              ? 'Error'
+              : 'Guardar cambios'}
+          </button>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={status === 'saving'}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-sm ${
-            status === 'saved'  ? 'bg-emerald-600 text-white' :
-            status === 'error'  ? 'bg-red-600 text-white' :
-            'bg-brand-600 text-white hover:bg-brand-700'
-          }`}
-        >
-          {status === 'saving' && <Loader2 className="animate-spin" size={16} />}
-          {status === 'saved'  && <CheckCircle2 size={16} />}
-          {status === 'error'  && <AlertCircle size={16} />}
-          {status === 'idle'   && <Save size={16} />}
-          {status === 'saving' ? 'Guardando…' : status === 'saved' ? '¡Guardado!' : status === 'error' ? 'Error' : 'Guardar cambios'}
-        </button>
       </div>
 
       {status === 'error' && errorMsg && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl flex items-center gap-2">
-          <AlertCircle size={16} /> {errorMsg}
+        <div className="flex items-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <AlertCircle size={16} />
+          {errorMsg}
         </div>
       )}
 
-      {/* Sección: Propiedad */}
-      <Card title="Propiedad" icon={<Home size={16} />}>
-        <Field label="Nombre">
-          <input type="text" value={property.nombre} onChange={e => upd('nombre', e.target.value)} className={inputCls} />
+      <DarkCard title="Marca pública / Web" icon={<Type size={16} />}>
+        <Field label="Título principal de la web" hint="Visible en header, hero, footer o SEO.">
+          <input
+            type="text"
+            value={property.site_title ?? ''}
+            onChange={(e) => upd('site_title', e.target.value || null)}
+            className={inputCls}
+            placeholder="Ej. Casa Rural La Rasilla / Grupo Valles Pasiegos"
+          />
         </Field>
-        <Field label="Descripción">
-          <textarea rows={3} value={property.descripcion ?? ''} onChange={e => upd('descripcion', e.target.value || null)} className={inputCls} />
-        </Field>
-      </Card>
 
-      {/* Sección: Dirección */}
-      <Card title="Dirección" icon={<MapPin size={16} />}>
+        <Field label="Subtítulo / tagline">
+          <input
+            type="text"
+            value={property.site_tagline ?? ''}
+            onChange={(e) => upd('site_tagline', e.target.value || null)}
+            className={inputCls}
+            placeholder="Ej. Valles Pasiegos / Alojamientos rurales en Cantabria"
+          />
+        </Field>
+
+        <Field label="Logo URL" hint="Opcional. Si existe, la web puede usar imagen en vez de texto.">
+          <input
+            type="text"
+            value={property.logo_url ?? ''}
+            onChange={(e) => upd('logo_url', e.target.value || null)}
+            className={inputCls}
+            placeholder="https://..."
+          />
+        </Field>
+
+        <Field label="Texto alternativo del logo">
+          <input
+            type="text"
+            value={property.logo_alt ?? ''}
+            onChange={(e) => upd('logo_alt', e.target.value || null)}
+            className={inputCls}
+            placeholder="Logo Casa Rural La Rasilla"
+          />
+        </Field>
+
+        <Field label="Texto de footer">
+          <textarea
+            rows={3}
+            value={property.footer_text ?? ''}
+            onChange={(e) => upd('footer_text', e.target.value || null)}
+            className={inputCls}
+            placeholder="Ej. Alojamientos rurales en Cantabria para escapadas en grupo y familias."
+          />
+        </Field>
+
+        <Field label="Nombre base / comercial">
+          <input
+            type="text"
+            value={property.nombre}
+            onChange={(e) => upd('nombre', e.target.value)}
+            className={inputCls}
+          />
+        </Field>
+
+        <Field label="Descripción general">
+          <textarea
+            rows={3}
+            value={property.descripcion ?? ''}
+            onChange={(e) => upd('descripcion', e.target.value || null)}
+            className={inputCls}
+          />
+        </Field>
+      </DarkCard>
+
+      <DarkCard title="SEO básico" icon={<Globe size={16} />}>
+        <Field label="Meta title">
+          <input
+            type="text"
+            value={property.meta_title ?? ''}
+            onChange={(e) => upd('meta_title', e.target.value || null)}
+            className={inputCls}
+            placeholder="Título SEO principal"
+          />
+        </Field>
+
+        <Field label="Meta description">
+          <textarea
+            rows={3}
+            value={property.meta_description ?? ''}
+            onChange={(e) => upd('meta_description', e.target.value || null)}
+            className={inputCls}
+            placeholder="Descripción SEO principal de la web"
+          />
+        </Field>
+      </DarkCard>
+
+      <DarkCard title="Dirección" icon={<MapPin size={16} />}>
         <Field label="Dirección">
-          <input type="text" value={property.direccion ?? ''} onChange={e => upd('direccion', e.target.value || null)} className={inputCls} placeholder="Calle / núm." />
+          <input
+            type="text"
+            value={property.direccion ?? ''}
+            onChange={(e) => upd('direccion', e.target.value || null)}
+            className={inputCls}
+            placeholder="Calle / número"
+          />
         </Field>
-        <div className="grid grid-cols-2 gap-4">
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Localidad">
-            <input type="text" value={property.localidad ?? ''} onChange={e => upd('localidad', e.target.value || null)} className={inputCls} placeholder="Corvera de Toranzo" />
+            <input
+              type="text"
+              value={property.localidad ?? ''}
+              onChange={(e) => upd('localidad', e.target.value || null)}
+              className={inputCls}
+            />
           </Field>
+
           <Field label="Provincia">
-            <input type="text" value={property.provincia ?? ''} onChange={e => upd('provincia', e.target.value || null)} className={inputCls} placeholder="Cantabria" />
+            <input
+              type="text"
+              value={property.provincia ?? ''}
+              onChange={(e) => upd('provincia', e.target.value || null)}
+              className={inputCls}
+            />
           </Field>
         </div>
+
         <Field label="País">
-          <input type="text" value={property.pais ?? ''} onChange={e => upd('pais', e.target.value || null)} className={inputCls} placeholder="España" />
+          <input
+            type="text"
+            value={property.pais ?? ''}
+            onChange={(e) => upd('pais', e.target.value || null)}
+            className={inputCls}
+          />
         </Field>
-      </Card>
+      </DarkCard>
 
-      {/* Sección: Contacto */}
-      <Card title="Contacto" icon={<Phone size={16} />}>
+      <DarkCard title="Contacto" icon={<Phone size={16} />}>
         <Field label="Teléfono">
-          <input type="tel" value={property.telefono ?? ''} onChange={e => upd('telefono', e.target.value || null)} className={inputCls} placeholder="+34 600 000 000" />
+          <input
+            type="tel"
+            value={property.telefono ?? ''}
+            onChange={(e) => upd('telefono', e.target.value || null)}
+            className={inputCls}
+          />
         </Field>
+
         <Field label="Email">
-          <input type="email" value={property.email ?? ''} onChange={e => upd('email', e.target.value || null)} className={inputCls} placeholder="info@casarurallarasilla.com" />
+          <input
+            type="email"
+            value={property.email ?? ''}
+            onChange={(e) => upd('email', e.target.value || null)}
+            className={inputCls}
+          />
         </Field>
+
         <Field label="Web">
-          <input type="url" value={property.web ?? ''} onChange={e => upd('web', e.target.value || null)} className={inputCls} placeholder="https://casarurallarasilla.com" />
+          <input
+            type="url"
+            value={property.web ?? ''}
+            onChange={(e) => upd('web', e.target.value || null)}
+            className={inputCls}
+          />
         </Field>
-      </Card>
+      </DarkCard>
 
-      {/* Sección: Email transaccional */}
-      <Card title="Email transaccional (Resend)" icon={<Mail size={16} />}>
-        <Field label="Remitente (nombre)" hint="Nombre que verá el cliente en el email">
-          <input type="text" value={property.resend_from_name ?? ''} onChange={e => upd('resend_from_name', e.target.value || null)} className={inputCls} placeholder="Casa Rural La Rasilla" />
+      <DarkCard title="Datos legales" icon={<Scale size={16} />}>
+        <Field label="Nombre fiscal / razón social">
+          <input
+            type="text"
+            value={property.legal_business_name ?? ''}
+            onChange={(e) => upd('legal_business_name', e.target.value || null)}
+            className={inputCls}
+            placeholder="Nombre fiscal o razón social"
+          />
         </Field>
-        <Field label="Remitente (email)" hint="Debe estar verificado en Resend">
-          <input type="email" value={property.resend_from_email ?? ''} onChange={e => upd('resend_from_email', e.target.value || null)} className={inputCls} placeholder="noreply@casarurallarasilla.com" />
-        </Field>
-      </Card>
 
-      {/* Aviso: precios y temporadas */}
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 flex items-start gap-4">
-        <Globe size={18} className="text-slate-400 mt-0.5 shrink-0" />
-        <div className="flex-1 space-y-1">
-          <p className="text-sm font-semibold text-slate-700">Precios, temporadas y capacidad</p>
-          <p className="text-xs text-slate-500">
-            Los precios por noche, temporadas y capacidad de cada unidad se gestionan en la página <strong>Unidades</strong>.
-          </p>
+        <Field label="DNI / CIF / NIF">
+          <input
+            type="text"
+            value={property.legal_tax_id ?? ''}
+            onChange={(e) => upd('legal_tax_id', e.target.value || null)}
+            className={inputCls}
+            placeholder="B12345678 / 12345678A"
+          />
+        </Field>
+
+        <Field label="Dirección legal">
+          <textarea
+            rows={2}
+            value={property.legal_address ?? ''}
+            onChange={(e) => upd('legal_address', e.target.value || null)}
+            className={inputCls}
+            placeholder="Dirección completa legal/fiscal"
+          />
+        </Field>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="Email legal">
+            <input
+              type="email"
+              value={property.legal_email ?? ''}
+              onChange={(e) => upd('legal_email', e.target.value || null)}
+              className={inputCls}
+            />
+          </Field>
+
+          <Field label="Teléfono legal">
+            <input
+              type="text"
+              value={property.legal_phone ?? ''}
+              onChange={(e) => upd('legal_phone', e.target.value || null)}
+              className={inputCls}
+            />
+          </Field>
         </div>
-        <Link to="/admin/unidades"
-          className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white hover:bg-brand-700 transition-all shrink-0">
-          Ir a Unidades <ExternalLink size={12} />
-        </Link>
-      </div>
 
-      {/* Aviso: política de cancelación */}
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <p className="text-sm font-semibold text-slate-700 mb-3">Política de cancelación (tarifa flexible)</p>
-        <div className="grid grid-cols-4 gap-3">
-          {[
-            { label: '≥ 60 días', value: '100% reembolso' },
-            { label: '45–59 días', value: '50% reembolso' },
-            { label: '30–44 días', value: '25% reembolso' },
-            { label: '< 30 días', value: 'Sin reembolso' },
-          ].map(item => (
-            <div key={item.label} className="bg-white rounded-xl border border-slate-200 p-3 text-center">
-              <p className="text-xs text-slate-500">{item.label}</p>
-              <p className="text-sm font-semibold text-slate-800 mt-1">{item.value}</p>
+        <Field label="Datos de registro mercantil / información adicional legal">
+          <textarea
+            rows={3}
+            value={property.legal_registry_info ?? ''}
+            onChange={(e) => upd('legal_registry_info', e.target.value || null)}
+            className={inputCls}
+            placeholder="Opcional"
+          />
+        </Field>
+      </DarkCard>
+
+      <DarkCard title="Email transaccional (Resend)" icon={<Mail size={16} />}>
+        <Field label="Nombre del remitente">
+          <input
+            type="text"
+            value={property.resend_from_name ?? ''}
+            onChange={(e) => upd('resend_from_name', e.target.value || null)}
+            className={inputCls}
+            placeholder="Casa Rural La Rasilla"
+          />
+        </Field>
+
+        <Field label="Email del remitente">
+          <input
+            type="email"
+            value={property.resend_from_email ?? ''}
+            onChange={(e) => upd('resend_from_email', e.target.value || null)}
+            className={inputCls}
+            placeholder="noreply@tudominio.com"
+          />
+        </Field>
+      </DarkCard>
+
+      <DarkCard title="Política de cancelación" icon={<ShieldCheck size={16} />}>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="Descuento tarifa no reembolsable (%)">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={property.non_refundable_discount_pct ?? ''}
+              onChange={(e) =>
+                upd(
+                  'non_refundable_discount_pct',
+                  e.target.value === '' ? null : Number(e.target.value)
+                )
+              }
+              className={inputCls}
+              placeholder="10"
+            />
+          </Field>
+
+          <Field label="Señal tarifa flexible (%)">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={property.flexible_deposit_pct ?? ''}
+              onChange={(e) =>
+                upd(
+                  'flexible_deposit_pct',
+                  e.target.value === '' ? null : Number(e.target.value)
+                )
+              }
+              className={inputCls}
+              placeholder="30"
+            />
+          </Field>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-white">Tramos de reembolso</p>
+              <p className="text-xs text-slate-400">
+                Define los días previos a la llegada y el porcentaje reembolsable.
+              </p>
             </div>
-          ))}
+
+            <button
+              type="button"
+              onClick={addRule}
+              className="inline-flex items-center gap-2 rounded-2xl bg-brand-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-700"
+            >
+              <Plus size={14} />
+              Añadir tramo
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {(property.cancellation_policy_json ?? []).map((rule, index) => (
+              <div
+                key={index}
+                className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 p-4 md:grid-cols-[1fr_1fr_1fr_auto]"
+              >
+                <Field label="Desde días">
+                  <input
+                    type="number"
+                    value={rule.from_days}
+                    onChange={(e) =>
+                      updateRule(index, 'from_days', Number(e.target.value))
+                    }
+                    className={inputCls}
+                  />
+                </Field>
+
+                <Field label="Hasta días">
+                  <input
+                    type="number"
+                    value={rule.to_days}
+                    onChange={(e) =>
+                      updateRule(index, 'to_days', Number(e.target.value))
+                    }
+                    className={inputCls}
+                  />
+                </Field>
+
+                <Field label="% reembolso">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={rule.refund_pct}
+                    onChange={(e) =>
+                      updateRule(index, 'refund_pct', Number(e.target.value))
+                    }
+                    className={inputCls}
+                  />
+                </Field>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => removeRule(index)}
+                    className="inline-flex h-[46px] items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 px-4 text-red-300 transition hover:bg-red-500/20"
+                    aria-label="Eliminar tramo"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <p className="text-xs text-slate-400 mt-3">
-          Configurado en la Edge Function <code className="bg-slate-100 px-1 rounded">cancel-reservation</code>. El descuento no reembolsable (10%) y la señal (30%) están definidos en <code className="bg-slate-100 px-1 rounded">get-config</code>.
-        </p>
-      </div>
+      </DarkCard>
 
+      <div className="rounded-3xl border border-sidebar-border bg-sidebar-bg px-5 py-5">
+        <div className="flex items-start gap-4">
+          <Home size={18} className="mt-0.5 shrink-0 text-slate-400" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-white">Precios, temporadas y capacidad</p>
+            <p className="mt-1 text-sm text-slate-400">
+              Los precios por noche, temporadas, portada y capacidad de cada unidad se gestionan en la sección de unidades.
+            </p>
+          </div>
+
+          <Link
+            to="/admin/unidades"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl bg-brand-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-brand-700"
+          >
+            Ir a Unidades
+            <ExternalLink size={12} />
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }
 
-// ── Componentes auxiliares ─────────────────────────────────────────────────────
-function Card({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function DarkCard({
+  title,
+  icon,
+  children,
+}: {
+  title: string
+  icon: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100">
+    <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-bg shadow-[0_10px_40px_rgba(0,0,0,0.20)]">
+      <div className="flex items-center gap-2.5 border-b border-sidebar-border px-6 py-4">
         <span className="text-slate-400">{icon}</span>
-        <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+        <h2 className="text-sm font-semibold text-white">{title}</h2>
       </div>
-      <div className="px-6 py-5 space-y-4">{children}</div>
+      <div className="space-y-4 px-6 py-5">{children}</div>
     </div>
   )
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string
+  hint?: string
+  children: React.ReactNode
+}) {
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+      <label className="mb-1 block text-xs font-medium text-slate-300">{label}</label>
       {children}
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
     </div>
   )
 }
 
-const inputCls = 'w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-300 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 transition-all'
+const inputCls =
+  'w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none transition-all focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20'

@@ -177,7 +177,14 @@ export default function App() {
           <Route path="/admin/login" element={<LoginPage />} />
           
           {/* Protected Admin Routes */}
-          <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
+          <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout />
+                </ProtectedRoute>
+              }
+            >
             <Route index element={<DashboardPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="calendario" element={<CalendarPage />} />

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../services/supabase";
 
 interface UnitDescriptionFormProps {
   unidadId: string;
-  accessToken: string;
+  accessToken?: string;
   initialValues?: {
     descripcion_corta?: string;
     descripcion_larga?: string;
@@ -35,7 +36,6 @@ const AMENITIES_SUGERIDOS = [
 
 export default function UnitDescriptionForm({
   unidadId,
-  accessToken,
   initialValues,
 }: UnitDescriptionFormProps) {
   const initialForm = useMemo<FormState>(
@@ -60,6 +60,7 @@ export default function UnitDescriptionForm({
   const toggleAmenity = (value: string) => {
     setForm((prev) => {
       const exists = prev.amenities.includes(value);
+
       return {
         ...prev,
         amenities: exists
@@ -71,7 +72,9 @@ export default function UnitDescriptionForm({
 
   const addCustomAmenity = () => {
     const value = customAmenity.trim();
+
     if (!value) return;
+
     if (form.amenities.includes(value)) {
       setCustomAmenity("");
       return;
@@ -81,6 +84,7 @@ export default function UnitDescriptionForm({
       ...prev,
       amenities: [...prev.amenities, value],
     }));
+
     setCustomAmenity("");
   };
 
@@ -106,31 +110,38 @@ export default function UnitDescriptionForm({
     setMessage(null);
 
     try {
-      const res = await fetch("/functions/v1/admin_unit_update_content", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          unidad_id: unidadId,
-          descripcion_corta: form.descripcion_corta.trim() || null,
-          descripcion_larga: form.descripcion_larga.trim() || null,
-          descripcion_extras: form.descripcion_extras.trim() || null,
-          amenities: form.amenities,
-        }),
-      });
+      const { data, error } = await supabase.functions.invoke(
+        "admin_unit_update_content",
+        {
+          body: {
+            unidad_id: unidadId,
+            descripcion_corta: form.descripcion_corta.trim() || null,
+            descripcion_larga: form.descripcion_larga.trim() || null,
+            descripcion_extras: form.descripcion_extras.trim() || null,
+            amenities: form.amenities,
+          },
+        }
+      );
 
-      const data = await res.json();
+      console.log("admin_unit_update_content data:", data);
+      console.log("admin_unit_update_content error:", error);
 
-      if (!res.ok || !data?.success) {
+      if (error) {
+        throw new Error(error.message || "No se pudo guardar la unidad");
+      }
+
+      if (!data?.success) {
         throw new Error(data?.error || "No se pudo guardar la unidad");
       }
 
       setMessage("Contenido guardado correctamente.");
     } catch (error) {
-      console.error(error);
-      setMessage("Error guardando el contenido de la unidad.");
+      console.error("Error guardando contenido:", error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Error guardando el contenido de la unidad."
+      );
     } finally {
       setSaving(false);
     }
@@ -202,6 +213,7 @@ export default function UnitDescriptionForm({
         <div className="flex flex-wrap gap-2">
           {AMENITIES_SUGERIDOS.map((item) => {
             const active = form.amenities.includes(item);
+
             return (
               <button
                 key={item}
@@ -270,7 +282,15 @@ export default function UnitDescriptionForm({
 
         <div className="flex items-center gap-3">
           {message && (
-            <span className="text-sm text-slate-600">{message}</span>
+            <span
+              className={`text-sm ${
+                message.toLowerCase().includes("error")
+                  ? "text-red-600"
+                  : "text-emerald-600"
+              }`}
+            >
+              {message}
+            </span>
           )}
 
           <button

@@ -24,9 +24,19 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
+
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: "Missing Authorization header" }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    const accessToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: "Missing access token" }),
         { status: 401, headers: corsHeaders }
       );
     }
@@ -46,11 +56,14 @@ serve(async (req) => {
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser();
+    } = await supabase.auth.getUser(accessToken);
 
     if (userError || !user) {
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({
+          error: "Unauthorized",
+          detail: userError?.message ?? "No authenticated user",
+        }),
         { status: 401, headers: corsHeaders }
       );
     }
@@ -73,7 +86,10 @@ serve(async (req) => {
 
     if (unidadError || !unidad) {
       return new Response(
-        JSON.stringify({ error: "Unidad no encontrada" }),
+        JSON.stringify({
+          error: "Unidad no encontrada",
+          detail: unidadError?.message ?? null,
+        }),
         { status: 404, headers: corsHeaders }
       );
     }
@@ -87,7 +103,10 @@ serve(async (req) => {
 
     if (membershipError || !membership) {
       return new Response(
-        JSON.stringify({ error: "Forbidden" }),
+        JSON.stringify({
+          error: "Forbidden",
+          detail: membershipError?.message ?? null,
+        }),
         { status: 403, headers: corsHeaders }
       );
     }

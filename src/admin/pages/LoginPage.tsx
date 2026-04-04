@@ -8,7 +8,7 @@ function normalizeLogin(input: string) {
   const value = input.trim().toLowerCase();
 
   if (value === 'admin') {
-    return 'fercarboc@gmail.com';
+    return 'admin@staynexapp.com';
   }
 
   return value;
@@ -27,19 +27,39 @@ export const LoginPage: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (loading) return;
+
     setLoading(true);
     setError(null);
 
     try {
       const email = normalizeLogin(username);
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
-        setError('Credenciales inválidas. Por favor, inténtalo de nuevo.');
+        console.error('Supabase login error:', error);
+
+        if (
+          error.message?.toLowerCase().includes('invalid login credentials') ||
+          error.message?.toLowerCase().includes('invalid_credentials')
+        ) {
+          setError('Usuario o contraseña incorrectos.');
+        } else {
+          setError(error.message || 'Error al iniciar sesión.');
+        }
+
+        setLoading(false);
+        return;
+      }
+
+      if (!data?.session || !data?.user) {
+        console.error('Login sin sesión válida:', data);
+        setError('No se pudo crear la sesión del usuario.');
         setLoading(false);
         return;
       }
@@ -47,7 +67,7 @@ export const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (err: any) {
       console.error('Login error:', err);
-      setError(err.message || 'Error al conectar con el servidor de autenticación.');
+      setError(err?.message || 'Error al conectar con el servidor de autenticación.');
       setLoading(false);
     }
   };
@@ -63,9 +83,11 @@ export const LoginPage: React.FC = () => {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-600 text-white">
             <LogIn size={32} />
           </div>
+
           <h2 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">
             La Rasilla Admin
           </h2>
+
           <p className="mt-2 text-sm text-slate-500">
             Acceso exclusivo para administradores
           </p>
@@ -73,20 +95,21 @@ export const LoginPage: React.FC = () => {
 
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
           {error && (
-            <div className="flex items-center gap-3 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-100">
-              <AlertCircle size={18} />
+            <div className="flex items-center gap-3 rounded-lg border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+              <AlertCircle size={18} className="shrink-0" />
               <p>{error}</p>
             </div>
           )}
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">
                 Usuario o email
               </label>
               <input
                 type="text"
                 required
+                autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -95,12 +118,13 @@ export const LoginPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">
                 Contraseña
               </label>
               <input
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -112,7 +136,7 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="group relative flex w-full justify-center rounded-xl bg-brand-600 px-4 py-4 text-sm font-bold text-white transition-all hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-offset-2 disabled:opacity-50"
+            className="relative flex w-full justify-center rounded-xl bg-brand-600 px-4 py-4 text-sm font-bold text-white transition-all hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -123,7 +147,9 @@ export const LoginPage: React.FC = () => {
         </form>
 
         <div className="mt-6 text-center text-xs text-slate-400">
-          <p>Prueba local: usuario <strong>admin</strong></p>
+          <p>
+            Alias local: usuario <strong>admin</strong>
+          </p>
         </div>
       </motion.div>
     </div>

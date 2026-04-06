@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Plus,
   Trash2,
+  Clock3,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../integrations/supabase/client'
@@ -34,6 +35,8 @@ interface Property {
   localidad: string | null
   provincia: string | null
   pais: string | null
+  latitud: number | null
+  longitud: number | null
   telefono: string | null
   email: string | null
   web: string | null
@@ -57,6 +60,12 @@ interface Property {
   legal_email: string | null
   legal_phone: string | null
   legal_registry_info: string | null
+
+  mascotas_permitidas: boolean
+  suplemento_mascota: number | null
+  fumar_permitido: boolean
+  checkin_time: string | null
+  checkout_time: string | null
 
   non_refundable_discount_pct: number | null
   flexible_deposit_pct: number | null
@@ -95,6 +104,8 @@ export function ConfigPage() {
         localidad,
         provincia,
         pais,
+        latitud,
+        longitud,
         telefono,
         email,
         web,
@@ -116,6 +127,11 @@ export function ConfigPage() {
         legal_email,
         legal_phone,
         legal_registry_info,
+        mascotas_permitidas,
+        suplemento_mascota,
+        fumar_permitido,
+        checkin_time,
+        checkout_time,
         non_refundable_discount_pct,
         flexible_deposit_pct,
         cancellation_policy_json
@@ -132,6 +148,10 @@ export function ConfigPage() {
 
     setProperty({
       ...data,
+      mascotas_permitidas: !!data.mascotas_permitidas,
+      fumar_permitido: !!data.fumar_permitido,
+      checkin_time: data.checkin_time ?? '16:00',
+      checkout_time: data.checkout_time ?? '12:00',
       cancellation_policy_json:
         Array.isArray(data.cancellation_policy_json) && data.cancellation_policy_json.length > 0
           ? data.cancellation_policy_json
@@ -204,6 +224,18 @@ export function ConfigPage() {
         localidad: property.localidad,
         provincia: property.provincia,
         pais: property.pais,
+        latitud:
+          property.latitud === null ||
+          property.latitud === undefined ||
+          property.latitud === ('' as any)
+            ? null
+            : Number(property.latitud),
+        longitud:
+          property.longitud === null ||
+          property.longitud === undefined ||
+          property.longitud === ('' as any)
+            ? null
+            : Number(property.longitud),
         telefono: property.telefono,
         email: property.email,
         web: property.web,
@@ -222,6 +254,16 @@ export function ConfigPage() {
         legal_email: property.legal_email,
         legal_phone: property.legal_phone,
         legal_registry_info: property.legal_registry_info,
+        mascotas_permitidas: property.mascotas_permitidas,
+        suplemento_mascota:
+          property.suplemento_mascota === null ||
+          property.suplemento_mascota === undefined ||
+          property.suplemento_mascota === ('' as any)
+            ? null
+            : Number(property.suplemento_mascota),
+        fumar_permitido: property.fumar_permitido,
+        checkin_time: property.checkin_time,
+        checkout_time: property.checkout_time,
         non_refundable_discount_pct:
           property.non_refundable_discount_pct === null ||
           property.non_refundable_discount_pct === undefined ||
@@ -273,7 +315,7 @@ export function ConfigPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-white">Configuración</h1>
             <p className="mt-2 text-sm text-slate-400">
-              Marca pública, contacto, datos legales y políticas de reserva.
+              Marca pública, contacto, datos legales, políticas, normas y ubicación del mapa.
             </p>
             <div className="mt-3 inline-flex items-center rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-300">
               slug: {property.slug}
@@ -407,7 +449,7 @@ export function ConfigPage() {
         </Field>
       </DarkCard>
 
-      <DarkCard title="Dirección" icon={<MapPin size={16} />}>
+      <DarkCard title="Dirección y mapa" icon={<MapPin size={16} />}>
         <Field label="Dirección">
           <input
             type="text"
@@ -446,6 +488,40 @@ export function ConfigPage() {
             className={inputCls}
           />
         </Field>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field
+            label="Latitud"
+            hint="Ej. 43.101006. Recomendado para ubicar bien el mapa en zonas rurales."
+          >
+            <input
+              type="number"
+              step="0.000001"
+              value={property.latitud ?? ''}
+              onChange={(e) =>
+                upd('latitud', e.target.value === '' ? null : Number(e.target.value))
+              }
+              className={inputCls}
+              placeholder="43.101006"
+            />
+          </Field>
+
+          <Field
+            label="Longitud"
+            hint="Ej. -3.899326. Usa signo negativo si corresponde."
+          >
+            <input
+              type="number"
+              step="0.000001"
+              value={property.longitud ?? ''}
+              onChange={(e) =>
+                upd('longitud', e.target.value === '' ? null : Number(e.target.value))
+              }
+              className={inputCls}
+              placeholder="-3.899326"
+            />
+          </Field>
+        </div>
       </DarkCard>
 
       <DarkCard title="Contacto" icon={<Phone size={16} />}>
@@ -475,6 +551,126 @@ export function ConfigPage() {
             className={inputCls}
           />
         </Field>
+      </DarkCard>
+
+      <DarkCard title="Normas del alojamiento" icon={<ShieldCheck size={16} />}>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field
+            label="Hora de check-in"
+            hint="Ej. 16:00. Se mostrará en condiciones, ayuda y proceso de reserva."
+          >
+            <div className="relative">
+              <Clock3
+                size={16}
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+              />
+              <input
+                type="time"
+                value={property.checkin_time ?? ''}
+                onChange={(e) => upd('checkin_time', e.target.value || null)}
+                className={`${inputCls} pl-11`}
+              />
+            </div>
+          </Field>
+
+          <Field
+            label="Hora de check-out"
+            hint="Ej. 12:00. Se mostrará en condiciones, ayuda y proceso de reserva."
+          >
+            <div className="relative">
+              <Clock3
+                size={16}
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+              />
+              <input
+                type="time"
+                value={property.checkout_time ?? ''}
+                onChange={(e) => upd('checkout_time', e.target.value || null)}
+                className={`${inputCls} pl-11`}
+              />
+            </div>
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="¿Se admiten mascotas?" hint="Por defecto debería estar desactivado.">
+            <label className="inline-flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100">
+              <input
+                type="checkbox"
+                checked={property.mascotas_permitidas}
+                onChange={(e) => upd('mascotas_permitidas', e.target.checked)}
+                className="h-4 w-4 accent-emerald-500"
+              />
+              Admitir mascotas
+            </label>
+          </Field>
+
+          <Field
+            label="Suplemento mascota (€)"
+            hint="Déjalo vacío si no aplica. Solo tiene sentido si se admiten mascotas."
+          >
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={property.suplemento_mascota ?? ''}
+              onChange={(e) =>
+                upd(
+                  'suplemento_mascota',
+                  e.target.value === '' ? null : Number(e.target.value)
+                )
+              }
+              className={inputCls}
+              placeholder="Ej. 20"
+              disabled={!property.mascotas_permitidas}
+            />
+          </Field>
+        </div>
+
+        <Field label="¿Se permite fumar?" hint="Por defecto debería estar desactivado.">
+          <label className="inline-flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100">
+            <input
+              type="checkbox"
+              checked={property.fumar_permitido}
+              onChange={(e) => upd('fumar_permitido', e.target.checked)}
+              className="h-4 w-4 accent-emerald-500"
+            />
+            Permitir fumar
+          </label>
+        </Field>
+
+        <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-300">
+          <p className="font-semibold text-white">Vista previa rápida</p>
+          <ul className="mt-3 space-y-2">
+            <li>
+              Check-in:{' '}
+              <strong className="text-white">
+                {property.checkin_time || 'No definido'}
+              </strong>
+            </li>
+            <li>
+              Check-out:{' '}
+              <strong className="text-white">
+                {property.checkout_time || 'No definido'}
+              </strong>
+            </li>
+            <li>
+              Mascotas:{' '}
+              <strong className="text-white">
+                {property.mascotas_permitidas ? 'Sí' : 'No'}
+              </strong>
+              {property.mascotas_permitidas && property.suplemento_mascota !== null
+                ? ` · suplemento ${property.suplemento_mascota} €`
+                : ''}
+            </li>
+            <li>
+              Fumar:{' '}
+              <strong className="text-white">
+                {property.fumar_permitido ? 'Sí' : 'No'}
+              </strong>
+            </li>
+          </ul>
+        </div>
       </DarkCard>
 
       <DarkCard title="Datos legales" icon={<Scale size={16} />}>
@@ -528,13 +724,13 @@ export function ConfigPage() {
           </Field>
         </div>
 
-        <Field label="Datos de registro mercantil / información adicional legal">
+        <Field label="Nº de Registro Alojamiento / Licencia turística">
           <textarea
             rows={3}
             value={property.legal_registry_info ?? ''}
             onChange={(e) => upd('legal_registry_info', e.target.value || null)}
             className={inputCls}
-            placeholder="Opcional"
+            placeholder="Ej. Nº registro turismo / licencia / código autonómico"
           />
         </Field>
       </DarkCard>
@@ -682,7 +878,10 @@ export function ConfigPage() {
           <div className="flex-1">
             <p className="text-sm font-semibold text-white">Precios, temporadas y capacidad</p>
             <p className="mt-1 text-sm text-slate-400">
-              Los precios por noche, temporadas, portada y capacidad de cada unidad se gestionan en la sección de unidades.
+              Los precios por noche, temporadas, limpieza, noches mínimas y capacidad de cada unidad se gestionan en la sección de unidades.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              La capacidad total del conjunto se calcula sumando la capacidad base y máxima de todas las unidades activas.
             </p>
           </div>
 

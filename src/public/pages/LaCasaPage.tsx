@@ -1,170 +1,549 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Users,
+  Home,
+  Trees,
+  Users2,
+  Bed,
+  Coffee,
+  Utensils,
+  Bath,
+  CheckCircle2,
+  Building2,
+  ArrowRight,
+} from 'lucide-react';
 import { HeroSection } from '../components/HeroSection';
 import { SectionContainer } from '../components/SectionContainer';
 import { FeatureGrid } from '../components/FeatureGrid';
 import { CTASection } from '../components/CTASection';
-import { Users, Home, Trees, Users2, Bed, Coffee, Utensils, Bath, CheckCircle2 } from 'lucide-react';
 import { MetaTags } from '../components/MetaTags';
+import { supabase } from '../../integrations/supabase/client';
+
+interface Unidad {
+  id: string;
+  nombre: string;
+  slug: string;
+  descripcion_corta: string | null;
+  descripcion_larga: string | null;
+  descripcion_extras: string | null;
+  foto_portada: string | null;
+  fotos: string[] | null;
+  capacidad_base: number | null;
+  capacidad_maxima: number | null;
+  num_habitaciones: number | null;
+  num_banos: number | null;
+  superficie_m2: number | null;
+  amenities: string[] | null;
+  activa: boolean;
+  orden: number | null;
+}
+
+const HERO_FALLBACK = '/images/casa3.jpg';
+const GALLERY_FALLBACKS = [
+  '/images/porche.jpg',
+  '/images/porche2.jpg',
+  '/images/habitacion1.jpg',
+  '/images/habitacion2.jpg',
+  '/images/habitacion3.jpg',
+  '/images/habitacion4.jpg',
+  '/images/cocina.jpg',
+  '/images/salon1.jpg',
+  '/images/aseo1.jpg',
+];
 
 export const LaCasaPage: React.FC = () => {
+  const [units, setUnits] = useState<Unidad[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadUnits = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('unidades')
+          .select(`
+            id,
+            nombre,
+            slug,
+            descripcion_corta,
+            descripcion_larga,
+            descripcion_extras,
+            foto_portada,
+            fotos,
+            capacidad_base,
+            capacidad_maxima,
+            num_habitaciones,
+            num_banos,
+            superficie_m2,
+            amenities,
+            activa,
+            orden
+          `)
+          .eq('activa', true)
+          .order('orden', { ascending: true });
+
+        if (error) {
+          console.error('Error loading units:', error);
+          setUnits([]);
+          return;
+        }
+
+        setUnits((data ?? []) as Unidad[]);
+      } catch (err) {
+        console.error('Unexpected error loading units:', err);
+        setUnits([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUnits();
+  }, []);
+
+  const activeUnits = useMemo(() => units.filter((u) => u.activa), [units]);
+  const isSingleUnit = activeUnits.length <= 1;
+  const singleUnit = activeUnits[0] ?? null;
+
+  const heroImage = singleUnit?.foto_portada || singleUnit?.fotos?.[0] || HERO_FALLBACK;
+
+  const singleGallery = useMemo(() => {
+    const dbPhotos = singleUnit?.fotos?.filter(Boolean) ?? [];
+    const merged = [...dbPhotos];
+
+    for (const fallback of GALLERY_FALLBACKS) {
+      if (merged.length >= 9) break;
+      merged.push(fallback);
+    }
+
+    return merged.slice(0, 9);
+  }, [singleUnit]);
+
+  const metaTitle = isSingleUnit
+    ? `${singleUnit?.nombre || 'Alojamiento'} | Alojamiento rural en Cantabria`
+    : 'Alojamientos rurales en Cantabria | Reserva directa';
+
+  const metaDescription = isSingleUnit
+    ? singleUnit?.descripcion_corta ||
+      'Descubre nuestro alojamiento rural en Cantabria con reserva directa, naturaleza y confort.'
+    : 'Descubre nuestros alojamientos rurales en Cantabria. Reserva directa, mejor precio y escapadas para grupos, familias y parejas.';
+
+  if (loading) {
+    return (
+      <div className="bg-white">
+        <MetaTags title="Cargando alojamiento..." description="Cargando información del alojamiento" />
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <p className="text-stone-500">Cargando alojamientos...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!activeUnits.length) {
+    return (
+      <div className="bg-white">
+        <MetaTags
+          title="Alojamientos | Próximamente"
+          description="Próximamente estarán disponibles nuestros alojamientos rurales."
+        />
+
+        <HeroSection
+          title="Alojamientos rurales en preparación"
+          subtitle="Estamos actualizando esta sección para mostrarte nuestros alojamientos con toda la información y reserva directa."
+          image={HERO_FALLBACK}
+        />
+
+        <SectionContainer>
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="text-3xl font-serif font-bold text-stone-800">
+              Próximamente
+            </h2>
+            <p className="mt-4 text-lg leading-relaxed text-stone-600">
+              En breve podrás consultar aquí todos los alojamientos disponibles,
+              sus características, fotos y acceso directo a la reserva online.
+            </p>
+          </div>
+        </SectionContainer>
+      </div>
+    );
+  }
+
+  if (isSingleUnit && singleUnit) {
+    return (
+      <div className="bg-white">
+        <MetaTags title={metaTitle} description={metaDescription} />
+
+        <HeroSection
+          title={singleUnit.nombre}
+          subtitle={
+            singleUnit.descripcion_corta ||
+            'Un espacio diseñado para el descanso, la convivencia y el disfrute de la naturaleza en Cantabria.'
+          }
+          image={heroImage}
+        />
+
+        <SectionContainer>
+          <div className="grid items-center gap-16 lg:grid-cols-2">
+            <div className="space-y-6">
+              <h2 className="text-4xl font-serif font-bold text-stone-800">
+                Un alojamiento con encanto en Cantabria
+              </h2>
+
+              <div className="prose prose-stone space-y-4 text-lg leading-relaxed text-stone-600">
+                <p>
+                  {singleUnit.descripcion_larga ||
+                    `${singleUnit.nombre} es un alojamiento pensado para ofrecer una experiencia cómoda, auténtica y bien resuelta en un entorno natural privilegiado.`}
+                </p>
+
+                <p>
+                  {singleUnit.capacidad_maxima
+                    ? `Cuenta con capacidad para hasta ${singleUnit.capacidad_maxima} huéspedes, con espacios preparados para disfrutar de una estancia cómoda tanto en familia como en grupo.`
+                    : 'Dispone de espacios preparados para disfrutar de una estancia cómoda tanto en familia como en grupo.'}
+                </p>
+
+                <p>
+                  {singleUnit.descripcion_extras ||
+                    'Reserva directa, entorno natural y un alojamiento preparado para disfrutar sin complicaciones.'}
+                </p>
+              </div>
+
+              <ul className="space-y-3 pt-4">
+                {[
+                  singleUnit.capacidad_maxima
+                    ? `Capacidad máxima para ${singleUnit.capacidad_maxima} personas`
+                    : null,
+                  singleUnit.capacidad_base
+                    ? `Capacidad base para ${singleUnit.capacidad_base} personas`
+                    : null,
+                  singleUnit.num_habitaciones
+                    ? `${singleUnit.num_habitaciones} habitaciones`
+                    : null,
+                  singleUnit.num_banos
+                    ? `${singleUnit.num_banos} baños`
+                    : null,
+                  singleUnit.superficie_m2
+                    ? `${singleUnit.superficie_m2} m²`
+                    : null,
+                  'Reserva directa con mejor control y atención cercana',
+                ]
+                  .filter(Boolean)
+                  .map((item, i) => (
+                    <li key={i} className="flex items-center gap-3 font-medium text-stone-700">
+                      <CheckCircle2 size={20} className="text-emerald-600" />
+                      {item}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {singleGallery.slice(0, 6).map((image, index) => (
+                <img
+                  key={`${image}-${index}`}
+                  src={image}
+                  alt={`${singleUnit.nombre} imagen ${index + 1}`}
+                  className="aspect-[4/3] w-full rounded-2xl object-cover shadow-lg"
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
+            {singleGallery.slice(6, 9).map((image, index) => (
+              <img
+                key={`${image}-bottom-${index}`}
+                src={image}
+                alt={`${singleUnit.nombre} detalle ${index + 7}`}
+                className="h-48 w-full rounded-2xl object-cover shadow-md"
+              />
+            ))}
+          </div>
+        </SectionContainer>
+
+        <SectionContainer bg="stone">
+          <div className="mb-16 text-center">
+            <h2 className="text-3xl font-serif font-bold text-stone-800">
+              Diseñado para disfrutar la estancia
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-stone-500">
+              Un alojamiento preparado para combinar comodidad, funcionalidad y entorno.
+            </p>
+          </div>
+
+          <FeatureGrid
+            features={[
+              {
+                icon: <Users size={24} />,
+                title: singleUnit.capacidad_maxima
+                  ? `Hasta ${singleUnit.capacidad_maxima} personas`
+                  : 'Capacidad flexible',
+                description:
+                  'Espacios pensados para una estancia cómoda y bien aprovechada.',
+              },
+              {
+                icon: <Home size={24} />,
+                title: 'Reserva directa',
+                description:
+                  'Sin intermediarios innecesarios y con información clara desde nuestra web.',
+              },
+              {
+                icon: <Trees size={24} />,
+                title: 'Entorno natural',
+                description:
+                  'Naturaleza, desconexión y la esencia rural de Cantabria.',
+              },
+              {
+                icon: <Users2 size={24} />,
+                title: 'Ideal para grupos y familias',
+                description:
+                  'Una opción pensada para compartir estancia con comodidad.',
+              },
+            ]}
+          />
+        </SectionContainer>
+
+        <SectionContainer>
+          <div className="rounded-3xl bg-stone-900 p-12 text-white shadow-2xl">
+            <h2 className="mb-12 text-center text-3xl font-serif font-bold">
+              Distribución y Equipamiento
+            </h2>
+
+            <div className="grid gap-12 md:grid-cols-2">
+              <div className="space-y-8">
+                <div className="flex gap-4">
+                  <div className="shrink-0 rounded-full bg-stone-800 p-3 text-emerald-400">
+                    <Bed size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold">Habitaciones</h4>
+                    <p className="mt-2 text-stone-400">
+                      {singleUnit.num_habitaciones
+                        ? `Este alojamiento dispone de ${singleUnit.num_habitaciones} habitaciones para una estancia cómoda y bien distribuida.`
+                        : 'Habitaciones preparadas para garantizar descanso y comodidad.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="shrink-0 rounded-full bg-stone-800 p-3 text-emerald-400">
+                    <Bath size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold">Baños</h4>
+                    <p className="mt-2 text-stone-400">
+                      {singleUnit.num_banos
+                        ? `Cuenta con ${singleUnit.num_banos} baños para facilitar una estancia práctica y cómoda.`
+                        : 'Baños preparados para cubrir las necesidades de la estancia con comodidad.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-8">
+                <div className="flex gap-4">
+                  <div className="shrink-0 rounded-full bg-stone-800 p-3 text-emerald-400">
+                    <Coffee size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold">Zona de estar</h4>
+                    <p className="mt-2 text-stone-400">
+                      Espacios pensados para descansar, compartir tiempo y disfrutar de la estancia.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="shrink-0 rounded-full bg-stone-800 p-3 text-emerald-400">
+                    <Utensils size={24} />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold">Equipamiento</h4>
+                    <p className="mt-2 text-stone-400">
+                      {singleUnit.amenities?.length
+                        ? `Incluye servicios y equipamiento pensados para una experiencia cómoda y completa.`
+                        : 'Equipamiento orientado a que la estancia sea práctica, cómoda y funcional.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {singleUnit.amenities?.length ? (
+              <div className="mt-12 border-t border-stone-800 pt-8">
+                <h3 className="mb-4 text-xl font-bold text-white">Servicios destacados</h3>
+                <div className="flex flex-wrap gap-3">
+                  {singleUnit.amenities.map((item, index) => (
+                    <span
+                      key={`${item}-${index}`}
+                      className="rounded-full border border-stone-700 bg-stone-800 px-4 py-2 text-sm text-stone-200"
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </SectionContainer>
+
+        <SectionContainer bg="stone">
+          <CTASection
+            title={`¿Quieres reservar ${singleUnit.nombre}?`}
+            subtitle="Consulta disponibilidad y reserva directamente desde nuestra web."
+            buttonText="Ver disponibilidad y precios"
+            to={`/reservar?unidad=${singleUnit.slug}`}
+          />
+        </SectionContainer>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white">
-      <MetaTags 
-        title="La Casa | Casa rural en Cantabria alquiler íntegro | La Rasilla"
-        description="Descubre La Rasilla, tu casa rural en Cantabria de alquiler íntegro. 5 habitaciones, capacidad para 11 personas y finca privada en los Valles Pasiegos."
-      />
+      <MetaTags title={metaTitle} description={metaDescription} />
 
-      <HeroSection 
-        title="Tu casa rural en Cantabria de alquiler íntegro"
-        subtitle="Un espacio exclusivo diseñado para la convivencia, el descanso y el disfrute de la naturaleza en estado puro."
-        image="/images/casa3.jpg"
+      <HeroSection
+        title="Nuestros alojamientos"
+        subtitle="Descubre diferentes opciones de estancia en Cantabria, con reserva directa, fotos reales y toda la información de cada alojamiento."
+        image={activeUnits[0]?.foto_portada || activeUnits[0]?.fotos?.[0] || HERO_FALLBACK}
       />
 
       <SectionContainer>
-        <div className="grid gap-16 lg:grid-cols-2 items-center">
-          <div className="space-y-6">
-            <h2 className="text-4xl font-serif font-bold text-stone-800">Un refugio con alma en los Valles Pasiegos</h2>
-            <div className="prose prose-stone text-lg text-stone-600 leading-relaxed space-y-4">
-              <p>
-                La Rasilla es mucho más que un alojamiento; es una <strong>casa rural en Cantabria de alquiler íntegro</strong> que combina la robustez de la arquitectura tradicional pasiega con un interiorismo cálido y funcional. Nuestra misión es ofrecerte un lugar donde el tiempo se detiene, permitiéndote reconectar con los tuyos en un entorno de belleza inigualable.
-              </p>
-              <p>
-                La casa ha sido rehabilitada respetando los materiales originales como la piedra y la madera, pero integrando todas las comodidades modernas. Con una <strong>capacidad para hasta 11 personas</strong>, disponemos de amplios salones, una cocina totalmente equipada y rincones pensados para la lectura o la charla tranquila en el salón.
-              </p>
-              <p>
-                Al elegir nuestra <strong>casa rural para grupos en Cantabria</strong>, disfrutarás de un jardín privado y vallado con zona de barbacoa, ideal para familias que viajan con niños pequeños. Un espacio exterior exclusivo donde los pequeños pueden jugar con total seguridad mientras los adultos disfrutan de una barbacoa al aire libre. Es el destino perfecto para <strong>familias y grupos en Cantabria</strong> que buscan privacidad, confort y naturaleza.
-              </p>
-            </div>
-            
-            <ul className="space-y-3 pt-4">
-              {[
-                "Alquiler íntegro para máxima privacidad",
-                "Capacidad flexible de 10 a 11 personas",
-                "5 amplias habitaciones dobles",
-                "Jardín privado con barbacoa, vallado y seguro",
-                 "En el Centro del Pueblo, junto a la zona infantil",
-              ].map((item, i) => (
-                <li key={i} className="flex items-center gap-3 text-stone-700 font-medium">
-                  <CheckCircle2 size={20} className="text-emerald-600" /> {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <img
-              src="/images/porche.jpg"
-              alt="Porche exterior La Rasilla Valles Pasiegos"
-              className="rounded-2xl shadow-lg w-full aspect-[4/3] object-cover"
-            />
-            <img
-              src="/images/porche2.jpg"
-              alt="Jardín y porche casa rural Cantabria"
-              className="rounded-2xl shadow-lg w-full aspect-[4/3] object-cover"
-            />
-            <img
-              src="/images/habitacion1.jpg"
-              alt="Habitación doble casa rural Cantabria"
-              className="rounded-2xl shadow-lg w-full aspect-[4/3] object-cover"
-            />
-            <img
-              src="/images/habitacion2.jpg"
-              alt="Habitación doble Valles Pasiegos"
-              className="rounded-2xl shadow-lg w-full aspect-[4/3] object-cover"
-            />
-            <img
-              src="/images/habitacion3.jpg"
-              alt="Habitación con vistas al valle"
-              className="rounded-2xl shadow-lg w-full aspect-[4/3] object-cover"
-            />
-            <img
-              src="/images/habitacion4.jpg"
-              alt="Dormitorio casa rural 11 personas Cantabria"
-              className="rounded-2xl shadow-lg w-full aspect-[4/3] object-cover"
-            />
-          </div>
+        <div className="mx-auto mb-14 max-w-3xl text-center">
+          <h2 className="text-4xl font-serif font-bold text-stone-800">
+            Alojamientos pensados para distintos tipos de estancia
+          </h2>
+          <p className="mt-5 text-lg leading-relaxed text-stone-600">
+            Aquí puedes ver todos los alojamientos activos, sus características principales y acceder
+            directamente a la reserva del que mejor encaje contigo.
+          </p>
         </div>
 
-        {/* Row of 3 smaller photos */}
-        <div className="grid grid-cols-3 gap-4 mt-12">
-          <img
-            src="/images/cocina.jpg"
-            alt="Cocina equipada casa rural Cantabria"
-            className="rounded-2xl shadow-md w-full h-48 object-cover"
-          />
-          <img
-            src="/images/salon1.jpg"
-            alt="Salón principal casa rural Valles Pasiegos"
-            className="rounded-2xl shadow-md w-full h-48 object-cover"
-          />
-          <img
-            src="/images/aseo1.jpg"
-            alt="Baño completo casa rural Cantabria"
-            className="rounded-2xl shadow-md w-full h-48 object-cover"
-          />
+        <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
+          {activeUnits.map((unit) => {
+            const cover = unit.foto_portada || unit.fotos?.[0] || HERO_FALLBACK;
+
+            return (
+              <article
+                key={unit.id}
+                className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+              >
+                <img
+                  src={cover}
+                  alt={unit.nombre}
+                  className="h-72 w-full object-cover"
+                />
+
+                <div className="p-6">
+                  <div className="mb-3 flex items-center gap-2 text-emerald-700">
+                    <Building2 size={18} />
+                    <span className="text-sm font-semibold uppercase tracking-wider">
+                      Alojamiento
+                    </span>
+                  </div>
+
+                  <h3 className="text-2xl font-serif font-bold text-stone-800">
+                    {unit.nombre}
+                  </h3>
+
+                  <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-stone-600">
+                    {unit.descripcion_corta || 'Alojamiento rural con reserva directa y estancia cómoda en Cantabria.'}
+                  </p>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {unit.capacidad_maxima ? (
+                      <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-stone-700">
+                        Hasta {unit.capacidad_maxima} personas
+                      </span>
+                    ) : null}
+
+                    {unit.num_habitaciones ? (
+                      <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-stone-700">
+                        {unit.num_habitaciones} habitaciones
+                      </span>
+                    ) : null}
+
+                    {unit.num_banos ? (
+                      <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-medium text-stone-700">
+                        {unit.num_banos} baños
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {unit.amenities?.length ? (
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {unit.amenities.slice(0, 4).map((item, index) => (
+                        <span
+                          key={`${item}-${index}`}
+                          className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    <Link
+                      to={`/reservar?unidad=${unit.slug}`}
+                      className="rounded-full bg-emerald-600 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-emerald-700"
+                    >
+                      Reservar
+                    </Link>
+
+                    <Link
+                      to={`/reservar?unidad=${unit.slug}`}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700 transition hover:border-stone-500"
+                    >
+                      Ver disponibilidad <ArrowRight size={16} />
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </SectionContainer>
 
       <SectionContainer bg="stone">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl font-serif font-bold text-stone-800">Diseñada para grupos y familias</h2>
-          <p className="mt-4 text-stone-500 max-w-2xl mx-auto">
-            Cada rincón de La Rasilla ha sido pensado para facilitar la convivencia de grupos grandes sin renunciar a la intimidad personal.
+        <div className="mb-16 text-center">
+          <h2 className="text-3xl font-serif font-bold text-stone-800">
+            Reserva directa y mejor control de tu estancia
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-stone-500">
+            Consulta fotos, capacidad y características de cada alojamiento antes de reservar.
           </p>
         </div>
-        <FeatureGrid 
+
+        <FeatureGrid
           features={[
-            { icon: <Users size={24} />, title: "Hasta 11 personas", description: "5 habitaciones dobles y posibilidad de cama supletoria de alta calidad." },
-            { icon: <Home size={24} />, title: "Alquiler íntegro", description: "Sin compartir espacios con extraños. La casa es solo vuestra." },
-            { icon: <Trees size={24} />, title: "Jardín privado con barbacoa", description: "Jardín vallado exclusivo con zona de barbacoa. Seguro para niños." },
-            { icon: <Users2 size={24} />, title: "Ideal para Grupos", description: "Mesa de comedor XL y sofás amplios para estar todos juntos." }
+            {
+              icon: <Home size={24} />,
+              title: 'Varios alojamientos',
+              description: 'Elige la opción que mejor se adapte a tu estancia.',
+            },
+            {
+              icon: <Users size={24} />,
+              title: 'Para distintos tipos de grupos',
+              description: 'Opciones pensadas para familias, parejas o grupos.',
+            },
+            {
+              icon: <Trees size={24} />,
+              title: 'Entorno natural',
+              description: 'Alojamientos en una ubicación pensada para desconectar.',
+            },
+            {
+              icon: <Users2 size={24} />,
+              title: 'Reserva directa',
+              description: 'Sin depender de terceros para conocer disponibilidad y condiciones.',
+            },
           ]}
         />
       </SectionContainer>
 
-      <SectionContainer>
-        <div className="rounded-3xl bg-stone-900 p-12 text-white shadow-2xl">
-          <h2 className="text-3xl font-serif font-bold mb-12 text-center">Distribución y Equipamiento</h2>
-          <div className="grid gap-12 md:grid-cols-2">
-            <div className="space-y-8">
-              <div className="flex gap-4">
-                <div className="rounded-full bg-stone-800 p-3 text-emerald-400 shrink-0"><Bed size={24} /></div>
-                <div>
-                  <h4 className="text-xl font-bold">5 Dormitorios Dobles</h4>
-                  <p className="mt-2 text-stone-400">Habitaciones exteriores con vistas al valle. Camas de alta gama y lencería de algodón premium para un descanso reparador.</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <div className="rounded-full bg-stone-800 p-3 text-emerald-400 shrink-0"><Bath size={24} /></div>
-                <div>
-                  <h4 className="text-xl font-bold">Baños Completos</h4>
-                  <p className="mt-2 text-stone-400">Equipados con duchas de gran caudal, secadores de pelo y toallas mullidas. Todo listo para vuestra llegada.</p>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-8">
-              <div className="flex gap-4">
-                <div className="rounded-full bg-stone-800 p-3 text-emerald-400 shrink-0"><Coffee size={24} /></div>
-                <div>
-                  <h4 className="text-xl font-bold">Salón Principal</h4>
-                  <p className="mt-2 text-stone-400">El corazón de la casa. Un espacio diáfano con techos de madera y Smart TV donde compartir momentos inolvidables.</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <div className="rounded-full bg-stone-800 p-3 text-emerald-400 shrink-0"><Utensils size={24} /></div>
-                <div>
-                  <h4 className="text-xl font-bold">Cocina de Chef</h4>
-                  <p className="mt-2 text-stone-400">Totalmente equipada con electrodomésticos de última generación, lavavajillas y menaje completo para grandes grupos.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </SectionContainer>
-
       <SectionContainer bg="stone">
-        <CTASection 
-          title="¿Buscas una casa rural para 10 u 11 personas?"
-          subtitle="La Rasilla es el lugar que estabas buscando. Reserva ahora tu estancia sin intermediarios y al mejor precio."
+        <CTASection
+          title="¿Ya sabes qué alojamiento te interesa?"
+          subtitle="Consulta disponibilidad y reserva directamente online."
           buttonText="Ver disponibilidad y precios"
           to="/reservar"
         />
@@ -172,4 +551,3 @@ export const LaCasaPage: React.FC = () => {
     </div>
   );
 };
-

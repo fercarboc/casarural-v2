@@ -2,112 +2,248 @@ import React from 'react';
 import { HeroSection } from '../components/HeroSection';
 import { SectionContainer } from '../components/SectionContainer';
 import { CTASection } from '../components/CTASection';
-import { Car, Plane, Train, Trees, Compass, Mountain, Map as MapIcon } from 'lucide-react';
+import {
+  Car,
+  Plane,
+  Train,
+  Trees,
+  Compass,
+  Mountain,
+  Map as MapIcon,
+} from 'lucide-react';
 import { MetaTags } from '../components/MetaTags';
+import { usePublicProperty } from '../../shared/hooks/usePublicProperty';
+import {
+  getFullAddress,
+  getMetaDescription,
+  getSiteName,
+  getSiteTagline,
+} from '../../shared/utils/publicProperty.utils';
 
 export const DondeEstamosPage: React.FC = () => {
+  const { property } = usePublicProperty();
+
+  const siteName = getSiteName(property);
+  const siteTagline = getSiteTagline(property);
+  const fullAddress = getFullAddress(property);
+
+  const metaTitle = property?.meta_title?.trim()
+    ? `Dónde estamos | ${property.meta_title}`
+    : `Dónde estamos | ${siteName}`;
+
+  const metaDescription =
+    property?.meta_description?.trim() ||
+    getMetaDescription(property);
+
+  const heroTitle = siteTagline
+    ? `Dónde estamos · ${siteTagline}`
+    : `Dónde estamos · ${siteName}`;
+
+  const heroSubtitle = fullAddress
+    ? `Descubre la ubicación de ${siteName} y cómo llegar cómodamente hasta ${fullAddress}.`
+    : `Descubre la ubicación de ${siteName} y cómo llegar cómodamente hasta el alojamiento.`;
+
+  const heroImage = '/images/pueblo2.jpg';
+
+  const localityLine =
+    [property?.localidad, property?.provincia, property?.pais]
+      .filter(Boolean)
+      .join(', ') || 'Cantabria, España';
+
+  // 🔥 PRIORIDAD REAL:
+  // 1. Coordenadas
+  // 2. Dirección
+  // 3. Pueblo
+
+  const hasCoordinates =
+    typeof property?.latitud === 'number' &&
+    typeof property?.longitud === 'number';
+
+  const exactAddressQuery = [
+    property?.direccion,
+    property?.localidad,
+    property?.provincia,
+    property?.pais,
+  ]
+    .filter((v) => typeof v === 'string' && v.trim().length > 0)
+    .join(', ');
+
+  const townZoneQuery = [
+    property?.localidad,
+    property?.provincia,
+    property?.pais,
+  ]
+    .filter((v) => typeof v === 'string' && v.trim().length > 0)
+    .join(', ');
+
+  // 🔥 MAPA INTELIGENTE
+  let mapSrc = '';
+
+  if (hasCoordinates) {
+    // 👉 PRECISIÓN MÁXIMA (LO MEJOR)
+    mapSrc = `https://maps.google.com/maps?q=${property.latitud},${property.longitud}&z=17&output=embed`;
+  } else if (exactAddressQuery) {
+    // 👉 DIRECCIÓN
+    mapSrc = `https://maps.google.com/maps?q=${encodeURIComponent(
+      exactAddressQuery
+    )}&z=16&output=embed`;
+  } else {
+    // 👉 PUEBLO
+    mapSrc = `https://maps.google.com/maps?q=${encodeURIComponent(
+      townZoneQuery || 'Cantabria, España'
+    )}&z=13&output=embed`;
+  }
+
+  const phone = property?.telefono?.trim() || '';
+  const website = property?.web?.trim() || '';
+
   return (
     <div className="bg-white">
-      <MetaTags 
-        title="Dónde estamos | Valles Pasiegos Cantabria | La Rasilla"
-        description="Descubre cómo llegar a La Rasilla en los Valles Pasiegos, Cantabria. Un entorno natural único para tu escapada rural en el norte de España."
-      />
+      <MetaTags title={metaTitle} description={metaDescription} />
 
-      <HeroSection 
-        title="En el corazón de los Valles Pasiegos"
-        subtitle="Un refugio de paz rodeado de praderas verdes y montañas, a un paso de los principales puntos de interés de Cantabria."
-        image="/images/pueblo2.jpg"
+      <HeroSection
+        title={heroTitle}
+        subtitle={heroSubtitle}
+        image={heroImage}
       />
 
       <SectionContainer>
-        <div className="grid gap-16 lg:grid-cols-2 items-center">
+        <div className="grid items-center gap-16 lg:grid-cols-2">
           <div className="space-y-8">
-            <h2 className="text-4xl font-serif font-bold text-stone-800">Un entorno natural privilegiado</h2>
-            <div className="prose prose-stone text-lg text-stone-600 leading-relaxed space-y-4">
+            <h2 className="text-4xl font-serif font-bold text-stone-800">
+              Un entorno natural privilegiado
+            </h2>
+
+            <div className="prose prose-stone space-y-4 text-lg leading-relaxed text-stone-600">
               <p>
-                <strong>Casa Rural La Rasilla</strong> está en <strong>Castillo Pedroso (39699)</strong>, municipio de Corvera de Toranzo, en el <strong>Valle de Toranzo</strong> — uno de los auténticos Valles Pasiegos de Cantabria. Un entorno de pradera verde, montaña y silencio donde el tiempo parece detenerse.
+                <strong>{siteName}</strong> se encuentra en{' '}
+                <strong>{localityLine}</strong>, en un entorno ideal para disfrutar
+                de naturaleza, tranquilidad y escapadas con un ritmo más pausado.
               </p>
+
               <p>
-                Nuestra situación es privilegiada: a <strong>10 minutos de Puente Viesgo</strong>, donde encontrarás las famosas <strong>Cuevas del Castillo</strong> con arte rupestre paleolítico Patrimonio de la Humanidad. A solo <strong>1 km tienes las Bodegas Seldaiz</strong>, perfectas para una visita y cata. Y a pocos minutos, el impresionante salto de agua de <strong>El Churrón de Borleña</strong>.
+                La ubicación permite combinar descanso y movilidad. Es una buena base
+                para conocer el entorno rural, acercarte a pueblos con encanto y
+                planificar rutas por la zona con comodidad.
               </p>
+
               <p>
-                La zona ofrece infinitas rutas de senderismo por el valle, bosques de roble y hayedo, y la tranquilidad de la Cantabria más auténtica. A pesar del entorno natural, estamos perfectamente comunicados: a 40 min de Santander y a 45 min de las playas de la costa cántabra.
+                Una vez confirmada la reserva, podrás llegar fácilmente usando el mapa,
+                con ubicación precisa o referencia de la zona.
               </p>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-6 pt-4">
               <div className="flex items-center gap-3 text-stone-700">
                 <Mountain className="text-emerald-600" />
-                <span>Vistas al Valle</span>
+                <span>Entorno natural</span>
               </div>
               <div className="flex items-center gap-3 text-stone-700">
                 <Trees className="text-emerald-600" />
-                <span>Bosques Autóctonos</span>
+                <span>Paisaje rural</span>
               </div>
               <div className="flex items-center gap-3 text-stone-700">
                 <Compass className="text-emerald-600" />
-                <span>Rutas de senderismo en el Valle</span>
+                <span>Escapadas y rutas</span>
               </div>
               <div className="flex items-center gap-3 text-stone-700">
                 <MapIcon className="text-emerald-600" />
-                <span>10 min de Puente Viesgo</span>
+                <span>Ubicación accesible</span>
               </div>
             </div>
           </div>
-          
+
           <div className="relative">
-            <div className="aspect-square rounded-3xl overflow-hidden shadow-2xl border-8 border-white">
+            <div className="aspect-square overflow-hidden rounded-3xl border-8 border-white shadow-2xl">
               <iframe
-                title="Ubicación Casa Rural La Rasilla"
-                src="https://maps.google.com/maps?q=43.214925,-3.970798&z=16&output=embed"
+                title={`Ubicación de ${siteName}`}
+                src={mapSrc}
                 width="100%"
                 height="100%"
                 style={{ border: 0 }}
                 allowFullScreen
                 loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
               />
             </div>
-            <div className="absolute -bottom-6 -left-6 bg-white p-6 rounded-2xl shadow-xl border border-stone-100 max-w-xs">
-              <p className="text-sm font-medium text-stone-800 italic">"Un lugar donde el único ruido es el de los pájaros y el viento entre los árboles."</p>
+
+            <div className="absolute -bottom-6 -left-6 max-w-xs rounded-2xl border border-stone-100 bg-white p-6 shadow-xl">
+              <p className="text-sm font-medium italic text-stone-800">
+                {hasCoordinates
+                  ? 'Ubicación exacta del alojamiento.'
+                  : exactAddressQuery
+                  ? 'Mapa basado en la dirección. Puede no ser exacto en zonas rurales.'
+                  : 'Mapa basado en la zona del pueblo como referencia.'}
+              </p>
             </div>
           </div>
         </div>
       </SectionContainer>
 
       <SectionContainer>
-        <h2 className="text-3xl font-serif font-bold text-stone-800 text-center mb-12">Cómo llegar a La Rasilla</h2>
+        <h2 className="mb-12 text-center text-3xl font-serif font-bold text-stone-800">
+          Cómo llegar
+        </h2>
+
         <div className="grid gap-8 md:grid-cols-3">
-          <div className="bg-stone-50 p-8 rounded-2xl border border-stone-100">
-            <div className="rounded-full bg-emerald-50 p-3 text-emerald-700 w-fit mb-6"><Car size={24} /></div>
-            <h3 className="text-xl font-bold text-stone-800 mb-4">En Coche</h3>
-            <p className="text-stone-600 text-sm leading-relaxed">Acceso directo por la A-67 (autovía Cantabria). A <strong>40 min de Santander</strong> y <strong>1h 30min de Bilbao</strong>. Imprescindible para moverse por la zona.</p>
-          </div>
-          <div className="bg-stone-50 p-8 rounded-2xl border border-stone-100">
-            <div className="rounded-full bg-emerald-50 p-3 text-emerald-700 w-fit mb-6"><Plane size={24} /></div>
-            <h3 className="text-xl font-bold text-stone-800 mb-4">En Avión</h3>
-            <p className="text-stone-600 text-sm leading-relaxed">Aeropuerto de Santander (SDR) a <strong>35 minutos</strong>. Conexiones con Madrid, Barcelona y otras ciudades. Recomendamos alquilar coche en el aeropuerto.</p>
-          </div>
-          <div className="bg-stone-50 p-8 rounded-2xl border border-stone-100">
-            <div className="rounded-full bg-emerald-50 p-3 text-emerald-700 w-fit mb-6"><Train size={24} /></div>
-            <h3 className="text-xl font-bold text-stone-800 mb-4">En Tren</h3>
-            <p className="text-stone-600 text-sm leading-relaxed">Estación de Santander con conexiones AVE/Alvia desde Madrid (~4h). Desde la estación, alquila un coche para llegar cómodamente.</p>
-          </div>
+          <Card icon={<Car size={24} />} title="En coche">
+            La mejor opción para moverte con libertad por la zona rural.
+          </Card>
+
+          <Card icon={<Plane size={24} />} title="En avión">
+            Aeropuerto cercano + coche de alquiler recomendado.
+          </Card>
+
+          <Card icon={<Train size={24} />} title="En tren">
+            Combinar con coche o transporte local para el último tramo.
+          </Card>
         </div>
-        <div className="mt-8 p-6 bg-emerald-50 rounded-2xl border border-emerald-100 text-center">
-          <p className="text-emerald-800 font-medium">📍 <strong>Castillo Pedroso, 39699 — Corvera de Toranzo, Cantabria</strong></p>
-          <p className="text-emerald-700 text-sm mt-1">La dirección exacta y acceso se facilita al confirmar la reserva.</p>
+
+        <div className="mt-8 rounded-2xl border border-emerald-100 bg-emerald-50 p-6 text-center">
+          <p className="font-medium text-emerald-800">
+            📍{' '}
+            <strong>
+              {hasCoordinates
+                ? `${property?.latitud}, ${property?.longitud}`
+                : exactAddressQuery || townZoneQuery || 'Cantabria, España'}
+            </strong>
+          </p>
+
+          {phone && (
+            <p className="mt-2 text-sm text-emerald-700">
+              Contacto: <strong>{phone}</strong>
+            </p>
+          )}
+
+          {!phone && website && (
+            <p className="mt-2 text-sm text-emerald-700">
+              Más info: <strong>{website}</strong>
+            </p>
+          )}
         </div>
       </SectionContainer>
 
       <SectionContainer bg="stone">
-        <CTASection 
-          title="Ven a descubrir los Valles Pasiegos"
-          subtitle="Tu refugio en Cantabria te está esperando. Reserva ahora y vive la experiencia La Rasilla."
-          buttonText="Ver disponibilidad y ubicación"
+        <CTASection
+          title={`Ven a descubrir ${siteName}`}
+          subtitle="Consulta disponibilidad y planifica tu estancia directamente desde nuestra web."
+          buttonText="Ver disponibilidad"
           to="/reservar"
         />
       </SectionContainer>
     </div>
   );
 };
+
+const Card = ({
+  icon,
+  title,
+  children,
+}: any) => (
+  <div className="rounded-2xl border border-stone-100 bg-stone-50 p-8">
+    <div className="mb-6 w-fit rounded-full bg-emerald-50 p-3 text-emerald-700">
+      {icon}
+    </div>
+    <h3 className="mb-4 text-xl font-bold text-stone-800">{title}</h3>
+    <p className="text-sm text-stone-600">{children}</p>
+  </div>
+);

@@ -12,7 +12,6 @@ import {
   MessageSquare,
   CheckCircle2,
   Clock,
-  AlertCircle,
   Loader2,
   BookOpen,
   ExternalLink,
@@ -20,16 +19,20 @@ import {
   Pencil,
   Trash2,
   Plus,
+  Send,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { supabase } from '../../integrations/supabase/client'
+import { ReplyConsultaModal } from '../components/ReplyConsultaModal'
+import { CustomerCommunicationsTimeline } from '../components/CustomerCommunicationsTimeline'
 
 // ── Tipos ─────────────────────────────────────────────────
 
 interface Consulta {
   id: string
+  property_id?: string
   nombre: string
   email: string
   telefono?: string
@@ -39,10 +42,12 @@ interface Consulta {
   reserva_id?: string
   notas_admin?: string
   created_at: string
+  updated_at?: string
 }
 
 interface Reserva {
   id: string
+  property_id?: string
   codigo: string
   nombre: string
   apellidos: string
@@ -92,6 +97,7 @@ interface Factura {
 }
 
 interface Contacto {
+  property_id?: string
   email: string
   nombre: string
   telefono?: string
@@ -115,17 +121,23 @@ export const CustomersPage: React.FC = () => {
 
   const loadData = useCallback(async () => {
     setLoading(true)
+
     try {
-      const [{ data: consultas }, { data: reservas }] = await Promise.all([
-        supabase.from('consultas').select('*').order('created_at', { ascending: false }),
-        supabase.from('reservas').select('*').order('created_at', { ascending: false }),
-      ])
+      const [{ data: consultas, error: consultasError }, { data: reservas, error: reservasError }] =
+        await Promise.all([
+          supabase.from('consultas').select('*').order('created_at', { ascending: false }),
+          supabase.from('reservas').select('*').order('created_at', { ascending: false }),
+        ])
+
+      if (consultasError) throw consultasError
+      if (reservasError) throw reservasError
 
       const map = new Map<string, Contacto>()
 
       for (const c of consultas ?? []) {
         if (!map.has(c.email)) {
           map.set(c.email, {
+            property_id: c.property_id,
             email: c.email,
             nombre: c.nombre,
             telefono: c.telefono,
@@ -134,32 +146,56 @@ export const CustomersPage: React.FC = () => {
             ultimo_contacto: c.created_at,
           })
         }
+
         const entry = map.get(c.email)!
         entry.consultas.push(c)
-        if (c.created_at > entry.ultimo_contacto) entry.ultimo_contacto = c.created_at
+
+        if (!entry.property_id && c.property_id) {
+          entry.property_id = c.property_id
+        }
+
+        if (c.created_at > entry.ultimo_contacto) {
+          entry.ultimo_contacto = c.created_at
+        }
       }
 
       for (const r of reservas ?? []) {
         if (!map.has(r.email)) {
           map.set(r.email, {
+            property_id: r.property_id,
             email: r.email,
-            nombre: `${r.nombre} ${r.apellidos}`,
+            nombre: `${r.nombre} ${r.apellidos}`.trim(),
             telefono: r.telefono,
             consultas: [],
             reservas: [],
             ultimo_contacto: r.created_at,
           })
         }
+
         const entry = map.get(r.email)!
         entry.reservas.push(r)
-        if (!entry.telefono && r.telefono) entry.telefono = r.telefono
-        if (r.nombre && r.apellidos) entry.nombre = `${r.nombre} ${r.apellidos}`
-        if (r.created_at > entry.ultimo_contacto) entry.ultimo_contacto = r.created_at
+
+        if (!entry.property_id && r.property_id) {
+          entry.property_id = r.property_id
+        }
+
+        if (!entry.telefono && r.telefono) {
+          entry.telefono = r.telefono
+        }
+
+        if (r.nombre && r.apellidos) {
+          entry.nombre = `${r.nombre} ${r.apellidos}`.trim()
+        }
+
+        if (r.created_at > entry.ultimo_contacto) {
+          entry.ultimo_contacto = r.created_at
+        }
       }
 
       const sorted = Array.from(map.values()).sort((a, b) =>
         b.ultimo_contacto.localeCompare(a.ultimo_contacto)
       )
+
       setContactos(sorted)
     } finally {
       setLoading(false)
@@ -169,6 +205,25 @@ export const CustomersPage: React.FC = () => {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    if (!selected) return
+
+    const refreshedSelected =
+      contactos.find((x) => x.email === selected.email) ?? null
+
+    if (!refreshedSelected) {
+      setSelected(null)
+      return
+    }
+
+    const prevSerialized = JSON.stringify(selected)
+    const nextSerialized = JSON.stringify(refreshedSelected)
+
+    if (prevSerialized !== nextSerialized) {
+      setSelected(refreshedSelected)
+    }
+  }, [contactos, selected])
 
   const filtered = contactos.filter((c) => {
     const q = search.toLowerCase()
@@ -182,8 +237,8 @@ export const CustomersPage: React.FC = () => {
       tab === 'todos'
         ? true
         : tab === 'consultas'
-          ? c.consultas.length > 0
-          : c.reservas.length > 0
+        ? c.consultas.length > 0
+        : c.reservas.length > 0
 
     return matchSearch && matchTab
   })
@@ -201,15 +256,13 @@ export const CustomersPage: React.FC = () => {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden gap-6">
-      {/* ── LISTA ──────────────────────────────────────────── */}
       <div
         className={`flex flex-col transition-all duration-200 ${
           selected ? 'w-[430px] shrink-0' : 'flex-1'
         }`}
       >
-        <div className="rounded-3xl border border-sidebar-border bg-sidebar-bg shadow-[0_10px_40px_rgba(0,0,0,0.15)] overflow-hidden h-full flex flex-col">
-          {/* Header */}
-          <div className="px-6 py-5 border-b border-sidebar-border bg-admin-card/60">
+        <div className="rounded-3xl border border-cyan-900/40 bg-[#071427] shadow-[0_20px_60px_rgba(0,0,0,0.35)] overflow-hidden h-full flex flex-col">
+          <div className="px-6 py-5 border-b border-cyan-900/40 bg-[#0b1c34]">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h1 className="text-2xl font-bold text-white">Clientes</h1>
@@ -221,7 +274,7 @@ export const CustomersPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={loadData}
-                  className="p-2 rounded-xl hover:bg-sidebar-hover text-slate-400 transition-colors"
+                  className="p-2 rounded-xl hover:bg-[#132743] text-slate-400 transition-colors"
                   title="Actualizar"
                 >
                   <RefreshCw size={15} />
@@ -237,7 +290,6 @@ export const CustomersPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-4 gap-3 mb-4">
               <Stat label="Total" value={stats.total} />
               <Stat label="Consultas nuevas" value={stats.consultasNuevas} color="amber" />
@@ -245,7 +297,6 @@ export const CustomersPage: React.FC = () => {
               <Stat label="Ingresos" value={`${stats.ingresos.toFixed(0)}€`} color="blue" />
             </div>
 
-            {/* Search + Tabs */}
             <div className="relative mb-3">
               <Search
                 size={15}
@@ -256,11 +307,11 @@ export const CustomersPage: React.FC = () => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar nombre, email o teléfono..."
-                className="w-full pl-9 pr-4 py-3 text-sm border border-sidebar-border rounded-2xl bg-admin-card text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400"
+                className="w-full pl-9 pr-4 py-3 text-sm rounded-2xl border border-cyan-800/50 bg-[#132743] text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400"
               />
             </div>
 
-            <div className="flex gap-1 rounded-2xl border border-sidebar-border bg-admin-card p-1 w-fit">
+            <div className="flex gap-1 rounded-2xl border border-cyan-900/50 bg-[#132743] p-1 w-fit">
               {(['todos', 'consultas', 'clientes'] as TabFiltro[]).map((t) => (
                 <button
                   key={t}
@@ -268,7 +319,7 @@ export const CustomersPage: React.FC = () => {
                   className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors capitalize ${
                     tab === t
                       ? 'bg-brand-600 text-white'
-                      : 'text-slate-400 hover:bg-sidebar-hover hover:text-slate-200'
+                      : 'text-slate-400 hover:bg-[#18304f] hover:text-slate-200'
                   }`}
                 >
                   {t === 'todos' ? 'Todos' : t === 'consultas' ? 'Consultas' : 'Con reserva'}
@@ -277,8 +328,7 @@ export const CustomersPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Lista */}
-          <div className="flex-1 overflow-y-auto divide-y divide-sidebar-border">
+          <div className="flex-1 overflow-y-auto divide-y divide-cyan-900/30">
             {loading ? (
               <div className="flex items-center justify-center h-40">
                 <Loader2 size={24} className="animate-spin text-slate-500" />
@@ -302,7 +352,6 @@ export const CustomersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ── PANEL DETALLE ──────────────────────────────────── */}
       {selected && (
         <ContactDetail
           contacto={selected}
@@ -331,8 +380,8 @@ function ContactRow({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-sidebar-hover/70 ${
-        isSelected ? 'bg-sidebar-hover border-l-2 border-brand-500' : ''
+      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[#132743]/80 ${
+        isSelected ? 'bg-[#132743] border-l-2 border-brand-500' : ''
       }`}
     >
       <div
@@ -384,7 +433,12 @@ function ContactRow({
         <p className="text-[10px] text-slate-500">
           {format(parseISO(c.ultimo_contacto), 'd MMM yy', { locale: es })}
         </p>
-        <ChevronRight size={14} className="text-slate-600 mt-1 ml-auto" />
+        <ChevronRight
+          size={16}
+          className={`mt-1 ml-auto shrink-0 transition-all ${
+            isSelected ? 'text-brand-400' : 'text-cyan-300/80'
+          }`}
+        />
       </div>
     </button>
   )
@@ -401,7 +455,7 @@ function ContactDetail({
   onClose: () => void
   onRefresh: () => void
 }) {
-  const [tab, setTab] = useState<'info' | 'reservas' | 'consultas'>('info')
+  const [tab, setTab] = useState<'info' | 'reservas' | 'consultas' | 'comunicaciones'>('info')
   const [editOpen, setEditOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [editNombre, setEditNombre] = useState(c.nombre)
@@ -448,11 +502,10 @@ function ContactDetail({
   }
 
   return (
-    <div className="relative flex-1 flex flex-col rounded-3xl border border-sidebar-border bg-sidebar-bg overflow-hidden shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
-      {/* Modal editar */}
+    <div className="relative flex-1 flex flex-col rounded-3xl border border-cyan-900/40 bg-[#071427] overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
       {editOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-admin-card border border-sidebar-border rounded-3xl shadow-2xl w-96 p-6">
+          <div className="w-96 rounded-3xl border border-cyan-900/40 bg-[#0b1c34] p-6 shadow-2xl">
             <h3 className="font-bold text-white mb-4">Editar cliente</h3>
 
             <div className="space-y-3">
@@ -486,7 +539,7 @@ function ContactDetail({
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setEditOpen(false)}
-                className="flex-1 py-2 rounded-xl border border-sidebar-border text-sm text-slate-300 hover:bg-sidebar-hover transition-colors"
+                className="flex-1 py-2 rounded-xl border border-cyan-900/40 text-sm text-slate-300 hover:bg-[#132743] transition-colors"
               >
                 Cancelar
               </button>
@@ -502,10 +555,9 @@ function ContactDetail({
         </div>
       )}
 
-      {/* Modal confirmar borrado */}
       {deleteConfirm && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-admin-card border border-sidebar-border rounded-3xl shadow-2xl w-96 p-6">
+          <div className="w-96 rounded-3xl border border-cyan-900/40 bg-[#0b1c34] p-6 shadow-2xl">
             <h3 className="font-bold text-white mb-2">¿Borrar cliente?</h3>
             <p className="text-sm text-slate-400 mb-1">
               Se eliminarán <strong>todas las reservas y consultas</strong> asociadas al email:
@@ -516,7 +568,7 @@ function ContactDetail({
             <div className="flex gap-2">
               <button
                 onClick={() => setDeleteConfirm(false)}
-                className="flex-1 py-2 rounded-xl border border-sidebar-border text-sm text-slate-300 hover:bg-sidebar-hover transition-colors"
+                className="flex-1 py-2 rounded-xl border border-cyan-900/40 text-sm text-slate-300 hover:bg-[#132743] transition-colors"
               >
                 Cancelar
               </button>
@@ -532,8 +584,7 @@ function ContactDetail({
         </div>
       )}
 
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-sidebar-border flex items-start justify-between bg-admin-card/60">
+      <div className="px-6 py-4 border-b border-cyan-900/40 flex items-start justify-between bg-[#0b1c34]">
         <div className="flex items-center gap-3">
           <div
             className={`h-12 w-12 rounded-full flex items-center justify-center text-base font-bold ${
@@ -557,7 +608,7 @@ function ContactDetail({
               setEditTelefono(c.telefono ?? '')
               setEditOpen(true)
             }}
-            className="p-1.5 rounded-lg hover:bg-sidebar-hover text-slate-400 hover:text-slate-200 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-[#132743] text-slate-400 hover:text-slate-200 transition-colors"
             title="Editar cliente"
           >
             <Pencil size={16} />
@@ -573,43 +624,33 @@ function ContactDetail({
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-sidebar-hover text-slate-400"
+            className="p-1.5 rounded-lg hover:bg-[#132743] text-slate-400"
           >
             <X size={18} />
           </button>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-px bg-sidebar-border border-b border-sidebar-border">
-        <div className="bg-sidebar-bg px-4 py-3 text-center">
-          <p className="text-xs text-slate-500">Consultas</p>
-          <p className="font-bold text-white text-lg">{c.consultas.length}</p>
-        </div>
-        <div className="bg-sidebar-bg px-4 py-3 text-center">
-          <p className="text-xs text-slate-500">Reservas</p>
-          <p className="font-bold text-emerald-300 text-lg">{c.reservas.length}</p>
-        </div>
-        <div className="bg-sidebar-bg px-4 py-3 text-center">
-          <p className="text-xs text-slate-500">Gastado</p>
-          <p className="font-bold text-white text-lg">{totalGastado.toFixed(0)}€</p>
-        </div>
+      <div className="grid grid-cols-3 gap-3 px-5 py-4 border-b border-cyan-900/40 bg-[#08182d]">
+        <KpiCard label="Consultas" value={c.consultas.length} valueClass="text-white" />
+        <KpiCard label="Reservas" value={c.reservas.length} valueClass="text-emerald-300" />
+        <KpiCard label="Gastado" value={`${totalGastado.toFixed(0)}€`} valueClass="text-white" />
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-sidebar-border bg-admin-card/40">
+      <div className="flex border-b border-cyan-900/40 bg-[#0a1930]">
         {([
           ['info', 'Información'],
           ['reservas', 'Reservas'],
           ['consultas', 'Consultas'],
+          ['comunicaciones', 'Comunicaciones'],
         ] as const).map(([k, l]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
             className={`flex-1 py-3 text-xs font-semibold transition-colors border-b-2 -mb-px ${
               tab === k
-                ? 'border-brand-500 text-white'
-                : 'border-transparent text-slate-500 hover:text-slate-300'
+                ? 'border-brand-500 text-white bg-[#10223d]'
+                : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-[#0f213b]'
             }`}
           >
             {l}
@@ -620,14 +661,20 @@ function ContactDetail({
         ))}
       </div>
 
-      {/* Contenido */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-[#071427]">
         {tab === 'info' && (
           <InfoTab contacto={c} totalGastado={totalGastado} totalPagado={totalPagado} />
         )}
         {tab === 'reservas' && <ReservasTab reservas={c.reservas} />}
         {tab === 'consultas' && (
           <ConsultasTab consultas={c.consultas} onRefresh={onRefresh} />
+        )}
+        {tab === 'comunicaciones' && (
+          <CustomerCommunicationsTimeline
+            propertyId={c.property_id}
+            customerEmail={c.email}
+            title="Histórico de comunicaciones"
+          />
         )}
       </div>
     </div>
@@ -657,8 +704,8 @@ function InfoTab({
             c.consultas[0]
               ? format(parseISO(c.consultas[0].created_at), 'd MMM yyyy', { locale: es })
               : c.reservas[0]
-                ? format(parseISO(c.reservas[0].created_at), 'd MMM yyyy', { locale: es })
-                : '—'
+              ? format(parseISO(c.reservas[0].created_at), 'd MMM yyyy', { locale: es })
+              : '—'
           }
         />
       </Section>
@@ -764,7 +811,11 @@ function ReservaCard({ reserva: r }: { key?: React.Key; reserva: Reserva }) {
 
     setLoadingDetail(true)
     const [{ data: h }, { data: f }] = await Promise.all([
-      supabase.from('huespedes').select('*').eq('reserva_id', r.id).order('titular', { ascending: false }),
+      supabase
+        .from('huespedes')
+        .select('*')
+        .eq('reserva_id', r.id)
+        .order('titular', { ascending: false }),
       supabase.from('facturas').select('*').eq('reserva_id', r.id),
     ])
     setHuespedes(h ?? [])
@@ -778,10 +829,10 @@ function ReservaCard({ reserva: r }: { key?: React.Key; reserva: Reserva }) {
   )
 
   return (
-    <div className="rounded-2xl border border-sidebar-border overflow-hidden bg-admin-card/40">
+    <div className="rounded-2xl border border-cyan-800/45 bg-[#0d203a] shadow-[0_8px_24px_rgba(0,0,0,0.22)] overflow-hidden">
       <button
         onClick={loadDetail}
-        className="w-full flex items-start justify-between p-4 hover:bg-sidebar-hover/60 transition-colors text-left"
+        className="w-full flex items-start justify-between p-4 hover:bg-[#132743] transition-colors text-left"
       >
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -820,9 +871,9 @@ function ReservaCard({ reserva: r }: { key?: React.Key; reserva: Reserva }) {
             <Loader2 size={14} className="animate-spin text-slate-400 mt-1 ml-auto" />
           ) : (
             <ChevronRight
-              size={14}
-              className={`text-slate-600 mt-1 ml-auto transition-transform ${
-                open ? 'rotate-90' : ''
+              size={16}
+              className={`mt-1 ml-auto transition-all ${
+                open ? 'rotate-90 text-brand-400' : 'text-cyan-300/80'
               }`}
             />
           )}
@@ -830,9 +881,9 @@ function ReservaCard({ reserva: r }: { key?: React.Key; reserva: Reserva }) {
       </button>
 
       {open && (
-        <div className="border-t border-sidebar-border bg-sidebar-bg/70 p-4 space-y-4">
-          <div className="rounded-xl bg-admin-card border border-sidebar-border p-3 space-y-1.5 text-xs">
-            <p className="font-semibold text-slate-300 mb-2">Desglose del importe</p>
+        <div className="border-t border-cyan-800/35 bg-[#08182d] p-4 space-y-4">
+          <div className="rounded-2xl border border-cyan-800/40 bg-[#132743] p-3.5 space-y-1.5 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <p className="font-semibold text-slate-200 mb-2">Desglose del importe</p>
             <PriceRow
               label={`${nights} noches × ${Number(r.precio_noche).toFixed(0)}€`}
               value={`${Number(r.importe_alojamiento).toFixed(2)}€`}
@@ -854,7 +905,7 @@ function ReservaCard({ reserva: r }: { key?: React.Key; reserva: Reserva }) {
                 className="text-emerald-300"
               />
             )}
-            <div className="flex justify-between font-bold text-white pt-1.5 border-t border-sidebar-border">
+            <div className="flex justify-between font-bold text-white pt-1.5 border-t border-cyan-800/35">
               <span>Total</span>
               <span>{Number(r.total).toFixed(2)}€</span>
             </div>
@@ -880,14 +931,14 @@ function ReservaCard({ reserva: r }: { key?: React.Key; reserva: Reserva }) {
                 {r.num_huespedes})
               </p>
 
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {huespedes.map((h) => (
                   <div
                     key={h.id}
-                    className={`rounded-xl border p-2.5 text-xs flex items-start justify-between ${
+                    className={`rounded-2xl border p-3 text-xs flex items-start justify-between ${
                       h.completado
                         ? 'border-emerald-500/20 bg-emerald-500/10'
-                        : 'border-sidebar-border bg-admin-card'
+                        : 'border-cyan-800/35 bg-[#132743]'
                     }`}
                   >
                     <div>
@@ -919,7 +970,7 @@ function ReservaCard({ reserva: r }: { key?: React.Key; reserva: Reserva }) {
           )}
 
           {huespedes.length === 0 && (
-            <div className="rounded-xl border border-sidebar-border p-3 text-xs text-slate-500 text-center bg-admin-card">
+            <div className="rounded-2xl border border-cyan-800/35 bg-[#132743] p-3 text-xs text-slate-500 text-center">
               Sin huéspedes registrados aún
             </div>
           )}
@@ -931,39 +982,41 @@ function ReservaCard({ reserva: r }: { key?: React.Key; reserva: Reserva }) {
                 Factura{facturas.length > 1 ? 's' : ''}
               </p>
 
-              {facturas.map((f) => (
-                <div
-                  key={f.id}
-                  className="rounded-xl border border-sidebar-border bg-admin-card p-2.5 flex items-center justify-between text-xs"
-                >
-                  <div>
-                    <p className="font-semibold text-slate-100">{f.numero}</p>
-                    <p className="text-slate-500">
-                      {format(parseISO(f.fecha_emision), 'd MMM yyyy', { locale: es })} ·{' '}
-                      {Number(f.total).toFixed(2)}€
-                    </p>
-                  </div>
+              <div className="space-y-2">
+                {facturas.map((f) => (
+                  <div
+                    key={f.id}
+                    className="rounded-2xl border border-cyan-800/35 bg-[#132743] p-3 flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <p className="font-semibold text-slate-100">{f.numero}</p>
+                      <p className="text-slate-500">
+                        {format(parseISO(f.fecha_emision), 'd MMM yyyy', { locale: es })} ·{' '}
+                        {Number(f.total).toFixed(2)}€
+                      </p>
+                    </div>
 
-                  <div className="flex items-center gap-2">
-                    <FacturaBadge estado={f.estado} />
-                    {f.pdf_url && (
-                      <a
-                        href={f.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 rounded-lg hover:bg-sidebar-hover text-slate-400 hover:text-slate-200"
-                      >
-                        <ExternalLink size={13} />
-                      </a>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <FacturaBadge estado={f.estado} />
+                      {f.pdf_url && (
+                        <a
+                          href={f.pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 rounded-lg hover:bg-[#18304f] text-slate-400 hover:text-slate-200"
+                        >
+                          <ExternalLink size={13} />
+                        </a>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
           {facturas.length === 0 && (
-            <div className="rounded-xl border border-dashed border-sidebar-border p-3 text-xs text-slate-500 text-center">
+            <div className="rounded-2xl border border-dashed border-cyan-800/35 bg-[#0d203a] p-3 text-xs text-slate-500 text-center">
               Sin factura emitida
             </div>
           )}
@@ -992,7 +1045,7 @@ function ConsultasTab({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {consultas.map((c) => (
         <ConsultaCard key={c.id} consulta={c} onRefresh={onRefresh} />
       ))}
@@ -1011,6 +1064,7 @@ function ConsultaCard({
   const [notas, setNotas] = useState(c.notas_admin ?? '')
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState(c.estado === 'NUEVA')
+  const [replyOpen, setReplyOpen] = useState(false)
 
   const updateEstado = async (estado: EstadoConsulta) => {
     await supabase
@@ -1032,89 +1086,118 @@ function ConsultaCard({
   }
 
   return (
-    <div
-      className={`rounded-2xl border overflow-hidden ${
-        c.estado === 'NUEVA' ? 'border-amber-500/20' : 'border-sidebar-border'
-      }`}
-    >
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-start justify-between p-3 text-left hover:bg-sidebar-hover/50 transition-colors bg-admin-card/40"
-      >
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <ConsultaEstadoBadge estado={c.estado} />
-            <span className="text-[10px] text-slate-500">
-              {format(parseISO(c.created_at), 'd MMM yyyy HH:mm', { locale: es })}
-            </span>
-          </div>
-          <p className="text-sm font-semibold text-slate-100 line-clamp-1">
-            {c.asunto || 'Consulta general'}
-          </p>
-          {!open && <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{c.mensaje}</p>}
-        </div>
-
-        <ChevronRight
-          size={14}
-          className={`text-slate-600 shrink-0 mt-1 transition-transform ${open ? 'rotate-90' : ''}`}
+    <>
+      {replyOpen && (
+        <ReplyConsultaModal
+          consulta={c}
+          onClose={() => setReplyOpen(false)}
+          onSent={() => {
+            setReplyOpen(false)
+            onRefresh()
+          }}
         />
-      </button>
+      )}
 
-      {open && (
-        <div className="border-t border-sidebar-border p-3 space-y-3 bg-sidebar-bg/60">
-          <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed bg-admin-card rounded-xl p-3 border border-sidebar-border">
-            {c.mensaje}
-          </p>
-
+      <div
+        className={`rounded-2xl border overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.18)] ${
+          c.estado === 'NUEVA'
+            ? 'border-amber-500/25 bg-[#0d203a]'
+            : 'border-cyan-800/40 bg-[#0d203a]'
+        }`}
+      >
+        <button
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-start justify-between p-3 text-left hover:bg-[#132743] transition-colors"
+        >
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-              Notas internas
-            </label>
-            <textarea
-              value={notas}
-              onChange={(e) => setNotas(e.target.value)}
-              rows={2}
-              placeholder="Añade notas sobre esta consulta..."
-              className="w-full border border-sidebar-border rounded-xl px-3 py-2 text-xs text-slate-100 bg-admin-card placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 resize-none"
-            />
-            <button
-              onClick={saveNotas}
-              disabled={saving}
-              className="mt-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs rounded-xl hover:bg-brand-700 transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Guardando...' : 'Guardar nota'}
-            </button>
+            <div className="flex items-center gap-2 mb-1">
+              <ConsultaEstadoBadge estado={c.estado} />
+              <span className="text-[10px] text-slate-500">
+                {format(parseISO(c.created_at), 'd MMM yyyy HH:mm', { locale: es })}
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-slate-100 line-clamp-1">
+              {c.asunto || 'Consulta general'}
+            </p>
+            {!open && <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{c.mensaje}</p>}
           </div>
 
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-              Cambiar estado
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {(['NUEVA', 'VISTA', 'RESPONDIDA', 'ARCHIVADA'] as EstadoConsulta[]).map((e) => (
-                <button
-                  key={e}
-                  onClick={() => updateEstado(e)}
-                  className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition-colors ${
-                    c.estado === e
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-admin-card text-slate-400 border border-sidebar-border hover:bg-sidebar-hover'
-                  }`}
-                >
-                  {e === 'NUEVA'
-                    ? 'Nueva'
-                    : e === 'VISTA'
+          <ChevronRight
+            size={16}
+            className={`shrink-0 mt-1 transition-all ${
+              open ? 'rotate-90 text-brand-400' : 'text-cyan-300/80'
+            }`}
+          />
+        </button>
+
+        {open && (
+          <div className="border-t border-cyan-800/35 p-3 space-y-3 bg-[#08182d]">
+            <div className="rounded-2xl border border-cyan-800/35 bg-[#132743] p-3">
+              <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
+                {c.mensaje}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setReplyOpen(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700 transition-colors"
+              >
+                <Send size={13} />
+                Contestar y enviar email
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-cyan-800/35 bg-[#132743] p-3">
+              <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                Notas internas
+              </label>
+              <textarea
+                value={notas}
+                onChange={(e) => setNotas(e.target.value)}
+                rows={2}
+                placeholder="Añade notas sobre esta consulta..."
+                className="w-full rounded-xl border border-cyan-800/35 px-3 py-2 text-xs text-slate-100 bg-[#0f213b] placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 resize-none"
+              />
+              <button
+                onClick={saveNotas}
+                disabled={saving}
+                className="mt-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs rounded-xl hover:bg-brand-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Guardando...' : 'Guardar nota'}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-cyan-800/35 bg-[#132743] p-3">
+              <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                Cambiar estado
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {(['NUEVA', 'VISTA', 'RESPONDIDA', 'ARCHIVADA'] as EstadoConsulta[]).map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => updateEstado(e)}
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition-colors ${
+                      c.estado === e
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-[#0f213b] text-slate-400 border border-cyan-800/35 hover:bg-[#18304f]'
+                    }`}
+                  >
+                    {e === 'NUEVA'
+                      ? 'Nueva'
+                      : e === 'VISTA'
                       ? 'Vista'
                       : e === 'RESPONDIDA'
-                        ? 'Respondida'
-                        : 'Archivada'}
-                </button>
-              ))}
+                      ? 'Respondida'
+                      : 'Archivada'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -1133,17 +1216,34 @@ function Stat({
     color === 'amber'
       ? 'text-amber-300'
       : color === 'emerald'
-        ? 'text-emerald-300'
-        : color === 'blue'
-          ? 'text-blue-300'
-          : 'text-white'
+      ? 'text-emerald-300'
+      : color === 'blue'
+      ? 'text-blue-300'
+      : 'text-white'
 
   return (
-    <div className="bg-admin-card rounded-2xl px-3 py-3 text-center border border-sidebar-border">
+    <div className="rounded-2xl border border-cyan-800/45 bg-[#132743] px-3 py-3 text-center shadow-[0_6px_20px_rgba(0,0,0,0.18)]">
       <p className={`text-lg font-bold ${cls}`}>{value}</p>
       <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wider mt-0.5">
         {label}
       </p>
+    </div>
+  )
+}
+
+function KpiCard({
+  label,
+  value,
+  valueClass,
+}: {
+  label: string
+  value: number | string
+  valueClass?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-cyan-800/45 bg-[#10223d] px-4 py-3 text-center shadow-[0_8px_20px_rgba(0,0,0,0.18)]">
+      <p className="text-xs text-slate-500 mb-1">{label}</p>
+      <p className={`text-lg font-bold ${valueClass ?? 'text-white'}`}>{value}</p>
     </div>
   )
 }
@@ -1156,9 +1256,9 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-2xl border border-sidebar-border bg-admin-card overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-sidebar-border bg-sidebar-bg/70">
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+    <div className="rounded-2xl border border-cyan-800/45 bg-[#0d203a] overflow-hidden shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+      <div className="px-4 py-3 border-b border-cyan-800/35 bg-[#132743]">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">
           {title}
         </p>
       </div>
@@ -1178,7 +1278,10 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between text-sm gap-3">
-      <span className="flex items-center gap-2 text-slate-500">{icon}{label}</span>
+      <span className="flex items-center gap-2 text-slate-400">
+        {icon}
+        {label}
+      </span>
       <span className="font-medium text-slate-100 text-right">{value}</span>
     </div>
   )
@@ -1261,13 +1364,20 @@ function ConsultaEstadoBadge({ estado }: { estado: string }) {
     ARCHIVADA: 'bg-slate-500/10 text-slate-300 border border-slate-500/20',
   }
 
+  const labels: Record<string, string> = {
+    NUEVA: 'NUEVA',
+    VISTA: 'VISTA',
+    RESPONDIDA: 'RESPONDIDA',
+    ARCHIVADA: 'ARCHIVADA',
+  }
+
   return (
     <span
       className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
         map[estado] ?? 'bg-slate-500/10 text-slate-300 border border-slate-500/20'
       }`}
     >
-      {estado}
+      {labels[estado] ?? estado}
     </span>
   )
 }
@@ -1291,4 +1401,4 @@ function FacturaBadge({ estado }: { estado: string }) {
 }
 
 const darkInputCls =
-  'w-full border border-sidebar-border rounded-xl px-3 py-2.5 text-sm bg-admin-card text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400'
+  'w-full rounded-xl border border-cyan-800/35 px-3 py-2.5 text-sm bg-[#132743] text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400'

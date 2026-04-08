@@ -39,3 +39,24 @@ verify_jwt = false
 
 [functions.send-reminders]
 verify_jwt = false
+
+[functions.public_gallery_units]
+verify_jwt = false
+
+[functions.send_consulta_reply]
+verify_jwt = false
+
+[functions.public_property_context]
+verify_jwt = false
+
+[functions.public_units_list]
+verify_jwt = false
+
+[functions.public_contact_create]
+verify_jwt = false
+
+[functions.public_booking_context]
+verify_jwt = false
+ 
+ [functions.expire-pending-reservations]
+verify_jwt = false

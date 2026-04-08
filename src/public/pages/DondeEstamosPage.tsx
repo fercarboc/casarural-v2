@@ -32,8 +32,7 @@ export const DondeEstamosPage: React.FC = () => {
     : `Dónde estamos | ${siteName}`;
 
   const metaDescription =
-    property?.meta_description?.trim() ||
-    getMetaDescription(property);
+    property?.meta_description?.trim() || getMetaDescription(property);
 
   const heroTitle = siteTagline
     ? `Dónde estamos · ${siteTagline}`
@@ -50,14 +49,16 @@ export const DondeEstamosPage: React.FC = () => {
       .filter(Boolean)
       .join(', ') || 'Cantabria, España';
 
-  // 🔥 PRIORIDAD REAL:
-  // 1. Coordenadas
-  // 2. Dirección
-  // 3. Pueblo
+  const lat = property?.latitud != null ? Number(property.latitud) : null;
+  const lng = property?.longitud != null ? Number(property.longitud) : null;
 
-  const hasCoordinates =
-    typeof property?.latitud === 'number' &&
-    typeof property?.longitud === 'number';
+  const hasValidCoordinates =
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat! >= -90 &&
+    lat! <= 90 &&
+    lng! >= -180 &&
+    lng! <= 180;
 
   const exactAddressQuery = [
     property?.direccion,
@@ -76,19 +77,15 @@ export const DondeEstamosPage: React.FC = () => {
     .filter((v) => typeof v === 'string' && v.trim().length > 0)
     .join(', ');
 
-  // 🔥 MAPA INTELIGENTE
   let mapSrc = '';
 
-  if (hasCoordinates) {
-    // 👉 PRECISIÓN MÁXIMA (LO MEJOR)
-    mapSrc = `https://maps.google.com/maps?q=${property.latitud},${property.longitud}&z=17&output=embed`;
+  if (hasValidCoordinates) {
+    mapSrc = `https://maps.google.com/maps?q=${lat},${lng}&z=17&output=embed`;
   } else if (exactAddressQuery) {
-    // 👉 DIRECCIÓN
     mapSrc = `https://maps.google.com/maps?q=${encodeURIComponent(
       exactAddressQuery
     )}&z=16&output=embed`;
   } else {
-    // 👉 PUEBLO
     mapSrc = `https://maps.google.com/maps?q=${encodeURIComponent(
       townZoneQuery || 'Cantabria, España'
     )}&z=13&output=embed`;
@@ -154,7 +151,7 @@ export const DondeEstamosPage: React.FC = () => {
           </div>
 
           <div className="relative">
-            <div className="aspect-square overflow-hidden rounded-3xl border-8 border-white shadow-2xl">
+            <div className="aspect-square overflow-hidden rounded-3xl border-8 border-white shadow-2xl bg-stone-100">
               <iframe
                 title={`Ubicación de ${siteName}`}
                 src={mapSrc}
@@ -163,12 +160,13 @@ export const DondeEstamosPage: React.FC = () => {
                 style={{ border: 0 }}
                 allowFullScreen
                 loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
               />
             </div>
 
             <div className="absolute -bottom-6 -left-6 max-w-xs rounded-2xl border border-stone-100 bg-white p-6 shadow-xl">
               <p className="text-sm font-medium italic text-stone-800">
-                {hasCoordinates
+                {hasValidCoordinates
                   ? 'Ubicación exacta del alojamiento.'
                   : exactAddressQuery
                   ? 'Mapa basado en la dirección. Puede no ser exacto en zonas rurales.'
@@ -202,8 +200,8 @@ export const DondeEstamosPage: React.FC = () => {
           <p className="font-medium text-emerald-800">
             📍{' '}
             <strong>
-              {hasCoordinates
-                ? `${property?.latitud}, ${property?.longitud}`
+              {hasValidCoordinates
+                ? `${lat}, ${lng}`
                 : exactAddressQuery || townZoneQuery || 'Cantabria, España'}
             </strong>
           </p>
@@ -238,7 +236,11 @@ const Card = ({
   icon,
   title,
   children,
-}: any) => (
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) => (
   <div className="rounded-2xl border border-stone-100 bg-stone-50 p-8">
     <div className="mb-6 w-fit rounded-full bg-emerald-50 p-3 text-emerald-700">
       {icon}

@@ -24,6 +24,7 @@ export const ICalPage: React.FC = () => {
   const [feeds, setFeeds] = useState<ICalFeed[]>([])
   const [logs, setLogs] = useState<SyncLog[]>([])
   const [unidades, setUnidades] = useState<Unidad[]>([])
+  const [propertyId, setPropertyId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [syncingAll, setSyncingAll] = useState(false)
@@ -41,7 +42,10 @@ export const ICalPage: React.FC = () => {
       ])
       setFeeds(f)
       setLogs(l)
-      if (cfg) setUnidades(cfg.unidades)
+      if (cfg) {
+        setUnidades(cfg.unidades)
+        setPropertyId(cfg.property.id)
+      }
     } catch (err) {
       console.error(err)
     } finally {
@@ -194,9 +198,10 @@ export const ICalPage: React.FC = () => {
           )}
 
           {/* Formulario añadir */}
-          {showAddForm && (
+          {showAddForm && propertyId && (
             <AddFeedForm
               unidades={unidades}
+              propertyId={propertyId}
               onSaved={() => { setShowAddForm(false); load() }}
               onCancel={() => setShowAddForm(false)}
             />
@@ -385,10 +390,12 @@ function FeedCard({
 
 function AddFeedForm({
   unidades,
+  propertyId,
   onSaved,
   onCancel
 }: {
   unidades: import('../../services/config.service').Unidad[]
+  propertyId: string
   onSaved: () => void
   onCancel: () => void
 }) {
@@ -427,7 +434,7 @@ function AddFeedForm({
     setSaving(true)
     setError('')
     try {
-      await icalService.addFeed(form)
+      await icalService.addFeed({ ...form, property_id: propertyId })
       onSaved()
     } catch (e: any) {
       setError(e.message)

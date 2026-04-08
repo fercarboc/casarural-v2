@@ -363,6 +363,15 @@ export const CustomersPage: React.FC = () => {
   )
 }
 
+// ── Helpers de negocio ────────────────────────────────────
+
+/** Consultas que aún requieren atención (no respondidas ni archivadas). */
+function getPendingConsultasCount(consultas: Consulta[]): number {
+  return consultas.filter(
+    (c) => c.estado === 'NUEVA' || c.estado === 'VISTA',
+  ).length
+}
+
 // ── Fila de contacto ───────────────────────────────────────
 
 function ContactRow({
@@ -375,7 +384,7 @@ function ContactRow({
   isSelected: boolean
   onClick: () => void
 }) {
-  const hasNuevas = c.consultas.some((q) => q.estado === 'NUEVA')
+  const pendingCount = getPendingConsultasCount(c.consultas)
 
   return (
     <button
@@ -384,24 +393,30 @@ function ContactRow({
         isSelected ? 'bg-[#132743] border-l-2 border-brand-500' : ''
       }`}
     >
-      <div
-        className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-          c.reservas.length > 0
-            ? 'bg-emerald-500/10 text-emerald-300'
-            : 'bg-slate-500/10 text-slate-300'
-        }`}
-      >
-        {c.nombre[0]?.toUpperCase() ?? '?'}
+      <div className="relative shrink-0">
+        <div
+          className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold ${
+            c.reservas.length > 0
+              ? 'bg-emerald-500/10 text-emerald-300'
+              : 'bg-slate-500/10 text-slate-300'
+          }`}
+        >
+          {c.nombre[0]?.toUpperCase() ?? '?'}
+        </div>
+        {pendingCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full bg-amber-400 text-[9px] font-bold text-stone-900 flex items-center justify-center leading-none">
+            {pendingCount}
+          </span>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-white truncate">{c.nombre}</p>
-          {hasNuevas && (
-            <span
-              className="w-2 h-2 rounded-full bg-amber-400 shrink-0"
-              title="Consulta nueva"
-            />
+          {pendingCount > 0 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-400/15 text-amber-300 border border-amber-400/25 shrink-0">
+              {pendingCount === 1 ? '1 nueva' : `${pendingCount} nuevas`}
+            </span>
           )}
         </div>
 
@@ -631,35 +646,55 @@ function ContactDetail({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 px-5 py-4 border-b border-cyan-900/40 bg-[#08182d]">
-        <KpiCard label="Consultas" value={c.consultas.length} valueClass="text-white" />
-        <KpiCard label="Reservas" value={c.reservas.length} valueClass="text-emerald-300" />
-        <KpiCard label="Gastado" value={`${totalGastado.toFixed(0)}€`} valueClass="text-white" />
-      </div>
+      {(() => {
+        const pendingKpi = getPendingConsultasCount(c.consultas)
+        return (
+          <div className="grid grid-cols-3 gap-3 px-5 py-4 border-b border-cyan-900/40 bg-[#08182d]">
+            <div className="rounded-2xl border border-cyan-800/45 bg-[#10223d] px-4 py-3 text-center shadow-[0_8px_20px_rgba(0,0,0,0.18)] relative">
+              <p className="text-xs text-slate-500 mb-1">Consultas</p>
+              <p className="text-lg font-bold text-white">{c.consultas.length}</p>
+              {pendingKpi > 0 && (
+                <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30 leading-none">
+                  {pendingKpi} pdte{pendingKpi > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            <KpiCard label="Reservas" value={c.reservas.length} valueClass="text-emerald-300" />
+            <KpiCard label="Gastado" value={`${totalGastado.toFixed(0)}€`} valueClass="text-white" />
+          </div>
+        )
+      })()}
 
-      <div className="flex border-b border-cyan-900/40 bg-[#0a1930]">
-        {([
-          ['info', 'Información'],
-          ['reservas', 'Reservas'],
-          ['consultas', 'Consultas'],
-          ['comunicaciones', 'Comunicaciones'],
-        ] as const).map(([k, l]) => (
-          <button
-            key={k}
-            onClick={() => setTab(k)}
-            className={`flex-1 py-3 text-xs font-semibold transition-colors border-b-2 -mb-px ${
-              tab === k
-                ? 'border-brand-500 text-white bg-[#10223d]'
-                : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-[#0f213b]'
-            }`}
-          >
-            {l}
-            {k === 'consultas' && c.consultas.some((q) => q.estado === 'NUEVA') && (
-              <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
-            )}
-          </button>
-        ))}
-      </div>
+      {(() => {
+        const pendingTab = getPendingConsultasCount(c.consultas)
+        return (
+          <div className="flex border-b border-cyan-900/40 bg-[#0a1930]">
+            {([
+              ['info', 'Información'],
+              ['reservas', 'Reservas'],
+              ['consultas', 'Consultas'],
+              ['comunicaciones', 'Comunicaciones'],
+            ] as const).map(([k, l]) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className={`flex-1 py-3 text-xs font-semibold transition-colors border-b-2 -mb-px flex items-center justify-center gap-1 ${
+                  tab === k
+                    ? 'border-brand-500 text-white bg-[#10223d]'
+                    : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-[#0f213b]'
+                }`}
+              >
+                {l}
+                {k === 'consultas' && pendingTab > 0 && (
+                  <span className="min-w-[16px] h-4 px-1 rounded-full bg-amber-400 text-[9px] font-bold text-stone-900 flex items-center justify-center leading-none">
+                    {pendingTab}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-[#071427]">
         {tab === 'info' && (

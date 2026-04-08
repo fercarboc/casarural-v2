@@ -1,161 +1,269 @@
-// supabase/functions/check-availability/index.ts  [v2]
-// POST { start, end, unidad_ids?: string[] }         → días bloqueados del periodo
-// POST { checkIn, checkOut, unidad_ids: string[] }   → verifica si el rango está libre
+// supabase/functions/check-availability/index.ts
+// v2 — endurecida
+// POST { start, end, unidad_ids?: string[] }       -> días bloqueados
+// POST { checkIn, checkOut, unidad_ids?: string[] } -> verifica disponibilidad
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-forwarded-host, host',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json',
 };
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
 
   try {
     const body = await req.json();
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // ── Modo calendario: lista de días bloqueados ──────────────────────────
+    // =========================================================
+    // MODO CALENDARIO
+    // =========================================================
     if (body.start && body.end) {
       const { start, end, unidad_ids } = body;
 
-      // Reservas: buscar por unidad_ids si se proporcionan (via reserva_unidades)
-      let reservasQuery = supabase
+      // 1. Bloqueos manuales / iCal
+      let bloqueosQ = supabase
+        .from('bloqueos')
+        .select('unidad_id, fecha_inicio, fecha_fin')
+        .lt('fecha_inicio', end)
+        .gt('fecha_fin', start);
+
+      if (unidad_ids?.length) {
+        bloqueosQ = bloqueosQ.in('unidad_id', unidad_ids);
+      }
+
+      // 2. Holds activos
+      let holdsQ = supabase
+        .from('reservation_holds')
+        .select('unidad_id, fecha_inicio, fecha_fin, expires_at')
+        .gt('expires_at', new Date().toISOString())
+        .lt('fecha_inicio', end)
+        .gt('fecha_fin', start);
+
+      if (unidad_ids?.length) {
+        holdsQ = holdsQ.in('unidad_id', unidad_ids);
+      }
+
+      // 3. Reservas confirmadas
+      let reservasQ = supabase
         .from('reservas')
-        .select('fecha_entrada, fecha_salida')
-        .in('estado', ['CONFIRMED', 'PENDING_PAYMENT'])
+        .select(`
+          id,
+          fecha_entrada,
+          fecha_salida,
+          estado,
+          reserva_unidades!inner(unidad_id)
+        `)
+        .eq('estado', 'CONFIRMED')
         .lt('fecha_entrada', end)
         .gt('fecha_salida', start);
 
-      if (unidad_ids?.length) {
-        // Obtener reserva_ids que ocupan estas unidades
-        const { data: ruIds } = await supabase
-          .from('reserva_unidades')
-          .select('reserva_id')
-          .in('unidad_id', unidad_ids);
-        const ids = (ruIds ?? []).map((r: any) => r.reserva_id);
-        if (ids.length === 0) {
-          // No hay reservas para estas unidades — solo comprobar bloqueos
-          let bloqueosQ = supabase
-            .from('bloqueos')
-            .select('fecha_inicio, fecha_fin')
-            .lt('fecha_inicio', end)
-            .gt('fecha_fin', start);
-          if (unidad_ids?.length) bloqueosQ = bloqueosQ.in('unidad_id', unidad_ids);
-          const { data: bloqueos } = await bloqueosQ;
-          const blocked = new Set<string>();
-          bloqueos?.forEach(b => addRange(b.fecha_inicio, b.fecha_fin, blocked));
-          return Response.json({ blocked_dates: Array.from(blocked) }, { headers: corsHeaders });
-        }
-        reservasQuery = reservasQuery.in('id', ids);
-      }
-
-      const [{ data: reservas }, bloqueosResult] = await Promise.all([
-        reservasQuery,
-        (() => {
-          let q = supabase
-            .from('bloqueos')
-            .select('fecha_inicio, fecha_fin')
-            .lt('fecha_inicio', end)
-            .gt('fecha_fin', start);
-          if (unidad_ids?.length) q = q.in('unidad_id', unidad_ids);
-          return q;
-        })(),
+      const [bloqueosRes, holdsRes, reservasRes] = await Promise.all([
+        bloqueosQ,
+        holdsQ,
+        reservasQ,
       ]);
 
+      if (bloqueosRes.error) throw bloqueosRes.error;
+
+      // Si la tabla holds aún no existe, tolerancia temporal.
+      // En producción mejor quitar esta tolerancia.
+      const holds = holdsRes.error ? [] : (holdsRes.data ?? []);
+
+      if (reservasRes.error) throw reservasRes.error;
+
       const blocked = new Set<string>();
-      reservas?.forEach(r => addRange(r.fecha_entrada, r.fecha_salida, blocked));
-      bloqueosResult.data?.forEach(b => addRange(b.fecha_inicio, b.fecha_fin, blocked));
 
-      return Response.json({ blocked_dates: Array.from(blocked) }, { headers: corsHeaders });
-    }
-
-    // ── Modo verificación: ¿están libres las unidades en un rango concreto? ──
-    const { checkIn, checkOut, unidad_ids } = body;
-    if (!checkIn || !checkOut) {
-      return Response.json({ error: 'Missing checkIn or checkOut' }, { status: 400, headers: corsHeaders });
-    }
-
-    // Si se pasan unidad_ids, verificar cada unidad independientemente
-    if (unidad_ids?.length) {
-      const results: Record<string, boolean> = {};
-
-      for (const unidad_id of unidad_ids) {
-        // Reservas que ocupan esta unidad en el rango
-        const { data: ruConflict } = await supabase
-          .from('reserva_unidades')
-          .select('reserva_id')
-          .eq('unidad_id', unidad_id);
-
-        const reservaIds = (ruConflict ?? []).map((r: any) => r.reserva_id);
-
-        const [reservasConflict, bloqueosConflict] = await Promise.all([
-          reservaIds.length
-            ? supabase
-                .from('reservas')
-                .select('id')
-                .in('id', reservaIds)
-                .in('estado', ['CONFIRMED', 'PENDING_PAYMENT'])
-                .lt('fecha_entrada', checkOut)
-                .gt('fecha_salida', checkIn)
-            : { data: [] },
-          supabase
-            .from('bloqueos')
-            .select('id')
-            .eq('unidad_id', unidad_id)
-            .lt('fecha_inicio', checkOut)
-            .gt('fecha_fin', checkIn),
-        ]);
-
-        const conflicts = [
-          ...((reservasConflict.data ?? []).map((r: any) => r.id)),
-          ...((bloqueosConflict.data ?? []).map((b: any) => b.id)),
-        ];
-        results[unidad_id] = conflicts.length === 0;
+      // Bloqueos
+      for (const b of bloqueosRes.data ?? []) {
+        if (!unidad_ids?.length || unidad_ids.includes(b.unidad_id)) {
+          addRange(b.fecha_inicio, b.fecha_fin, blocked);
+        }
       }
 
-      const allAvailable = Object.values(results).every(Boolean);
-      return Response.json(
-        { available: allAvailable, per_unit: results },
-        { headers: corsHeaders }
+      // Holds
+      for (const h of holds) {
+        if (!unidad_ids?.length || unidad_ids.includes(h.unidad_id)) {
+          addRange(h.fecha_inicio, h.fecha_fin, blocked);
+        }
+      }
+
+      // Reservas confirmadas
+      for (const r of reservasRes.data ?? []) {
+        const reservaUnidades = (r as any).reserva_unidades ?? [];
+
+        const applies = !unidad_ids?.length
+          ? reservaUnidades.length > 0
+          : reservaUnidades.some((ru: any) => unidad_ids.includes(ru.unidad_id));
+
+        if (applies) {
+          addRange(r.fecha_entrada, r.fecha_salida, blocked);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ blocked_dates: Array.from(blocked).sort() }),
+        { status: 200, headers: corsHeaders }
       );
     }
 
-    // Fallback sin unidad_ids: verificación global (compatible v1)
-    const [{ data: conflictReservas }, { data: conflictBloqueos }] = await Promise.all([
+    // =========================================================
+    // MODO VERIFICACIÓN
+    // =========================================================
+    const { checkIn, checkOut, unidad_ids } = body;
+
+    if (!checkIn || !checkOut) {
+      return new Response(
+        JSON.stringify({ error: 'Missing checkIn or checkOut' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // ---------------------------------------------------------
+    // Si vienen unidad_ids -> verificar por unidad
+    // ---------------------------------------------------------
+    if (unidad_ids?.length) {
+      const results: Record<string, boolean> = {};
+
+      // 1. Bloqueos
+      const { data: bloqueos, error: bloqueosError } = await supabase
+        .from('bloqueos')
+        .select('unidad_id')
+        .in('unidad_id', unidad_ids)
+        .lt('fecha_inicio', checkOut)
+        .gt('fecha_fin', checkIn);
+
+      if (bloqueosError) throw bloqueosError;
+
+      const blockedSet = new Set((bloqueos ?? []).map((b: any) => b.unidad_id));
+
+      // 2. Holds activos
+      let heldSet = new Set<string>();
+      const { data: holds, error: holdsError } = await supabase
+        .from('reservation_holds')
+        .select('unidad_id')
+        .in('unidad_id', unidad_ids)
+        .gt('expires_at', new Date().toISOString())
+        .lt('fecha_inicio', checkOut)
+        .gt('fecha_fin', checkIn);
+
+      if (!holdsError) {
+        heldSet = new Set((holds ?? []).map((h: any) => h.unidad_id));
+      }
+
+      // 3. Reservas confirmadas
+      const { data: reservas, error: reservasError } = await supabase
+        .from('reservas')
+        .select(`
+          id,
+          fecha_entrada,
+          fecha_salida,
+          estado,
+          reserva_unidades!inner(unidad_id)
+        `)
+        .eq('estado', 'CONFIRMED')
+        .lt('fecha_entrada', checkOut)
+        .gt('fecha_salida', checkIn);
+
+      if (reservasError) throw reservasError;
+
+      const reservedSet = new Set<string>();
+
+      for (const r of reservas ?? []) {
+        for (const ru of (r as any).reserva_unidades ?? []) {
+          if (unidad_ids.includes(ru.unidad_id)) {
+            reservedSet.add(ru.unidad_id);
+          }
+        }
+      }
+
+      // Resultado final por unidad
+      for (const unidad_id of unidad_ids) {
+        const isAvailable =
+          !blockedSet.has(unidad_id) &&
+          !heldSet.has(unidad_id) &&
+          !reservedSet.has(unidad_id);
+
+        results[unidad_id] = isAvailable;
+      }
+
+      const allAvailable = Object.values(results).every(Boolean);
+
+      return new Response(
+        JSON.stringify({
+          available: allAvailable,
+          per_unit: results,
+        }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    // ---------------------------------------------------------
+    // Fallback v1 sin unidad_ids
+    // ---------------------------------------------------------
+    const [conflictReservas, conflictBloqueos, conflictHolds] = await Promise.all([
       supabase
         .from('reservas')
         .select('id')
-        .in('estado', ['CONFIRMED', 'PENDING_PAYMENT'])
+        .eq('estado', 'CONFIRMED')
         .lt('fecha_entrada', checkOut)
         .gt('fecha_salida', checkIn),
+
       supabase
         .from('bloqueos')
         .select('id')
         .lt('fecha_inicio', checkOut)
         .gt('fecha_fin', checkIn),
+
+      supabase
+        .from('reservation_holds')
+        .select('id')
+        .gt('expires_at', new Date().toISOString())
+        .lt('fecha_inicio', checkOut)
+        .gt('fecha_fin', checkIn),
     ]);
 
-    const conflicts = [
-      ...(conflictReservas?.map(r => r.id) ?? []),
-      ...(conflictBloqueos?.map(b => b.id) ?? []),
-    ];
-    return Response.json({ available: conflicts.length === 0, conflicts }, { headers: corsHeaders });
+    if (conflictReservas.error) throw conflictReservas.error;
+    if (conflictBloqueos.error) throw conflictBloqueos.error;
+    // holds opcional si tabla no existe todavía
+    const holdsFallback = conflictHolds.error ? [] : (conflictHolds.data ?? []);
 
-  } catch (err) {
+    const conflicts = [
+      ...(conflictReservas.data?.map((r: any) => r.id) ?? []),
+      ...(conflictBloqueos.data?.map((b: any) => b.id) ?? []),
+      ...(holdsFallback.map((h: any) => h.id) ?? []),
+    ];
+
+    return new Response(
+      JSON.stringify({
+        available: conflicts.length === 0,
+        conflicts,
+      }),
+      { status: 200, headers: corsHeaders }
+    );
+  } catch (err: any) {
     console.error('check-availability error:', err);
-    return Response.json({ error: 'Internal server error' }, { status: 500, headers: corsHeaders });
+    return new Response(
+      JSON.stringify({ error: err.message ?? 'Internal server error' }),
+      { status: 500, headers: corsHeaders }
+    );
   }
 });
 
 function addRange(startDate: string, endDate: string, set: Set<string>) {
   const cur = new Date(startDate);
   const fin = new Date(endDate);
+
   while (cur < fin) {
     set.add(cur.toISOString().split('T')[0]);
     cur.setDate(cur.getDate() + 1);

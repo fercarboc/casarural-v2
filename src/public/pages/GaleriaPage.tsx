@@ -4,34 +4,19 @@ import { HeroSection } from '../components/HeroSection';
 import { SectionContainer } from '../components/SectionContainer';
 import { CTASection } from '../components/CTASection';
 import { MetaTags } from '../components/MetaTags';
-import { supabase } from '../../integrations/supabase/client';
 import { usePublicProperty } from '../../shared/hooks/usePublicProperty';
 import {
   getMetaDescription,
   getSiteName,
 } from '../../shared/utils/publicProperty.utils';
+import { fetchPublicGalleryUnits } from '../services/publicGallery.service';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
 
-interface UnidadFoto {
-  id: string;
-  public_url: string;
-  alt_text: string | null;
-  orden: number;
-  es_portada: boolean;
-  activa: boolean;
-}
-
-interface Unidad {
-  id: string;
-  nombre: string;
-  slug: string;
-  descripcion_corta: string | null;
-  activa: boolean;
-  orden: number | null;
-  unidad_fotos?: UnidadFoto[];
-}
+const PROPERTY_SLUG =
+  (import.meta as any).env?.VITE_PROPERTY_SLUG || 'la-rasilla';
 
 interface GalleryItem {
+  id: string;
   src: string;
   alt: string;
   unitId: string;
@@ -40,7 +25,13 @@ interface GalleryItem {
   imageOrder: number;
 }
 
-interface UnitWithGallery extends Unidad {
+interface UnitWithGallery {
+  id: string;
+  nombre: string;
+  slug: string;
+  descripcion_corta: string | null;
+  activa: boolean;
+  orden: number | null;
   gallery: GalleryItem[];
   portada?: GalleryItem | null;
 }
@@ -50,7 +41,7 @@ const HERO_FALLBACK = '/images/casa2.jpg';
 type TabValue = 'all' | string;
 
 export const GaleriaPage: React.FC = () => {
-  const [units, setUnits] = useState<Unidad[]>([]);
+  const [unitsWithPhotos, setUnitsWithPhotos] = useState<UnitWithGallery[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<TabValue>('all');
 
@@ -64,79 +55,53 @@ export const GaleriaPage: React.FC = () => {
   const siteName = getSiteName(property);
 
   useEffect(() => {
-    const loadUnits = async () => {
+    const loadGalleryData = async () => {
       try {
-        const { data, error } = await supabase
-          .from('unidades')
-          .select(`
-            id,
-            nombre,
-            slug,
-            descripcion_corta,
-            activa,
-            orden,
-            unidad_fotos (
-              id,
-              public_url,
-              alt_text,
-              orden,
-              es_portada,
-              activa
-            )
-          `)
-          .eq('activa', true)
-          .order('orden', { ascending: true });
+        const result = await fetchPublicGalleryUnits({ slug: PROPERTY_SLUG });
 
-        if (error) {
-          console.error('Error loading gallery units:', error);
-          setUnits([]);
-          return;
-        }
+        const mapped: UnitWithGallery[] = (result.units ?? []).map((unit) => {
+          const gallery: GalleryItem[] = unit.fotos.map((foto, index) => ({
+            id: foto.id,
+            src: foto.public_url,
+            alt: foto.alt_text || `${unit.nombre} · imagen ${index + 1}`,
+            unitId: unit.id,
+            unitName: unit.nombre,
+            unitSlug: unit.slug,
+            imageOrder: foto.orden ?? index,
+          }));
 
-        setUnits((data ?? []) as Unidad[]);
+          const portada = gallery.find((g) =>
+            unit.fotos[gallery.indexOf(g)]?.es_portada,
+          ) ?? gallery[0] ?? null;
+
+          return {
+            id: unit.id,
+            nombre: unit.nombre,
+            slug: unit.slug,
+            descripcion_corta: unit.descripcion_corta,
+            activa: unit.activa,
+            orden: unit.orden,
+            gallery,
+            portada,
+          };
+        });
+
+        setUnitsWithPhotos(mapped);
       } catch (err) {
-        console.error('Unexpected error loading gallery units:', err);
-        setUnits([]);
+        console.error('Error loading gallery data:', err);
+        setUnitsWithPhotos([]);
       } finally {
         setLoading(false);
       }
     };
 
-    loadUnits();
+    loadGalleryData();
   }, []);
 
-  const activeUnits = useMemo(() => units.filter((u) => u.activa), [units]);
-  const isSingleUnit = activeUnits.length <= 1;
-  const singleUnit = activeUnits[0] ?? null;
+  const isSingleUnit = unitsWithPhotos.length <= 1;
+  const singleUnit = unitsWithPhotos[0] ?? null;
 
-  const unitsWithPhotos = useMemo<UnitWithGallery[]>(() => {
-    return activeUnits.map((unit) => {
-      const photos = (unit.unidad_fotos ?? [])
-        .filter((photo) => photo.activa && !!photo.public_url)
-        .sort((a, b) => {
-          if (a.es_portada && !b.es_portada) return -1;
-          if (!a.es_portada && b.es_portada) return 1;
-          return a.orden - b.orden;
-        });
-
-      const gallery: GalleryItem[] = photos.map((photo, index) => ({
-        src: photo.public_url,
-        alt: photo.alt_text?.trim() || `${unit.nombre} · imagen ${index + 1}`,
-        unitId: unit.id,
-        unitName: unit.nombre,
-        unitSlug: unit.slug,
-        imageOrder: photo.orden,
-      }));
-
-      return {
-        ...unit,
-        gallery,
-        portada: gallery[0] ?? null,
-      };
-    });
-  }, [activeUnits]);
-
-  const allGalleryItems = useMemo<GalleryItem[]>(() => {
+  const allGalleryItems = useMemo(() => {
     return unitsWithPhotos.flatMap((unit) => unit.gallery);
   }, [unitsWithPhotos]);
 
@@ -152,26 +117,15 @@ export const GaleriaPage: React.FC = () => {
 
   const heroImage = useMemo(() => {
     if (isSingleUnit && singleUnit) {
-      const current = unitsWithPhotos.find((u) => u.id === singleUnit.id);
-      return current?.portada?.src || HERO_FALLBACK;
+      return singleUnit.portada?.src || HERO_FALLBACK;
     }
-
-    if (selectedUnit) {
-      return selectedUnit.portada?.src || HERO_FALLBACK;
-    }
-
+    if (selectedUnit) return selectedUnit.portada?.src || HERO_FALLBACK;
     return unitsWithPhotos[0]?.portada?.src || HERO_FALLBACK;
   }, [isSingleUnit, singleUnit, selectedUnit, unitsWithPhotos]);
 
   const heroTitle = useMemo(() => {
-    if (isSingleUnit && singleUnit) {
-      return `Galería de ${singleUnit.nombre}`;
-    }
-
-    if (selectedUnit) {
-      return `Galería de ${selectedUnit.nombre}`;
-    }
-
+    if (isSingleUnit && singleUnit) return `Galería de ${singleUnit.nombre}`;
+    if (selectedUnit) return `Galería de ${selectedUnit.nombre}`;
     return 'Galería de alojamientos';
   }, [isSingleUnit, singleUnit, selectedUnit]);
 
@@ -182,26 +136,18 @@ export const GaleriaPage: React.FC = () => {
         `Descubre en imágenes cada rincón de ${singleUnit.nombre}.`
       );
     }
-
     if (selectedUnit) {
       return (
         selectedUnit.descripcion_corta ||
         `Explora las imágenes de ${selectedUnit.nombre}.`
       );
     }
-
     return 'Descubre en imágenes cada alojamiento y explora sus espacios antes de reservar.';
   }, [isSingleUnit, singleUnit, selectedUnit]);
 
   const metaTitle = useMemo(() => {
-    if (isSingleUnit && singleUnit) {
-      return `Galería | ${singleUnit.nombre}`;
-    }
-
-    if (selectedUnit) {
-      return `Galería | ${selectedUnit.nombre} | ${siteName}`;
-    }
-
+    if (isSingleUnit && singleUnit) return `Galería | ${singleUnit.nombre}`;
+    if (selectedUnit) return `Galería | ${selectedUnit.nombre} | ${siteName}`;
     return `Galería | ${siteName}`;
   }, [isSingleUnit, singleUnit, selectedUnit, siteName]);
 
@@ -209,11 +155,9 @@ export const GaleriaPage: React.FC = () => {
     if (isSingleUnit && singleUnit) {
       return singleUnit.descripcion_corta || getMetaDescription(property);
     }
-
     if (selectedUnit) {
       return selectedUnit.descripcion_corta || getMetaDescription(property);
     }
-
     return getMetaDescription(property);
   }, [isSingleUnit, singleUnit, selectedUnit, property]);
 
@@ -246,17 +190,9 @@ export const GaleriaPage: React.FC = () => {
     setZoom(1);
   };
 
-  const zoomIn = () => {
-    setZoom((prev) => Math.min(prev + 0.5, 3));
-  };
-
-  const zoomOut = () => {
-    setZoom((prev) => Math.max(prev - 0.5, 1));
-  };
-
-  const resetZoom = () => {
-    setZoom(1);
-  };
+  const zoomIn = () => setZoom((prev) => Math.min(prev + 0.5, 3));
+  const zoomOut = () => setZoom((prev) => Math.max(prev - 0.5, 1));
+  const resetZoom = () => setZoom(1);
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -287,9 +223,7 @@ export const GaleriaPage: React.FC = () => {
       setZoom(1);
     }
 
-    if (filteredGallery.length === 0) {
-      closeLightbox();
-    }
+    if (filteredGallery.length === 0) closeLightbox();
   }, [filteredGallery, lightboxIndex, lightboxOpen]);
 
   useEffect(() => {
@@ -314,11 +248,8 @@ export const GaleriaPage: React.FC = () => {
     const distance = touchStartX - touchEndX;
     const minSwipeDistance = 50;
 
-    if (distance > minSwipeDistance) {
-      goNext();
-    } else if (distance < -minSwipeDistance) {
-      goPrev();
-    }
+    if (distance > minSwipeDistance) goNext();
+    else if (distance < -minSwipeDistance) goPrev();
 
     setTouchStartX(null);
     setTouchEndX(null);
@@ -342,7 +273,7 @@ export const GaleriaPage: React.FC = () => {
     );
   }
 
-  if (!activeUnits.length) {
+  if (!unitsWithPhotos.length) {
     return (
       <div className="bg-white">
         <MetaTags title="Galería" description="Galería de imágenes no disponible." />
@@ -351,7 +282,6 @@ export const GaleriaPage: React.FC = () => {
           subtitle="Próximamente mostraremos aquí las imágenes de los alojamientos."
           image={HERO_FALLBACK}
         />
-
         <SectionContainer>
           <div className="mx-auto max-w-3xl text-center">
             <h2 className="text-3xl font-serif font-bold text-stone-800">
@@ -367,9 +297,6 @@ export const GaleriaPage: React.FC = () => {
   }
 
   if (isSingleUnit && singleUnit) {
-    const singleUnitWithGallery =
-      unitsWithPhotos.find((u) => u.id === singleUnit.id) ?? null;
-
     return (
       <div className="bg-white">
         <MetaTags title={metaTitle} description={metaDescription} />
@@ -391,7 +318,7 @@ export const GaleriaPage: React.FC = () => {
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {(singleUnitWithGallery?.gallery ?? []).map((image, index) => (
+            {singleUnit.gallery.map((image, index) => (
               <button
                 key={`${image.unitId}-${image.src}-${index}`}
                 type="button"
@@ -413,15 +340,15 @@ export const GaleriaPage: React.FC = () => {
                 </div>
               </button>
             ))}
-          </div>
 
-          {(singleUnitWithGallery?.gallery?.length ?? 0) === 0 ? (
-            <div className="mt-10 text-center">
-              <p className="text-stone-500">
-                Este alojamiento todavía no tiene imágenes publicadas.
-              </p>
-            </div>
-          ) : null}
+            {singleUnit.gallery.length === 0 ? (
+              <div className="col-span-full mt-4 text-center">
+                <p className="text-stone-500">
+                  Este alojamiento todavía no tiene imágenes publicadas.
+                </p>
+              </div>
+            ) : null}
+          </div>
         </SectionContainer>
 
         <SectionContainer bg="stone">
@@ -637,7 +564,6 @@ function GalleryLightbox({
         className="relative flex h-full w-full max-w-7xl flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top bar */}
         <div className="flex items-center justify-between gap-4 pb-4 text-white">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold uppercase tracking-widest text-white/70">
@@ -686,7 +612,6 @@ function GalleryLightbox({
           </div>
         </div>
 
-        {/* Main viewer */}
         <div className="relative flex-1 overflow-hidden rounded-3xl bg-black/60">
           <button
             type="button"
@@ -721,7 +646,6 @@ function GalleryLightbox({
             />
           </div>
 
-          {/* Bottom info */}
           <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between gap-4 bg-gradient-to-t from-black/80 to-transparent px-6 py-5 text-white">
             <div>
               <p className="text-sm font-semibold">{image.unitName}</p>
@@ -734,7 +658,6 @@ function GalleryLightbox({
           </div>
         </div>
 
-        {/* Mobile helper */}
         <div className="pt-4 text-center text-xs text-white/60">
           Desliza para cambiar · Usa + / − para zoom · ESC para cerrar
         </div>

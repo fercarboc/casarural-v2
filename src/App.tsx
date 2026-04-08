@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence } from 'motion/react';
-import BookingPage from './public/pages/BookingPage';
+
 import { HomePage } from './public/pages/HomePage';
 import { AlojamientosPage } from './public/pages/Alojamientos';
 import { GaleriaPage } from './public/pages/GaleriaPage';
@@ -19,7 +19,19 @@ import { Cookies } from './public/pages/Cookies';
 import { Ayuda } from './public/pages/Ayuda';
 import { Condiciones } from './public/pages/Condiciones';
 
-// Admin Imports
+
+import BookingFlowLayout from './public/pages/BookingFlowLayout';
+
+import BookingCheckoutStepPage from './public/pages/BookingCheckoutStepPage';
+import BookingOptionsStepPage from './public/pages/BookingOptionsStepPage';
+
+import BookingSearchStepPage from './public/pages/BookingSearchStepPage';
+ 
+ 
+import { BookingFlowProvider } from './public/booking/BookingFlowContext';
+
+
+
 import { AuthProvider } from './admin/context/AuthContext';
 import { ProtectedRoute } from './admin/components/ProtectedRoute';
 import { AdminLayout } from './admin/components/AdminLayout';
@@ -215,8 +227,24 @@ export default function App() {
             <Route path="/actividades" element={<PublicLayout><ActividadesPage /></PublicLayout>} />
             <Route path="/donde-estamos" element={<PublicLayout><DondeEstamosPage /></PublicLayout>} />
             <Route path="/contacto" element={<PublicLayout><ContactoPage /></PublicLayout>} />
-            <Route path="/reservar" element={<PublicLayout><BookingPage /></PublicLayout>} />
-            <Route path="/reserva/confirmada" element={<ReservaConfirmada />} />
+
+            {/* Booking Wizard */}
+            <Route
+              path="/reservar"
+              element={
+                <PublicLayout>
+                  <BookingFlowProvider>
+                    <BookingFlowLayout />
+                  </BookingFlowProvider>
+                </PublicLayout>
+              }
+            >
+              <Route index element={<BookingSearchStepPage />} />
+              <Route path="opciones" element={<BookingOptionsStepPage />} />
+              <Route path="checkout" element={<BookingCheckoutStepPage />} />
+            </Route>
+
+            <Route path="/reserva/confirmada" element={<PublicLayout><ReservaConfirmada /></PublicLayout>} />
             <Route path="/reserva/cancelada" element={<PublicLayout><ReservaCancelada /></PublicLayout>} />
             <Route path="/reserva/cancelar" element={<PublicLayout><CancelarReserva /></PublicLayout>} />
             <Route path="/reserva/cambio" element={<PublicLayout><CambioFechas /></PublicLayout>} />

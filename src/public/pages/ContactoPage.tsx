@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { HeroSection } from '../components/HeroSection';
 import { SectionContainer } from '../components/SectionContainer';
 import {
@@ -12,7 +12,6 @@ import {
   Globe,
 } from 'lucide-react';
 import { MetaTags } from '../components/MetaTags';
-import { supabase } from '../../integrations/supabase/client';
 import { usePublicProperty } from '../../shared/hooks/usePublicProperty';
 import {
   getMetaDescription,
@@ -20,6 +19,17 @@ import {
   getSiteName,
   getSiteTagline,
 } from '../../shared/utils/publicProperty.utils';
+import { fetchPublicUnits } from '../services/publicUnits.service';
+import { createPublicContact } from '../services/publicContact.service';
+
+const PROPERTY_SLUG =
+  (import.meta as any).env?.VITE_PROPERTY_SLUG || 'la-rasilla';
+
+interface UnitOption {
+  id: string;
+  nombre: string;
+  slug: string;
+}
 
 export const ContactoPage: React.FC = () => {
   const [form, setForm] = useState({
@@ -28,24 +38,28 @@ export const ContactoPage: React.FC = () => {
     telefono: '',
     asunto: '',
     mensaje: '',
+    selectedUnitId: '',
   });
+
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sentEmail, setSentEmail] = useState('');
   const [error, setError] = useState('');
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [unitOptions, setUnitOptions] = useState<UnitOption[]>([]);
 
   const { property } = usePublicProperty();
 
   const siteName = getSiteName(property);
-  const siteTagline = getSiteTagline(property);
+  getSiteTagline(property);
   const metaTitle = property?.meta_title?.trim()
     ? `Contacto | ${property.meta_title}`
     : `Contacto | ${siteName}`;
   const metaDescription =
-    property?.meta_description?.trim() ||
-    getMetaDescription(property);
+    property?.meta_description?.trim() || getMetaDescription(property);
 
   const fullAddress = getFullAddress(property);
-  const email = property?.email?.trim() || '';
+  const propertyEmail = property?.email?.trim() || '';
   const phone = property?.telefono?.trim() || '';
   const website = property?.web?.trim() || '';
   const generalDescription =
@@ -60,20 +74,56 @@ export const ContactoPage: React.FC = () => {
   const heroSubtitle =
     property?.site_tagline?.trim()
       ? `¿Tienes dudas? ${property.site_tagline}. Contacta con nosotros y te responderemos lo antes posible.`
-      : `¿Tienes dudas sobre el alojamiento o el entorno? Contacta con nosotros y te responderemos lo antes posible.`;
+      : `¿Tienes dudas sobre disponibilidad, precios, condiciones o alternativas? Contacta con nosotros y te responderemos lo antes posible.`;
 
   const heroImage = '/images/pueblo3.jpg';
 
-  const set = (k: string, v: string) =>
+  useEffect(() => {
+    const loadUnits = async () => {
+      try {
+        const result = await fetchPublicUnits({ slug: PROPERTY_SLUG });
+        const rows: UnitOption[] = (result.units ?? []).map((u) => ({
+          id: u.id,
+          nombre: u.nombre,
+          slug: u.slug,
+        }));
+        setUnitOptions(rows);
+      } catch (err) {
+        console.error('Error loading unit options:', err);
+        setUnitOptions([]);
+      } finally {
+        setOptionsLoading(false);
+      }
+    };
+
+    loadUnits();
+  }, []);
+
+  const selectedUnit = useMemo(() => {
+    return unitOptions.find((u) => u.id === form.selectedUnitId) ?? null;
+  }, [unitOptions, form.selectedUnitId]);
+
+  const isGlobal = !form.selectedUnitId;
+
+  const set = (k: keyof typeof form, v: string) =>
     setForm((p) => ({ ...p, [k]: v }));
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setForm({
+      nombre: '',
+      email: '',
+      telefono: '',
+      asunto: '',
+      mensaje: '',
+      selectedUnitId: '',
+    });
+  };
+
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!form.nombre || !form.email || !form.mensaje) return;
-
-    if (!property?.id) {
-      setError('No se ha podido identificar la propiedad. Recarga la página e inténtalo de nuevo.');
+    if (!form.nombre.trim() || !form.email.trim() || !form.mensaje.trim()) {
+      setError('Completa al menos nombre, email y mensaje.');
       return;
     }
 
@@ -81,32 +131,31 @@ export const ContactoPage: React.FC = () => {
     setError('');
 
     try {
-      const payload = {
-        property_id: property.id,
+      // Always use the real property_id. Unit selection is informational only —
+      // the asunto field captures which unit the user is asking about.
+      const asunto = form.asunto.trim() ||
+        (selectedUnit ? `Consulta sobre ${selectedUnit.nombre}` : 'Consulta general');
+
+      await createPublicContact({
         nombre: form.nombre.trim(),
         email: form.email.trim().toLowerCase(),
         telefono: form.telefono.trim() || null,
-        asunto: form.asunto.trim() || 'Consulta general',
-        tipo: 'CONTACTO',
+        asunto,
         mensaje: form.mensaje.trim(),
-        estado: 'PENDIENTE',
-      };
+        property_id: isGlobal ? null : property?.id ?? null,
+      });
 
-      const { error: err } = await supabase
-        .from('consultas')
-        .insert(payload);
-
-      if (err) throw err;
-
+      setSentEmail(form.email.trim().toLowerCase());
       setSent(true);
+      resetForm();
     } catch (err) {
-      console.error('Error insertando consulta:', err);
+      console.error('Error enviando consulta:', err);
       setError(
         `Ha ocurrido un error. ${
-          email
-            ? `Por favor, escríbenos directamente a ${email}.`
+          propertyEmail
+            ? `Por favor, escríbenos directamente a ${propertyEmail}.`
             : 'Por favor, inténtalo de nuevo más tarde.'
-        }`
+        }`,
       );
     } finally {
       setSending(false);
@@ -160,14 +209,14 @@ export const ContactoPage: React.FC = () => {
                 </div>
               ) : null}
 
-              {email ? (
+              {propertyEmail ? (
                 <div className="flex items-start gap-4 rounded-2xl border border-stone-100 bg-stone-50 p-6">
                   <div className="rounded-full bg-emerald-100 p-3 text-emerald-700">
                     <Mail size={24} />
                   </div>
                   <div>
                     <h4 className="font-bold text-stone-800">Correo electrónico</h4>
-                    <p className="text-stone-600">{email}</p>
+                    <p className="text-stone-600">{propertyEmail}</p>
                     <p className="mt-1 text-sm text-stone-400">
                       Respondemos lo antes posible.
                     </p>
@@ -214,7 +263,7 @@ export const ContactoPage: React.FC = () => {
                   <Clock size={24} />
                 </div>
                 <div>
-                  <h4 className="font-bold text-stone-800">Horario de Atención</h4>
+                  <h4 className="font-bold text-stone-800">Horario de atención</h4>
                   <p className="font-medium text-stone-600">
                     09:00 – 23:00 · Lunes a Domingo
                   </p>
@@ -228,9 +277,9 @@ export const ContactoPage: React.FC = () => {
             <div className="flex items-center gap-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-6">
               <ShieldCheck className="shrink-0 text-emerald-600" size={32} />
               <p className="font-medium text-emerald-900">
-                Al reservar directamente con nosotros, te ofrecemos una
-                comunicación más clara, sin intermediarios innecesarios y con
-                condiciones visibles desde la propia web.
+                Puedes consultarnos disponibilidad, alternativas si unas fechas
+                están ocupadas, condiciones de reserva, devoluciones o cualquier
+                otra duda antes de reservar.
               </p>
             </div>
           </div>
@@ -246,18 +295,14 @@ export const ContactoPage: React.FC = () => {
                 </h3>
                 <p className="max-w-xs text-stone-500">
                   Hemos recibido tu consulta. Te responderemos en el email{' '}
-                  <strong>{form.email}</strong> lo antes posible.
+                  <strong>{sentEmail}</strong> lo antes posible.
                 </p>
                 <button
                   onClick={() => {
                     setSent(false);
-                    setForm({
-                      nombre: '',
-                      email: '',
-                      telefono: '',
-                      asunto: '',
-                      mensaje: '',
-                    });
+                    setSentEmail('');
+                    resetForm();
+                    setError('');
                   }}
                   className="mt-4 text-sm font-medium text-emerald-700 hover:underline"
                 >
@@ -271,6 +316,49 @@ export const ContactoPage: React.FC = () => {
                 </h3>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-stone-700">
+                      ¿Sobre qué quieres consultar?
+                    </label>
+                    <select
+                      value={form.selectedUnitId}
+                      onChange={(e) => set('selectedUnitId', e.target.value)}
+                      disabled={optionsLoading}
+                      className="w-full rounded-xl border border-stone-200 px-4 py-3 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                    >
+                      <option value="">
+                        Consulta general sobre todas las propiedades
+                      </option>
+                      {unitOptions.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-stone-500">
+                      Puedes dejar la consulta como general o elegir una propiedad concreta.
+                    </p>
+                  </div>
+
+                  <div
+                    className={`rounded-xl px-4 py-3 text-sm ${
+                      isGlobal
+                        ? 'border border-blue-100 bg-blue-50 text-blue-900'
+                        : 'border border-emerald-100 bg-emerald-50 text-emerald-900'
+                    }`}
+                  >
+                    {isGlobal ? (
+                      <>
+                        Esta consulta se guardará como <strong>consulta general</strong>.
+                      </>
+                    ) : (
+                      <>
+                        Esta consulta se asociará a{' '}
+                        <strong>{selectedUnit?.nombre || 'la propiedad seleccionada'}</strong>.
+                      </>
+                    )}
+                  </div>
+
                   <div className="grid gap-6 md:grid-cols-2">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-stone-700">
@@ -323,7 +411,7 @@ export const ContactoPage: React.FC = () => {
                       value={form.asunto}
                       onChange={(e) => set('asunto', e.target.value)}
                       className="w-full rounded-xl border border-stone-200 px-4 py-3 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-emerald-500"
-                      placeholder="¿En qué podemos ayudarte?"
+                      placeholder="Ej. Consulta para grupo, cambio de fechas, política de devolución..."
                     />
                   </div>
 
@@ -332,12 +420,12 @@ export const ContactoPage: React.FC = () => {
                       Mensaje *
                     </label>
                     <textarea
-                      rows={4}
+                      rows={5}
                       value={form.mensaje}
                       onChange={(e) => set('mensaje', e.target.value)}
                       required
                       className="w-full rounded-xl border border-stone-200 px-4 py-3 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-emerald-500"
-                      placeholder="Cuéntanos más sobre tu consulta..."
+                      placeholder="Cuéntanos tu duda, las fechas aproximadas, el número de personas o cualquier detalle útil..."
                     />
                   </div>
 
@@ -349,7 +437,7 @@ export const ContactoPage: React.FC = () => {
 
                   <button
                     type="submit"
-                    disabled={sending}
+                    disabled={sending || optionsLoading}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 py-4 font-bold text-white shadow-lg transition-colors hover:bg-stone-800 disabled:opacity-50"
                   >
                     {sending ? (

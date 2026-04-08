@@ -8,6 +8,47 @@ import { supabase, isMockMode } from '../../integrations/supabase/client'
 // Nota: la reserva se carga vía Edge Function, sin query directa a la DB
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
+// La Edge Function devuelve la fila raw de BD — pueden venir con nombres v2 o v1.
+// Declaramos todos como opcionales para ser robustos ante cualquier shape.
+interface ReservaRaw {
+  id?: string
+  codigo?: string | null
+  // v2
+  nombre_cliente?: string | null
+  apellidos_cliente?: string | null
+  email_cliente?: string | null
+  telefono_cliente?: string | null
+  importe_total?: number | null
+  importe_extras?: number | null
+  descuento_aplicado?: number | null
+  // v1 legacy (por si las reservas antiguas usan estos nombres)
+  nombre?: string | null
+  apellidos?: string | null
+  email?: string | null
+  telefono?: string | null
+  total?: number | null
+  importe_extra?: number | null
+  descuento?: number | null
+  // comunes
+  fecha_entrada?: string
+  fecha_salida?: string
+  num_huespedes?: number | null
+  noches?: number | null
+  temporada?: string | null
+  tarifa?: string | null
+  precio_noche?: number | null
+  importe_alojamiento?: number | null
+  importe_limpieza?: number | null
+  importe_senal?: number | null
+  importe_pagado?: number | null
+  estado?: string | null
+  estado_pago?: string | null
+  stripe_session_id?: string | null
+  // unidades relacionadas (join)
+  reserva_unidades?: Array<{ unidad_id: string; unidades?: { nombre: string } | null }>
+}
+
+// Tipo normalizado que usa el render (sin nulls en campos críticos)
 interface Reserva {
   id: string
   codigo: string
@@ -19,8 +60,8 @@ interface Reserva {
   fecha_salida: string
   num_huespedes: number
   noches: number
-  temporada: 'ALTA' | 'BASE'
-  tarifa: 'FLEXIBLE' | 'NO_REEMBOLSABLE'
+  tarifa: string
+  temporada: string
   precio_noche: number
   importe_alojamiento: number
   importe_extra: number
@@ -28,10 +69,58 @@ interface Reserva {
   descuento: number
   total: number
   importe_senal: number | null
-  importe_pagado: number
   estado: string
   estado_pago: string
-  stripe_session_id: string
+}
+
+// ─── Normalización de la respuesta raw ───────────────────────────────────────
+function toNum(v: unknown): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function toStr(v: unknown, fallback = ''): string {
+  return typeof v === 'string' && v.trim() ? v.trim() : fallback
+}
+
+function normalizeReserva(raw: ReservaRaw): Reserva {
+  const nombre    = toStr(raw.nombre_cliente ?? raw.nombre)
+  const apellidos = toStr(raw.apellidos_cliente ?? raw.apellidos)
+  const email     = toStr(raw.email_cliente ?? raw.email)
+  const telefono  = toStr(raw.telefono_cliente ?? raw.telefono)
+  const total     = toNum(raw.importe_total ?? raw.total)
+  const importe_extra  = toNum(raw.importe_extras ?? raw.importe_extra)
+  const descuento      = toNum(raw.descuento_aplicado ?? raw.descuento)
+  const fecha_entrada  = raw.fecha_entrada ?? ''
+  const fecha_salida   = raw.fecha_salida  ?? ''
+  const noches = toNum(raw.noches) ||
+    (fecha_entrada && fecha_salida
+      ? Math.round((new Date(fecha_salida).getTime() - new Date(fecha_entrada).getTime()) / 86400000)
+      : 0)
+
+  return {
+    id:               toStr(raw.id),
+    codigo:           toStr(raw.codigo, '—'),
+    nombre,
+    apellidos,
+    email,
+    telefono,
+    fecha_entrada,
+    fecha_salida,
+    num_huespedes:    toNum(raw.num_huespedes),
+    noches,
+    tarifa:           toStr(raw.tarifa, 'NO_REEMBOLSABLE'),
+    temporada:        toStr(raw.temporada, 'BASE'),
+    precio_noche:     toNum(raw.precio_noche),
+    importe_alojamiento: toNum(raw.importe_alojamiento),
+    importe_extra,
+    importe_limpieza: toNum(raw.importe_limpieza),
+    descuento,
+    total,
+    importe_senal:    raw.importe_senal != null ? toNum(raw.importe_senal) : null,
+    estado:           toStr(raw.estado, 'CONFIRMED'),
+    estado_pago:      toStr(raw.estado_pago, 'PAID'),
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -44,17 +133,19 @@ function formatDate(dateStr: string) {
   })
 }
 
-function formatEur(amount: number) {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(amount)
-}
-
 function calcNights(entrada: string, salida: string) {
   return Math.round(
     (new Date(salida).getTime() - new Date(entrada).getTime()) / (1000 * 60 * 60 * 24)
   )
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function formatEurSafe(amount: unknown) {
+  const n = Number(amount)
+  return new Intl.NumberFormat('es-ES', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(Number.isFinite(n) ? n : 0)
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
@@ -105,7 +196,7 @@ export default function ReservaConfirmada() {
           }
 
           if (data?.reserva) {
-            setReserva(data.reserva)
+            setReserva(normalizeReserva(data.reserva as ReservaRaw))
             setLoading(false)
             return
           }
@@ -303,21 +394,21 @@ export default function ReservaConfirmada() {
 
               <div style={styles.precioRow}>
                 <span style={styles.precioLabel}>
-                  Alojamiento ({noches} noche{noches > 1 ? 's' : ''} × {formatEur(reserva.precio_noche)})
+                  Alojamiento ({noches} noche{noches > 1 ? 's' : ''} × {formatEurSafe(reserva.precio_noche)})
                 </span>
-                <span style={styles.precioValue}>{formatEur(reserva.importe_alojamiento)}</span>
+                <span style={styles.precioValue}>{formatEurSafe(reserva.importe_alojamiento)}</span>
               </div>
 
               {reserva.importe_extra > 0 && (
                 <div style={styles.precioRow}>
                   <span style={styles.precioLabel}>Suplemento huésped extra</span>
-                  <span style={styles.precioValue}>{formatEur(reserva.importe_extra)}</span>
+                  <span style={styles.precioValue}>{formatEurSafe(reserva.importe_extra)}</span>
                 </div>
               )}
 
               <div style={styles.precioRow}>
                 <span style={styles.precioLabel}>Tarifa de limpieza</span>
-                <span style={styles.precioValue}>{formatEur(reserva.importe_limpieza)}</span>
+                <span style={styles.precioValue}>{formatEurSafe(reserva.importe_limpieza)}</span>
               </div>
 
               {reserva.descuento > 0 && (
@@ -326,14 +417,14 @@ export default function ReservaConfirmada() {
                     Descuento no reembolsable (−10%)
                   </span>
                   <span style={{ ...styles.precioValue, color: '#2D7D5A' }}>
-                    −{formatEur(reserva.descuento)}
+                    −{formatEurSafe(reserva.descuento)}
                   </span>
                 </div>
               )}
 
               <div style={styles.totalRow}>
                 <span style={styles.totalLabel}>Total reserva</span>
-                <span style={styles.totalValue}>{formatEur(reserva.total)}</span>
+                <span style={styles.totalValue}>{formatEurSafe(reserva.total)}</span>
               </div>
 
               <div style={styles.divider} />
@@ -347,7 +438,7 @@ export default function ReservaConfirmada() {
                       <span style={styles.pagoLabel}>Señal pagada ahora</span>
                     </div>
                     <span style={{ ...styles.pagoImporte, color: '#2D7D5A' }}>
-                      {formatEur(reserva.importe_senal)}
+                      {formatEurSafe(reserva.importe_senal)}
                     </span>
                   </div>
                   <div style={styles.pagoEstadoRow}>
@@ -356,7 +447,7 @@ export default function ReservaConfirmada() {
                       <span style={styles.pagoLabel}>Resto pendiente</span>
                     </div>
                     <span style={{ ...styles.pagoImporte, color: 'var(--dorado)' }}>
-                      {formatEur(restoPendiente)}
+                      {formatEurSafe(restoPendiente)}
                     </span>
                   </div>
                   <p style={styles.aviso}>
@@ -370,7 +461,7 @@ export default function ReservaConfirmada() {
                     <span style={styles.pagoLabel}>Pago total completado</span>
                   </div>
                   <span style={{ ...styles.pagoImporte, color: '#2D7D5A' }}>
-                    {formatEur(reserva.total)}
+                    {formatEurSafe(reserva.total)}
                   </span>
                 </div>
               )}

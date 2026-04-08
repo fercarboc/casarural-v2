@@ -40,7 +40,7 @@ export const icalService = {
     return data ?? [];
   },
 
-  async addFeed(feed: { nombre: string; plataforma: ICalFeed['plataforma']; url: string; unidad_id: string }): Promise<ICalFeed> {
+  async addFeed(feed: { nombre: string; plataforma: ICalFeed['plataforma']; url: string; unidad_id: string; property_id: string }): Promise<ICalFeed> {
     if (isMockMode) throw new Error('No disponible en modo mock');
     const { data, error } = await supabase
       .from('feeds_ical')

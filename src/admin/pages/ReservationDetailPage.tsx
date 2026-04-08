@@ -17,10 +17,9 @@ import { ModalSolicitudPago } from '../components/ModalSolicitudPago'
 import { ModalConfirmacionReserva } from '../components/ModalConfirmacionReserva'
 
 // ─── Tipo ──────────────────────────────────────────────────────────────────────
-// Columnas v2 reales del esquema de BD
 interface Reserva {
   id: string
-  codigo: string | null            // puede no existir en filas ical
+  codigo: string | null
   nombre_cliente: string | null
   apellidos_cliente: string | null
   email_cliente: string | null
@@ -32,10 +31,10 @@ interface Reserva {
   noches: number | null
   tarifa: string | null
   importe_alojamiento: number | null
-  importe_extras: number | null    // v2: importe_extras (plural)
+  importe_extras: number | null
   importe_limpieza: number | null
-  descuento_aplicado: number | null // v2: descuento_aplicado
-  importe_total: number | null      // v2: importe_total
+  descuento_aplicado: number | null
+  importe_total: number | null
   importe_senal: number | null
   estado: string
   estado_pago: string
@@ -47,7 +46,8 @@ interface Reserva {
   token_cliente: string | null
   created_at: string
   updated_at: string | null
-  // columnas v1 legacy (pueden ser null en reservas del flujo nuevo)
+
+  // legacy v1
   nombre: string | null
   apellidos: string | null
   email: string | null
@@ -79,6 +79,7 @@ const ESTADO_STYLE: Record<string, string> = {
   PENDING_PAYMENT: 'bg-amber-50 text-amber-700 border-amber-200',
   CANCELLED: 'bg-red-50 text-red-700 border-red-200',
   EXPIRED: 'bg-slate-100 text-slate-500 border-slate-200',
+  NO_SHOW: 'bg-slate-100 text-slate-500 border-slate-200',
 }
 
 const ESTADO_LABEL: Record<string, string> = {
@@ -134,6 +135,11 @@ function fmtMoney(value: unknown): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} €`
+}
+
+function fallbackCodigo(id: string, codigo: string | null | undefined) {
+  if (codigo && codigo.trim()) return codigo
+  return `R-${id.replace(/-/g, '').slice(0, 8).toUpperCase()}`
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -229,10 +235,7 @@ export const ReservationDetailPage: React.FC = () => {
     setSendingCheckin(true)
 
     const checkinUrl = `${window.location.origin}/reserva/${r.token_cliente}`
-
-    // email/nombre se resuelven más abajo como variables normalizadas,
-    // pero aquí r aún está disponible y usamos los helpers seguros
-    const toEmail  = s(r.email_cliente ?? r.email, '')
+    const toEmail = s(r.email_cliente ?? r.email, '')
     const toNombre = `${s(r.nombre_cliente ?? r.nombre, '')} ${s(r.apellidos_cliente ?? r.apellidos, '')}`.trim()
 
     await supabase.functions.invoke('send-email', {
@@ -250,7 +253,6 @@ export const ReservationDetailPage: React.FC = () => {
     setTimeout(() => setCheckinSent(false), 3000)
   }
 
-  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -277,47 +279,53 @@ export const ReservationDetailPage: React.FC = () => {
 
   const isFlexible = r.tarifa === 'FLEXIBLE'
 
-  // Normalizar campos: v2 tiene precedencia sobre nombres v1 legacy
-  const nombre       = s(r.nombre_cliente ?? r.nombre, '')
-  const apellidos    = s(r.apellidos_cliente ?? r.apellidos, '')
-  const email        = s(r.email_cliente ?? r.email, '')
-  const telefono     = r.telefono_cliente ?? r.telefono ?? null
-  const dni          = r.nif_cliente ?? r.dni ?? null
-  const origenStr    = r.origen ?? ''
+  const nombre = s(r.nombre_cliente ?? r.nombre, '')
+  const apellidos = s(r.apellidos_cliente ?? r.apellidos, '')
+  const email = s(r.email_cliente ?? r.email, '')
+  const telefono = r.telefono_cliente ?? r.telefono ?? null
+  const dni = r.nif_cliente ?? r.dni ?? null
+  const origenStr = r.origen ?? ''
 
-  const noches            = n(r.noches)
-  const numHuespedes      = n(r.num_huespedes)
-  const menores           = n(r.menores)
-  const precioNoche       = n(r.precio_noche)
+  const noches = n(r.noches)
+  const numHuespedes = n(r.num_huespedes)
+  const menores = n(r.menores)
+  const precioNoche =
+    n(r.precio_noche) > 0
+      ? n(r.precio_noche)
+      : noches > 0
+        ? n(r.importe_alojamiento) / noches
+        : 0
+
   const importeAlojamiento = n(r.importe_alojamiento)
-  const importeExtra      = n(r.importe_extras ?? r.importe_extra)
-  const importeLimpieza   = n(r.importe_limpieza)
-  const descuento         = n(r.descuento_aplicado ?? r.descuento)
-  const total             = n(r.importe_total ?? r.total)
-  const importeSenal      = n(r.importe_senal)
-  const importePagado     = n(r.importe_pagado)
+  const importeExtra = n(r.importe_extras ?? r.importe_extra)
+  const importeLimpieza = n(r.importe_limpieza)
+  const descuento = n(r.descuento_aplicado ?? r.descuento)
+  const total = n(r.importe_total ?? r.total)
+  const importeSenal = n(r.importe_senal)
+  const importePagado = Math.max(n(r.importe_pagado), importeSenal)
+  const codigoReserva = fallbackCodigo(r.id, r.codigo)
 
-  const restoPendiente = isFlexible && importeSenal > 0
-    ? Math.max(0, total - importePagado)
-    : 0
+  const restoPendiente =
+    isFlexible && total > 0
+      ? Math.max(0, total - importePagado)
+      : 0
 
   const iniciales = `${(nombre[0] ?? '?')}${(apellidos[0] ?? '?')}`
 
-  // Objeto normalizado para modales (evita pasar r directamente con tipos nullable)
   const modalReserva = {
-    id:           r.id,
-    codigo:       s(r.codigo),
+    id: r.id,
+    codigo: codigoReserva,
     nombre,
     apellidos,
     email,
     total,
     importe_pagado: importePagado,
-    estado_pago:  r.estado_pago,
-    tarifa:       r.tarifa ?? '',
+    estado_pago: r.estado_pago,
+    tarifa: r.tarifa ?? '',
     noches,
     num_huespedes: numHuespedes,
     fecha_entrada: r.fecha_entrada,
-    fecha_salida:  r.fecha_salida,
+    fecha_salida: r.fecha_salida,
     token_cliente: r.token_cliente ?? null,
   }
 
@@ -335,17 +343,17 @@ export const ReservationDetailPage: React.FC = () => {
 
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900">
+              <h1 className="text-2xl font-bold text-slate-900">
                 {nombre} {apellidos}
               </h1>
 
-              <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-400">
-                {s(r.codigo)}
+              <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-semibold text-slate-500">
+                {codigoReserva}
               </span>
 
               <span
                 className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                  ESTADO_STYLE[r.estado] ?? 'bg-slate-50 text-slate-500'
+                  ESTADO_STYLE[r.estado] ?? 'bg-slate-50 text-slate-500 border-slate-200'
                 }`}
               >
                 {ESTADO_LABEL[r.estado] ?? r.estado}
@@ -450,7 +458,7 @@ export const ReservationDetailPage: React.FC = () => {
           )}
 
           <Link
-            to={`/admin/reservas`}
+            to="/admin/reservas"
             className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-700"
           >
             <Edit2 size={14} />
@@ -575,17 +583,18 @@ export const ReservationDetailPage: React.FC = () => {
                 </span>
               </div>
 
-              {/* Estado de pago */}
               <div className="space-y-2 border-t border-slate-100 pt-3">
-                {isFlexible && importeSenal > 0 ? (
+                {isFlexible && importePagado > 0 ? (
                   <>
                     <div className="flex justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                        <span className="text-slate-600">Señal pagada</span>
+                        <span className="text-slate-600">
+                          {importeSenal > 0 ? 'Señal pagada' : 'Importe cobrado'}
+                        </span>
                       </div>
                       <span className="font-bold text-emerald-700">
-                        {importeSenal.toLocaleString('es-ES', {
+                        {importePagado.toLocaleString('es-ES', {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}{' '}
@@ -868,7 +877,7 @@ export const ReservationDetailPage: React.FC = () => {
           <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-5 text-xs shadow-sm">
             <SideRow label="Creada" value={fmtShort(r.created_at)} />
             {r.updated_at && <SideRow label="Modificada" value={fmtShort(r.updated_at)} />}
-            <SideRow label="Código" value={s(r.codigo)} mono />
+            <SideRow label="Código" value={codigoReserva} mono />
           </div>
         </div>
       </div>
@@ -975,7 +984,7 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
     ? [6, 7].includes(parseISO(nuevaEntrada).getMonth())
     : false
 
-  const importe_pagado = n(reserva.importe_pagado)
+  const importe_pagado = Math.max(n(reserva.importe_pagado), n(reserva.importe_senal))
   const oldTotal = n(reserva.importe_total ?? reserva.total)
   const newTotal = n(newBreakdown?.total)
   const priceDiff = Math.round((newTotal - oldTotal) * 100) / 100
@@ -1023,11 +1032,10 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
       }
 
       if (useNewPrice) {
-        // Columnas v2
         updateData.importe_alojamiento = newBreakdown.accommodationTotal
-        updateData.importe_extras      = newBreakdown.extraGuestsTotal
-        updateData.descuento_aplicado  = newBreakdown.discount
-        updateData.importe_total       = newBreakdown.total
+        updateData.importe_extras = newBreakdown.extraGuestsTotal
+        updateData.descuento_aplicado = newBreakdown.discount
+        updateData.importe_total = newBreakdown.total
 
         if (importe_pagado >= newBreakdown.total) updateData.estado_pago = 'PAID'
         else if (importe_pagado > 0) updateData.estado_pago = 'PARTIAL'
@@ -1055,7 +1063,7 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
           to_name: `${s(reserva.nombre_cliente ?? reserva.nombre, '')} ${s(reserva.apellidos_cliente ?? reserva.apellidos, '')}`.trim(),
           reservation_id: reserva.id,
           extra_vars: {
-            reserva_codigo: s(reserva.codigo),
+            reserva_codigo: fallbackCodigo(reserva.id, reserva.codigo),
             old_check_in: fmtFechaLarga(reserva.fecha_entrada),
             old_check_out: fmtFechaLarga(reserva.fecha_salida),
             new_check_in: fmtFechaLarga(nuevaEntrada),
@@ -1069,10 +1077,10 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
             diferencia_precio: !useNewPrice
               ? 'Sin coste adicional — precio mantenido sin cambios'
               : priceDiff > 0
-              ? `+${fmtEur(priceDiff)} (cambio de temporada o más noches)`
-              : priceDiff < 0
-              ? `${fmtEur(priceDiff)} (fechas más económicas)`
-              : 'Sin diferencia de precio',
+                ? `+${fmtEur(priceDiff)} (cambio de temporada o más noches)`
+                : priceDiff < 0
+                  ? `${fmtEur(priceDiff)} (fechas más económicas)`
+                  : 'Sin diferencia de precio',
             nota_admin: nota.trim() || '',
           },
         }),
@@ -1107,7 +1115,6 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
 
   return (
     <div className="overflow-hidden rounded-2xl border-2 border-amber-300 bg-white shadow-sm">
-      {/* Header */}
       <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-6 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <CalendarDays size={16} className="text-amber-600" />
@@ -1127,7 +1134,6 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
       </div>
 
       <div className="space-y-6 p-6">
-        {/* Mensaje del cliente */}
         {parsed?.mensaje && (
           <div>
             <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -1152,7 +1158,6 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
           </div>
         )}
 
-        {/* Comparativa de fechas */}
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
             Fechas
@@ -1223,7 +1228,6 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
           </div>
         </div>
 
-        {/* Recálculo de precio */}
         {newBreakdown && (
           <div className="overflow-hidden rounded-xl border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
@@ -1263,8 +1267,8 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
                     priceDiff > 0
                       ? 'text-red-600'
                       : priceDiff < 0
-                      ? 'text-emerald-600'
-                      : 'text-slate-900'
+                        ? 'text-emerald-600'
+                        : 'text-slate-900'
                   }`}
                 >
                   {fmtEur(newTotal)}
@@ -1332,7 +1336,6 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
           </div>
         )}
 
-        {/* Opción de precio */}
         {newBreakdown && priceDiff !== 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -1363,10 +1366,10 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
                         priceDiff
                       )} por el cambio de tarifa)`
                     : reembolsoNuevo > 0
-                    ? `Precio más económico. Pendiente de gestionar reembolso de ${fmtEur(
-                        reembolsoNuevo
-                      )}`
-                    : `Pendiente: ${fmtEur(pendienteNuevo)}`}
+                      ? `Precio más económico. Pendiente de gestionar reembolso de ${fmtEur(
+                          reembolsoNuevo
+                        )}`
+                      : `Pendiente: ${fmtEur(pendienteNuevo)}`}
                 </p>
               </div>
             </label>
@@ -1395,7 +1398,6 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
           </div>
         )}
 
-        {/* Nota para el email */}
         <div className="space-y-2">
           <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Nota adicional para el email{' '}
@@ -1413,7 +1415,6 @@ function CambioFechasPanel({ reserva, config, onApplied }: CambioFechasPanelProp
 
         {applyError && <p className="text-sm text-red-600">{applyError}</p>}
 
-        {/* Acciones */}
         <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-2">
           <button
             onClick={handleDiscard}

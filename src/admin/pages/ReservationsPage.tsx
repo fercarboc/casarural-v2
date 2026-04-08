@@ -28,6 +28,7 @@ import { es } from 'date-fns/locale'
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface ReservaAdmin {
   id: string
+  codigo: string
   nombre_cliente: string
   apellidos_cliente: string
   email_cliente: string
@@ -115,14 +116,15 @@ export const ReservationsPage: React.FC = () => {
 
   const load = useCallback(async () => {
     setLoading(true)
+
     const { data, error } = await supabase
       .from('reservas')
       .select(
-        'id,nombre_cliente,apellidos_cliente,email_cliente,telefono_cliente,fecha_entrada,fecha_salida,num_huespedes,noches,tarifa,estado,estado_pago,origen,importe_total,importe_senal,token_cliente,notas_admin,created_at'
+        'id,codigo,nombre_cliente,apellidos_cliente,email_cliente,telefono_cliente,fecha_entrada,fecha_salida,num_huespedes,noches,tarifa,estado,estado_pago,origen,importe_total,importe_senal,token_cliente,notas_admin,created_at'
       )
       .order('fecha_entrada', { ascending: false })
 
-    if (!error) setAll(data ?? [])
+    if (!error) setAll((data ?? []) as ReservaAdmin[])
     setLoading(false)
   }, [])
 
@@ -141,10 +143,25 @@ export const ReservationsPage: React.FC = () => {
       if (getTabForReserva(r) !== tab) return false
       if (isInactiva(r)) return false
     }
+
     if (filterEstado !== 'ALL' && r.estado !== filterEstado) return false
     if (filterOrigen !== 'ALL' && r.origen !== filterOrigen) return false
-    const q = search.toLowerCase()
-    if (q && !`${r.nombre_cliente} ${r.apellidos_cliente} ${r.email_cliente}`.toLowerCase().includes(q)) return false
+
+    const q = search.toLowerCase().trim()
+    if (q) {
+      const hayMatch = [
+        r.codigo ?? '',
+        r.nombre_cliente ?? '',
+        r.apellidos_cliente ?? '',
+        r.email_cliente ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
+
+      if (!hayMatch) return false
+    }
+
     return true
   })
 
@@ -495,7 +512,12 @@ function ReservaRow({
                 </button>
               </div>
             )}
-            <p className="font-mono text-[10px] text-slate-400">{r.email_cliente}</p>
+
+            <p className="mt-0.5 font-mono text-[11px] font-semibold text-slate-400">
+              {r.codigo || `R-${r.id.slice(0, 8).toUpperCase()}`}
+            </p>
+
+            <p className="font-mono text-[10px] text-slate-500">{r.email_cliente}</p>
           </div>
         </div>
       </td>
@@ -644,7 +666,6 @@ function EditReservaModal({
       .update({
         fecha_entrada: form.fecha_entrada,
         fecha_salida: form.fecha_salida,
-        noches,
         num_huespedes: form.num_huespedes,
         email_cliente: form.email.trim().toLowerCase(),
         telefono_cliente: form.telefono.trim() || null,
@@ -655,7 +676,7 @@ function EditReservaModal({
       })
       .eq('id', reserva.id)
       .select(
-        'id,nombre_cliente,apellidos_cliente,email_cliente,telefono_cliente,fecha_entrada,fecha_salida,num_huespedes,noches,tarifa,estado,estado_pago,origen,importe_total,importe_senal,token_cliente,notas_admin,created_at'
+        'id,codigo,nombre_cliente,apellidos_cliente,email_cliente,telefono_cliente,fecha_entrada,fecha_salida,num_huespedes,noches,tarifa,estado,estado_pago,origen,importe_total,importe_senal,token_cliente,notas_admin,created_at'
       )
       .single()
 

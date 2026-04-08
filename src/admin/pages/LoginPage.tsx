@@ -85,7 +85,7 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <h2 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">
-            La Rasilla Admin
+            StayNexApp Admin RuralHouse
           </h2>
 
           <p className="mt-2 text-sm text-slate-500">

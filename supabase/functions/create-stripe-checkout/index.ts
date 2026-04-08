@@ -24,15 +24,27 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
-function resolveAppUrl(): string {
-  const configured = getRequiredEnv('APP_URL').replace(/\/$/, '');
+/**
+ * Resuelve la URL base para success_url y cancel_url de Stripe.
+ *
+ * Orden de precedencia:
+ *  1. appUrl enviado por el frontend en el body (permite que local devuelva a localhost)
+ *  2. Variable de entorno APP_URL configurada en los Secrets de Supabase
+ *
+ * Env vars necesarias en Supabase → Project Settings → Secrets:
+ *  APP_URL = https://casarural-v2.vercel.app   (URL pública de producción, sin barra final)
+ *
+ * Para desarrollo local, el frontend pasa window.location.origin automáticamente.
+ */
+function resolveAppUrl(appUrlFromBody?: string): string {
+  const raw = (appUrlFromBody || getRequiredEnv('APP_URL')).trim().replace(/\/$/, '');
   let parsed: URL;
-  try { parsed = new URL(configured); }
-  catch { throw new Error(`Invalid APP_URL: ${configured}`); }
+  try { parsed = new URL(raw); }
+  catch { throw new Error(`Invalid app URL: ${raw}`); }
 
   const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
   if (parsed.protocol !== 'https:' && !isLocalhost) {
-    throw new Error(`APP_URL must use https in non-local environments: ${configured}`);
+    throw new Error(`APP_URL must use https in non-local environments: ${raw}`);
   }
   return parsed.origin;
 }
@@ -45,14 +57,15 @@ serve(async (req) => {
     const supabaseUrl        = getRequiredEnv('SUPABASE_URL');
     const supabaseServiceKey = getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY');
     const stripeSecretKey    = getRequiredEnv('STRIPE_SECRET_KEY');
-    const appUrl             = resolveAppUrl();
 
-    let payload: { reservaId?: string };
+    let payload: { reservaId?: string; appUrl?: string };
     try { payload = await req.json(); }
     catch { return jsonResponse({ error: 'Invalid JSON body' }, 400); }
 
-    const { reservaId } = payload;
+    const { reservaId, appUrl: appUrlFromBody } = payload;
     if (!reservaId) return jsonResponse({ error: 'Missing reservaId' }, 400);
+
+    const appUrl = resolveAppUrl(appUrlFromBody);
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const stripe   = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });

@@ -382,7 +382,10 @@ export default function BookingPage() {
       const { data: checkout, error: checkoutError } = await supabase.functions.invoke(
         'create-stripe-checkout',
         {
-          body: { reservaId: preReserva.reserva_id },
+          body: {
+            reservaId: preReserva.reserva_id,
+            appUrl: window.location.origin,
+          },
         }
       );
 

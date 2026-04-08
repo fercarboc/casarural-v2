@@ -389,7 +389,7 @@ export const ActividadesPage: React.FC = () => {
   return (
     <div className="bg-white">
       <MetaTags
-        title="Actividades y planes | Casa rural La Rasilla | Valles Pasiegos"
+        title="Actividades y planes | Casa rural | Valles Pasiegos"
         description="Qué hacer cerca de La Rasilla: naturaleza, aventura, playas, cultura y balnearios a pocos minutos de tu casa rural en Cantabria."
       />
 

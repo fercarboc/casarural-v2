@@ -60,7 +60,13 @@ Deno.serve(async (req) => {
         checkin_time,
         checkout_time,
         non_refundable_discount_pct,
-        flexible_deposit_pct
+        flexible_deposit_pct,
+        legal_business_name,
+        legal_tax_id,
+        legal_address,
+        legal_email,
+        legal_phone,
+        legal_registry_info
       `)
       .eq('activa', true)
 

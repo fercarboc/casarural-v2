@@ -1,16 +1,27 @@
 // src/public/pages/Privacidad.tsx
 import React, { useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { usePublicProperty } from '../../shared/hooks/usePublicProperty'
 
 export function Privacidad() {
   useEffect(() => { window.scrollTo(0, 0) }, [])
+
+  const { property } = usePublicProperty()
+
+  // Datos del responsable — campos legales con fallback a campos generales
+  const responsable  = property?.legal_business_name ?? property?.nombre ?? ''
+  const actividad    = property ? `Alojamiento rural — ${property.nombre}` : ''
+  const domicilio    = property?.legal_address
+    ?? (property ? [property.direccion, property.localidad, property.provincia, property.pais].filter(Boolean).join(', ') : '')
+  const emailDPD     = property?.legal_email ?? property?.email ?? ''
+  const telefonoDPD  = property?.legal_phone ?? property?.telefono ?? ''
 
   return (
     <>
       <GlobalStyles />
       <div style={s.page}>
         <div style={s.hero}>
-          <p style={s.heroLabel}>La Rasilla · Casa Rural</p>
+          <p style={s.heroLabel}>Casa Rural</p>
           <h1 style={s.heroTitle}>Política de Privacidad</h1>
           <p style={s.heroSub}>Cómo tratamos tus datos personales</p>
         </div>
@@ -19,11 +30,11 @@ export function Privacidad() {
 
           <Section id="responsable" title="1. Responsable del tratamiento">
             <InfoTable rows={[
-              ['Responsable', 'Fernando Carbonell de la Rasilla'],
-              ['Actividad', 'Alojamiento rural — Casa Rural La Rasilla'],
-              ['Domicilio', 'Castillo Pedroso, Cantabria, España'],
-              ['Email de contacto / DPD', 'contacto@casarurallarasilla.com'],
-              ['Teléfono', '+34 690 288 707'],
+              ['Responsable',            responsable],
+              ['Actividad',              actividad],
+              ['Domicilio',              domicilio],
+              ['Email de contacto / DPD', emailDPD],
+              ['Teléfono',               telefonoDPD],
             ]} />
           </Section>
 
@@ -119,7 +130,9 @@ export function Privacidad() {
               ['Portabilidad', 'Recibir tus datos en formato estructurado y legible por máquina.'],
               ['Retirar consentimiento', 'Retirar el consentimiento dado en cualquier momento, sin efecto retroactivo.'],
             ]} />
-            <p>Para ejercer cualquiera de estos derechos, dirígete a: <a href="mailto:contacto@casarurallarasilla.com" style={s.link}>contacto@casarurallarasilla.com</a></p>
+            {emailDPD && (
+              <p>Para ejercer cualquiera de estos derechos, dirígete a: <a href={`mailto:${emailDPD}`} style={s.link}>{emailDPD}</a></p>
+            )}
             <p>Asimismo, tienes derecho a presentar una reclamación ante la <strong>Agencia Española de Protección de Datos (AEPD)</strong>: <a href="https://www.aepd.es" target="_blank" rel="noopener noreferrer" style={s.link}>www.aepd.es</a></p>
           </Section>
 
@@ -179,7 +192,7 @@ function InfoTable({ rows }: { rows: [string, string][] }) {
         {rows.map(([label, value], i) => (
           <tr key={i} style={i % 2 === 0 ? s.trEven : s.trOdd}>
             <td style={s.tdLabel}>{label}</td>
-            <td style={s.tdValue}>{value}</td>
+            <td style={s.tdValue}>{value || '—'}</td>
           </tr>
         ))}
       </tbody>

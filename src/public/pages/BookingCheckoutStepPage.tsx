@@ -91,7 +91,10 @@ export default function BookingCheckoutStepPage() {
       const { data: checkout, error: checkoutError } = await supabase.functions.invoke(
         'create-stripe-checkout',
         {
-          body: { reservaId: preReserva.reserva_id },
+          body: {
+            reservaId: preReserva.reserva_id,
+            appUrl: window.location.origin,  // permite que Stripe redirija al entorno correcto (local o prod)
+          },
         }
       )
 

@@ -52,7 +52,7 @@ export function ModalSolicitudPago({ reserva, onClose, onSuccess }: Props) {
       // 1 — Crear sesión Stripe
       const { data: checkout, error: checkoutError } = await supabase.functions.invoke(
         'create-stripe-checkout',
-        { body: { reservaId: reserva.id }, headers: authHeader }
+        { body: { reservaId: reserva.id, appUrl: window.location.origin }, headers: authHeader }
       )
       if (checkoutError) throw new Error((checkout as any)?.error ?? checkoutError.message)
       if (!checkout?.checkout_url) throw new Error('No se recibió enlace de pago de Stripe')

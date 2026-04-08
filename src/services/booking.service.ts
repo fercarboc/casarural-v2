@@ -232,7 +232,10 @@ export const bookingService = {
 
     // 2. Crear sesión de Stripe
     const { data: checkout, error: checkoutError } = await supabase.functions.invoke('create-stripe-checkout', {
-      body: { reservaId: preReserva.reserva_id },
+      body: {
+        reservaId: preReserva.reserva_id,
+        appUrl: typeof window !== 'undefined' ? window.location.origin : undefined,
+      },
     });
 
     if (checkoutError) throw new Error(`Error al crear el pago: ${checkoutError.message}`);

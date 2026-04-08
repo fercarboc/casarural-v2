@@ -87,8 +87,8 @@ export const AdminLayout: React.FC = () => {
             <Home size={16} className="text-white" />
           </div>
           <div>
-            <p className="text-base font-bold leading-tight text-white">La Rasilla</p>
-            <p className="text-[11px] leading-tight text-slate-500">StayNex Admin</p>
+            <p className="text-base font-bold leading-tight text-white">Admin Rural Hosue</p>
+            <p className="text-[11px] leading-tight text-slate-500">StayNexAppn</p>
           </div>
         </div>
 

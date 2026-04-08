@@ -31,4 +31,12 @@ export interface PublicProperty {
 
   non_refundable_discount_pct: number | null
   flexible_deposit_pct: number | null
+
+  // Datos legales para páginas de política de privacidad / aviso legal
+  legal_business_name: string | null
+  legal_tax_id: string | null
+  legal_address: string | null
+  legal_email: string | null
+  legal_phone: string | null
+  legal_registry_info: string | null
 }

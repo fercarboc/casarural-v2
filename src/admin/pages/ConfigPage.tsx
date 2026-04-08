@@ -364,7 +364,7 @@ export function ConfigPage() {
             value={property.site_title ?? ''}
             onChange={(e) => upd('site_title', e.target.value || null)}
             className={inputCls}
-            placeholder="Ej. Casa Rural La Rasilla / Grupo Valles Pasiegos"
+            placeholder="Ej. Casa Rural ......"
           />
         </Field>
 
@@ -394,7 +394,7 @@ export function ConfigPage() {
             value={property.logo_alt ?? ''}
             onChange={(e) => upd('logo_alt', e.target.value || null)}
             className={inputCls}
-            placeholder="Logo Casa Rural La Rasilla"
+            placeholder="Logo Casa Rural"
           />
         </Field>
 
@@ -742,7 +742,7 @@ export function ConfigPage() {
             value={property.resend_from_name ?? ''}
             onChange={(e) => upd('resend_from_name', e.target.value || null)}
             className={inputCls}
-            placeholder="Casa Rural La Rasilla"
+            placeholder="Casa Rural xxx"
           />
         </Field>
 

@@ -98,9 +98,20 @@ function normalizeReserva(raw: ReservaRaw): Reserva {
       ? Math.round((new Date(fecha_salida).getTime() - new Date(fecha_entrada).getTime()) / 86400000)
       : 0)
 
+  const importe_alojamiento = toNum(raw.importe_alojamiento)
+
+  // precio_noche no se guarda en el schema v2 → se deriva del importe / noches
+  const precio_noche = toNum(raw.precio_noche) ||
+    (noches > 0 ? Math.round((importe_alojamiento / noches) * 100) / 100 : 0)
+
+  // codigo no se genera en create-pre-reservation v2 → fallback a últimos 8 chars del ID
+  const rawId = toStr(raw.id)
+  const codigo = toStr(raw.codigo) ||
+    (rawId.length >= 8 ? rawId.replace(/-/g, '').slice(-8).toUpperCase() : rawId)
+
   return {
-    id:               toStr(raw.id),
-    codigo:           toStr(raw.codigo, '—'),
+    id:               rawId,
+    codigo,
     nombre,
     apellidos,
     email,
@@ -111,8 +122,8 @@ function normalizeReserva(raw: ReservaRaw): Reserva {
     noches,
     tarifa:           toStr(raw.tarifa, 'NO_REEMBOLSABLE'),
     temporada:        toStr(raw.temporada, 'BASE'),
-    precio_noche:     toNum(raw.precio_noche),
-    importe_alojamiento: toNum(raw.importe_alojamiento),
+    precio_noche,
+    importe_alojamiento,
     importe_extra,
     importe_limpieza: toNum(raw.importe_limpieza),
     descuento,
@@ -305,10 +316,7 @@ export default function ReservaConfirmada() {
 
       <div className="confirmed-page">
 
-        {/* ── Header minimalista ── */}
-        <header style={styles.header}>
-          <Link to="/" style={styles.logo}>La Rasilla</Link>
-        </header>
+        {/* Header lo proporciona PublicLayout — no duplicar aquí */}
 
         <main style={styles.main}>
 
@@ -606,20 +614,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     textDecoration: 'none',
     borderBottom: '1px solid #2D4A3E',
-  },
-  header: {
-    padding: '24px 48px',
-    borderBottom: '1px solid rgba(45,74,62,0.1)',
-    display: 'flex',
-    alignItems: 'center',
-  },
-  logo: {
-    fontFamily: "'Cormorant Garamond', serif",
-    fontSize: 22,
-    fontWeight: 600,
-    color: '#2D4A3E',
-    textDecoration: 'none',
-    letterSpacing: '0.02em',
   },
   main: {
     maxWidth: 900,

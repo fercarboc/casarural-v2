@@ -779,9 +779,20 @@ export const UnidadesPage: React.FC = () => {
                       )}
 
                       <div className="ml-auto flex items-center gap-1.5">
-                        <span className="rounded-md border border-slate-700 bg-[#0f1b2d] px-2 py-0.5 font-mono text-[10px] text-slate-300">
-                          ID: {u.slug}
-                        </span>
+                        {u.foto_portada ? (
+                          <div className="h-9 w-14 overflow-hidden rounded-md border border-slate-700 bg-[#0f1b2d] shrink-0">
+                            <img
+                              src={u.foto_portada}
+                              alt={u.nombre}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex h-9 w-14 items-center justify-center rounded-md border border-slate-700 bg-[#0f1b2d] shrink-0">
+                            <ImageIcon size={14} className="text-slate-600" />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1002,18 +1013,24 @@ export const UnidadesPage: React.FC = () => {
         </div>
 
         {/* ── Formulario crear/editar unidad ───────────────────────────────── */}
-        {showForm && (
-          <UnidadFormPanel
-            form={form}
-            setForm={setForm}
-            editingId={editingId}
-            saving={saving}
-            error={error}
-            onSave={handleSave}
-            onCancel={() => setShowForm(false)}
-          />
-        )}
       </div>
+
+      {/* ── Modal crear / editar unidad ────────────────────────────────────── */}
+      {showForm && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-slate-700 bg-[#08111f] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+            <UnidadFormPanel
+              form={form}
+              setForm={setForm}
+              editingId={editingId}
+              saving={saving}
+              error={error}
+              onSave={handleSave}
+              onCancel={() => setShowForm(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── Modal detalles unidad ───────────────────────────────────────────── */}
       {showDetailModal && detailUnit && (
@@ -1157,6 +1174,7 @@ function UnidadFormPanel({
             <div>
               <label className={lbl}>Nombre *</label>
               <input
+                autoFocus
                 value={form.nombre}
                 onChange={(e) => {
                   set('nombre', e.target.value)

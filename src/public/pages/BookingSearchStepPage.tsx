@@ -69,9 +69,12 @@ export default function BookingSearchStepPage() {
         if (propertyError) throw propertyError
         setProperty(propertyData)
 
+        // Siempre recargamos unidades desde la BD para evitar datos obsoletos
+        // (capacidades desactualizadas si se añaden/modifican unidades)
         const { data: unitsData, error: unitsError } = await supabase
           .from('unidades')
           .select('id, nombre, slug, capacidad_base, capacidad_maxima, orden, activa')
+          .eq('property_id', propertyData.id)
           .eq('activa', true)
           .order('orden', { ascending: true })
 
@@ -84,16 +87,48 @@ export default function BookingSearchStepPage() {
       }
     }
 
-    if (!property || units.length === 0) {
-      loadInitial()
-    } else {
-      setLoadingInit(false)
-    }
-  }, [property, units.length, setProperty, setUnits])
+    // Siempre recargar: no usar caché de sessionStorage para unidades/propiedad
+    loadInitial()
+  }, [setProperty, setUnits])
 
+  // Cargar disponibilidad día-a-día en cuanto tengamos propiedad y unidades
   useEffect(() => {
-    setAvailabilityByDate({})
-  }, [units.length])
+    if (!property?.id || units.length === 0) {
+      setAvailabilityByDate({})
+      return
+    }
+
+    const loadCalendar = async () => {
+      try {
+        const today = new Date()
+        const toDate = new Date(today.getFullYear(), today.getMonth() + 12, today.getDate())
+        const fromStr = today.toISOString().split('T')[0]
+        const toStr   = toDate.toISOString().split('T')[0]
+
+        const { data: calData, error: calError } = await supabase.functions.invoke(
+          'get-property-calendar',
+          { body: { property_id: property.id, from: fromStr, to: toStr } }
+        )
+
+        if (calError || !calData) return
+
+        const total: number = calData.total_units ?? 0
+        if (total === 0) return
+
+        const byDate: Record<string, { blocked: number; total: number }> = {}
+        for (const [date, blocked] of Object.entries(
+          calData.blocked_by_date as Record<string, number>
+        )) {
+          byDate[date] = { blocked, total }
+        }
+        setAvailabilityByDate(byDate)
+      } catch (err) {
+        console.error('Error loading calendar availability', err)
+      }
+    }
+
+    loadCalendar()
+  }, [property?.id, units.length, setAvailabilityByDate])
 
   const handleSelectDate = (date: Date) => {
     const iso = dateToISO(date)
@@ -112,6 +147,28 @@ export default function BookingSearchStepPage() {
         setCheckIn(iso)
         return
       }
+
+      // Verificar que ningún día dentro del rango esté completamente bloqueado
+      const totalUnits = units.length
+      if (totalUnits > 0) {
+        const start = new Date(checkIn + 'T00:00:00')
+        const end   = new Date(iso + 'T00:00:00')
+        const cur   = new Date(start)
+        cur.setDate(cur.getDate() + 1) // el día de entrada sí puede ser checkout de otro
+        while (cur < end) {
+          const key = cur.toISOString().split('T')[0]
+          const av  = availabilityByDate[key]
+          if (av && av.total > 0 && av.blocked >= av.total) {
+            setSearchError(
+              `No hay disponibilidad en algún día del rango seleccionado (${key}). Elige otras fechas.`
+            )
+            setCheckOut(null)
+            return
+          }
+          cur.setDate(cur.getDate() + 1)
+        }
+      }
+
       setCheckOut(iso)
       resetSearchResults()
       setSearchError(null)

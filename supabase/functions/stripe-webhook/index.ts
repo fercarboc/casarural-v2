@@ -1,10 +1,4 @@
-// supabase/functions/stripe-webhook/index.ts  [v2]
-// Confirma reservas tras pago. Al confirmar:
-// - actualiza reserva
-// - inserta pago (idempotente por stripe_payment_intent)
-// - crea bloqueos por unidad
-// - elimina reservation_holds
-// - marca expiradas si checkout.session.expired
+// supabase/functions/stripe-webhook/index.ts
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'npm:stripe@17';
@@ -45,11 +39,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // =========================================================
-    // checkout.session.completed
-    // =========================================================
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
+
+      console.log('checkout.session.completed recibido', {
+        session_id: session.id,
+        metadata: session.metadata,
+        payment_intent: session.payment_intent,
+        amount_total: session.amount_total,
+      });
+
       const reservaId = session.metadata?.reserva_id;
       const esSenal = session.metadata?.es_senal === 'true';
 
@@ -71,29 +70,29 @@ Deno.serve(async (req) => {
       const stripeSessionId = session.id;
       const importePagado = round2((session.amount_total ?? 0) / 100);
 
-      // ---------------------------------------------------------
-      // 1. Idempotencia REAL por stripe_payment_intent
-      // ---------------------------------------------------------
+      // 1. Idempotencia por payment_intent
       const { data: pagoExistente, error: pagoExistenteError } = await supabase
         .from('pagos')
         .select('id, reserva_id')
         .eq('stripe_payment_intent', paymentIntentId)
         .maybeSingle();
 
-      if (pagoExistenteError) throw pagoExistenteError;
+      if (pagoExistenteError) {
+        console.error('Error comprobando idempotencia pagos:', pagoExistenteError);
+        throw pagoExistenteError;
+      }
 
       if (pagoExistente?.id) {
         console.log(`Pago ya procesado por idempotencia: ${paymentIntentId}`);
         return new Response('ok', { status: 200 });
       }
 
-      // ---------------------------------------------------------
       // 2. Leer reserva
-      // ---------------------------------------------------------
       const { data: reservaActual, error: reservaError } = await supabase
         .from('reservas')
         .select(`
           id,
+          codigo,
           estado,
           estado_pago,
           property_id,
@@ -106,14 +105,16 @@ Deno.serve(async (req) => {
           importe_total,
           importe_senal,
           noches,
-          nif_factura,
-          razon_social,
-          direccion_factura
+          nif_cliente,
+          direccion_fiscal
         `)
         .eq('id', reservaId)
         .single();
 
-      if (reservaError) throw reservaError;
+      if (reservaError) {
+        console.error('Error leyendo reserva:', reservaError);
+        throw reservaError;
+      }
 
       if (!reservaActual) {
         console.error('Reserva no encontrada:', reservaId);
@@ -125,9 +126,7 @@ Deno.serve(async (req) => {
         return new Response('ok', { status: 200 });
       }
 
-      // ---------------------------------------------------------
       // 3. Actualizar reserva
-      // ---------------------------------------------------------
       const nuevoEstadoPago = esSenal ? 'PARTIAL' : 'PAID';
 
       const { error: updateReservaError } = await supabase
@@ -141,11 +140,12 @@ Deno.serve(async (req) => {
         })
         .eq('id', reservaId);
 
-      if (updateReservaError) throw updateReservaError;
+      if (updateReservaError) {
+        console.error('Error actualizando reserva:', updateReservaError);
+        throw updateReservaError;
+      }
 
-      // ---------------------------------------------------------
       // 4. Insertar pago
-      // ---------------------------------------------------------
       const tipoPago = esSenal ? 'SENAL' : 'TOTAL';
 
       const { error: pagoInsertError } = await supabase
@@ -163,37 +163,42 @@ Deno.serve(async (req) => {
           notas: `Checkout Session ${stripeSessionId}`,
         });
 
-      if (pagoInsertError) throw pagoInsertError;
+      if (pagoInsertError) {
+        console.error('Error insertando pago:', pagoInsertError);
+        throw pagoInsertError;
+      }
 
-      // ---------------------------------------------------------
-      // 5. Leer reserva_unidades
-      // ---------------------------------------------------------
+      // 5. Leer unidades de la reserva
       const { data: reservaUnidades, error: ruError } = await supabase
         .from('reserva_unidades')
         .select('unidad_id')
         .eq('reserva_id', reservaId);
 
-      if (ruError) throw ruError;
+      if (ruError) {
+        console.error('Error leyendo reserva_unidades:', ruError);
+        throw ruError;
+      }
 
       if (!reservaUnidades?.length) {
         throw new Error(`La reserva ${reservaId} no tiene reserva_unidades`);
       }
 
-      const unidadIds = reservaUnidades.map((ru: any) => ru.unidad_id);
+      const unidadIds = reservaUnidades.map((ru: { unidad_id: string }) => ru.unidad_id);
 
-      // ---------------------------------------------------------
-      // 6. Reintentos seguros: borrar bloqueos previos de esta reserva
-      // ---------------------------------------------------------
-      await supabase
+      // 6. Borrar bloqueos previos si existen
+      const { error: deleteBloqueosPreviosError } = await supabase
         .from('bloqueos')
         .delete()
         .eq('origen', 'RESERVA')
         .like('motivo', `%${reservaId}%`);
 
-      // ---------------------------------------------------------
-      // 7. Crear bloqueos definitivos por unidad
-      // ---------------------------------------------------------
-      const bloqueosNuevos = reservaUnidades.map((ru: any) => ({
+      if (deleteBloqueosPreviosError) {
+        console.error('Error borrando bloqueos previos:', deleteBloqueosPreviosError);
+        throw deleteBloqueosPreviosError;
+      }
+
+      // 7. Crear bloqueos definitivos
+      const bloqueosNuevos = reservaUnidades.map((ru: { unidad_id: string }) => ({
         property_id: reservaActual.property_id,
         unidad_id: ru.unidad_id,
         fecha_inicio: reservaActual.fecha_entrada,
@@ -206,11 +211,12 @@ Deno.serve(async (req) => {
         .from('bloqueos')
         .insert(bloqueosNuevos);
 
-      if (bloqueosInsertError) throw bloqueosInsertError;
+      if (bloqueosInsertError) {
+        console.error('Error insertando bloqueos:', bloqueosInsertError);
+        throw bloqueosInsertError;
+      }
 
-      // ---------------------------------------------------------
-      // 8. Eliminar reservation_holds de esas unidades/rango
-      // ---------------------------------------------------------
+      // 8. Eliminar holds
       const { error: holdsDeleteError } = await supabase
         .from('reservation_holds')
         .delete()
@@ -219,11 +225,12 @@ Deno.serve(async (req) => {
         .eq('fecha_fin', reservaActual.fecha_salida)
         .in('unidad_id', unidadIds);
 
-      if (holdsDeleteError) throw holdsDeleteError;
+      if (holdsDeleteError) {
+        console.error('Error borrando holds:', holdsDeleteError);
+        throw holdsDeleteError;
+      }
 
-      // ---------------------------------------------------------
-      // 9. Email confirmación
-      // ---------------------------------------------------------
+      // 9. Email confirmación (best-effort)
       fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
         method: 'POST',
         headers: {
@@ -238,105 +245,146 @@ Deno.serve(async (req) => {
         }),
       }).catch((err: unknown) => console.error('Email send error:', err));
 
-      // ---------------------------------------------------------
-      // 10. Auto-factura (sólo en pago total, best-effort)
-      // ---------------------------------------------------------
+      // 10. Auto-factura en pago total
       if (!esSenal) {
-        (async () => {
-          try {
-            const totalFactura = Number(reservaActual.importe_total ?? 0);
-            if (totalFactura <= 0) return;
+        try {
+          const totalFactura = Number(reservaActual.importe_total ?? 0);
 
+          if (totalFactura > 0) {
             const base = Math.round((totalFactura / 1.1) * 100) / 100;
-            const iva  = Math.round((totalFactura - base) * 100) / 100;
+            const iva = Math.round((totalFactura - base) * 100) / 100;
 
-            const { data: numRpc } = await supabase.rpc('generar_numero_factura');
-            let numero: string;
-            if (numRpc) {
-              numero = numRpc as string;
-            } else {
-              const year = new Date().getFullYear();
-              const { data: last } = await supabase
-                .from('facturas').select('numero')
-                .or(`numero.like.FAC-${year}-%`)
-                .order('created_at', { ascending: false })
-                .limit(1).maybeSingle();
-              const parts = ((last as any)?.numero ?? '').split('-');
-              const seq = (parseInt(parts[parts.length - 1] ?? '0') || 0) + 1;
-              numero = `FAC-${year}-${String(seq).padStart(4, '0')}`;
-            }
+            let numeroFactura: string | null = null;
 
-            const nombre = reservaActual.razon_social ||
-              `${reservaActual.nombre_cliente ?? ''} ${reservaActual.apellidos_cliente ?? ''}`.trim();
-
-            await supabase.from('facturas').insert({
-              numero,
-              reserva_id:     reservaId,
-              nombre,
-              nif:            reservaActual.nif_factura ?? null,
-              direccion:      reservaActual.direccion_factura ?? null,
-              concepto:       'Hospedaje Casa Rural',
-              base_imponible: base,
-              iva_porcentaje: 10,
-              iva_importe:    iva,
-              total:          totalFactura,
-              estado:         'EMITIDA',
+            const { data: numRpc, error: rpcError } = await supabase.rpc('generar_numero_factura', {
+              p_property_id: reservaActual.property_id,
             });
 
-            console.log(`Factura auto-generada para reserva ${reservaId}: ${numero}`);
-          } catch (invoiceErr) {
-            console.error('Error al auto-generar factura:', invoiceErr);
+            if (rpcError) {
+              console.error('Error RPC generar_numero_factura:', rpcError);
+            }
+
+            if (numRpc) {
+              numeroFactura = numRpc as string;
+            } else {
+              const year = new Date().getFullYear();
+
+              const { data: last, error: lastFacturaError } = await supabase
+                .from('facturas')
+                .select('numero_factura')
+                .eq('property_id', reservaActual.property_id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (lastFacturaError) {
+                console.error('Error obteniendo última factura:', lastFacturaError);
+              }
+
+              const lastNumero = last?.numero_factura ?? '';
+              const parts = lastNumero.split('-');
+              const seq = (parseInt(parts[parts.length - 1] ?? '0') || 0) + 1;
+              numeroFactura = `FAC-${year}-${String(seq).padStart(4, '0')}`;
+            }
+
+            const nombreFactura =
+              `${reservaActual.nombre_cliente ?? ''} ${reservaActual.apellidos_cliente ?? ''}`.trim();
+
+            const { error: facturaInsertError } = await supabase
+              .from('facturas')
+              .insert({
+                reserva_id: reservaId,
+                property_id: reservaActual.property_id,
+                numero_factura: numeroFactura,
+                nombre_cliente: nombreFactura,
+                nif_cliente: reservaActual.nif_cliente ?? null,
+                direccion_cliente: reservaActual.direccion_fiscal ?? null,
+                base_imponible: base,
+                iva_porcentaje: 10,
+                cuota_iva: iva,
+                total: totalFactura,
+                lineas: [
+                  {
+                    concepto: 'Hospedaje Casa Rural',
+                    cantidad: 1,
+                    base_imponible: base,
+                    iva_porcentaje: 10,
+                    cuota_iva: iva,
+                    total: totalFactura,
+                  },
+                ],
+                estado: 'EMITIDA',
+                fecha_emision: new Date().toISOString().slice(0, 10),
+              });
+
+            if (facturaInsertError) {
+              console.error('Error insertando factura:', facturaInsertError);
+            } else {
+              console.log(`Factura auto-generada para reserva ${reservaId}: ${numeroFactura}`);
+            }
           }
-        })();
+        } catch (invoiceErr) {
+          console.error('Error al auto-generar factura:', invoiceErr);
+        }
       }
 
       console.log(`Reserva ${reservaId} confirmada correctamente`);
     }
 
-    // =========================================================
-    // checkout.session.expired
-    // =========================================================
     if (event.type === 'checkout.session.expired') {
       const session = event.data.object as Stripe.Checkout.Session;
       const reservaId = session.metadata?.reserva_id;
 
       if (reservaId) {
-        const { data: reservaActual } = await supabase
+        const { data: reservaActual, error: reservaActualError } = await supabase
           .from('reservas')
           .select('id, property_id, fecha_entrada, fecha_salida')
           .eq('id', reservaId)
           .maybeSingle();
 
-        await supabase
+        if (reservaActualError) {
+          console.error('Error leyendo reserva para expired:', reservaActualError);
+        }
+
+        const { error: reservaExpiredError } = await supabase
           .from('reservas')
           .update({ estado: 'EXPIRED' })
           .eq('id', reservaId)
           .eq('estado', 'PENDING_PAYMENT');
 
+        if (reservaExpiredError) {
+          console.error('Error marcando reserva como EXPIRED:', reservaExpiredError);
+        }
+
         if (reservaActual) {
-          const { data: reservaUnidades } = await supabase
+          const { data: reservaUnidades, error: reservaUnidadesError } = await supabase
             .from('reserva_unidades')
             .select('unidad_id')
             .eq('reserva_id', reservaId);
 
-          const unidadIds = (reservaUnidades ?? []).map((ru: any) => ru.unidad_id);
+          if (reservaUnidadesError) {
+            console.error('Error leyendo reserva_unidades en expired:', reservaUnidadesError);
+          }
+
+          const unidadIds = (reservaUnidades ?? []).map((ru: { unidad_id: string }) => ru.unidad_id);
 
           if (unidadIds.length) {
-            await supabase
+            const { error: deleteHoldsExpiredError } = await supabase
               .from('reservation_holds')
               .delete()
               .eq('property_id', reservaActual.property_id)
               .eq('fecha_inicio', reservaActual.fecha_entrada)
               .eq('fecha_fin', reservaActual.fecha_salida)
               .in('unidad_id', unidadIds);
+
+            if (deleteHoldsExpiredError) {
+              console.error('Error borrando holds en expired:', deleteHoldsExpiredError);
+            }
           }
         }
       }
     }
 
-    // =========================================================
-    // payment_intent.payment_failed
-    // =========================================================
     if (event.type === 'payment_intent.payment_failed') {
       const pi = event.data.object as Stripe.PaymentIntent;
       const reservaId = pi.metadata?.reserva_id;

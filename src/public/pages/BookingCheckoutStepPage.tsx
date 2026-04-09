@@ -66,8 +66,9 @@ export default function BookingCheckoutStepPage() {
         num_huespedes: guests,
         tarifa: rateType === 'NON_REFUNDABLE' ? 'NO_REEMBOLSABLE' : 'FLEXIBLE',
         unidades: selectedCombination.unidades.map((u) => ({
-          unidad_id: u.unidad_id,
-          num_huespedes: u.num_huespedes_asignados,
+          unidad_id:      u.unidad_id,
+          num_huespedes:  u.num_huespedes_asignados,
+          extras_manuales: u.extras_asignados,   // preservar distribución de suggest-combinations
         })),
         guestData: {
           nombre_cliente: form.nombre,

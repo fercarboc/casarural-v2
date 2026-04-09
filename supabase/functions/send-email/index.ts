@@ -159,7 +159,8 @@ serve(async (req) => {
           tarifa,
           importe_total,
           importe_senal,
-          token_cliente
+          token_cliente,
+          estado_pago
         `)
         .eq('id', reservation_id)
         .single()
@@ -215,14 +216,43 @@ serve(async (req) => {
       }
     }
 
-    // ── Remitente desde la propiedad ────────────────────────────────────────
+    // ── Unidades de la reserva ──────────────────────────────────────────────
+    let unitSummary = ''
+
+    if (reservation_id) {
+      const { data: ruData, error: ruError } = await supabase
+        .from('reserva_unidades')
+        .select('unidad_id, unidades(nombre)')
+        .eq('reserva_id', reservation_id)
+
+      if (ruError) {
+        console.error('send-email reserva_unidades query error:', ruError)
+      }
+
+      const unitNames = (ruData ?? [])
+        .map((ru: any) => ru.unidades?.nombre ?? '')
+        .filter(Boolean)
+      unitSummary = unitNames.join(' + ')
+    }
+
+    // ── Remitente y datos de la propiedad ───────────────────────────────────
     let fromEmail = 'noreply@casarurallarasilla.com'
     let fromName = 'La Rasilla'
+    let propVars: Record<string, string> = {
+      property_name: 'La Rasilla',
+      property_tagline: '',
+      property_address: '',
+      property_phone: '',
+      property_email: '',
+      checkin_time: '16:00',
+      checkout_time: '11:00',
+      cancellation_policy_summary: '',
+    }
 
     if (resolvedPropertyId) {
       const { data: prop, error: propError } = await supabase
         .from('properties')
-        .select('resend_from_email, resend_from_name, email, nombre')
+        .select('resend_from_email, resend_from_name, email, nombre, descripcion, direccion, localidad, telefono, checkin_time, checkout_time, politica_cancelacion')
         .eq('id', resolvedPropertyId)
         .single()
 
@@ -233,13 +263,31 @@ serve(async (req) => {
       if (prop) {
         fromEmail = prop.resend_from_email ?? prop.email ?? fromEmail
         fromName = prop.resend_from_name ?? prop.nombre ?? fromName
+        propVars = {
+          property_name: str(prop.nombre, fromName),
+          property_tagline: str(prop.descripcion),
+          property_address: [prop.direccion, prop.localidad].filter(Boolean).join(', '),
+          property_phone: str(prop.telefono),
+          property_email: str(prop.email ?? prop.resend_from_email),
+          checkin_time: str(prop.checkin_time, '16:00'),
+          checkout_time: str(prop.checkout_time, '11:00'),
+          cancellation_policy_summary: str(prop.politica_cancelacion),
+        }
       }
     }
 
     // ── Variables finales ───────────────────────────────────────────────────
+    const bookingUrl = reservaVars.booking_url ?? ''
     const vars = {
       guest_name: str(to_name),
       ...reservaVars,
+      ...propVars,
+      unit_summary: unitSummary,
+      amount_paid: reservaVars.senal_amount ?? '',
+      amount_due: reservaVars.resto_amount ?? '',
+      rate_name: reservaVars.rate_type ?? '',
+      change_request_url: bookingUrl,
+      cancel_request_url: bookingUrl,
       ...extra_vars,
     }
 

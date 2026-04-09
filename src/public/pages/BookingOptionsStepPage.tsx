@@ -12,6 +12,64 @@ import { nightsBetween } from '../booking/bookingFlow.utils'
 type Combinacion = SuggestedCombination
 type UnidadCombo = SuggestedUnit
 
+// ─── Miniaturas de unidades ───────────────────────────────────────────────────
+
+interface UnitCoverMap {
+  [unidad_id: string]: string | null
+}
+
+function CombinationUnitPhotos({
+  unidades,
+  coverMap,
+}: {
+  unidades: UnidadCombo[]
+  coverMap: UnitCoverMap
+}) {
+  const visible = unidades.slice(0, 4)
+
+  return (
+    <div className="mt-3 border-t border-stone-100 pt-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+        Alojamientos incluidos en esta combinación
+      </p>
+      <div className="flex gap-2">
+        {visible.map((u) => {
+          const url = coverMap[u.unidad_id]
+          return (
+            <div key={u.unidad_id} className="flex flex-col items-center gap-1" style={{ width: 80 }}>
+              <div className="h-14 w-20 overflow-hidden rounded-lg bg-stone-100 shrink-0">
+                {url ? (
+                  <img
+                    src={url}
+                    alt={u.nombre}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-stone-300">
+                    <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 21h18M5.25 3h13.5A2.25 2.25 0 0121 5.25v13.5A2.25 2.25 0 0118.75 21H5.25A2.25 2.25 0 013 18.75V5.25A2.25 2.25 0 015.25 3z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <span className="w-20 truncate text-center text-[10px] text-stone-500">{u.nombre}</span>
+            </div>
+          )
+        })}
+        {unidades.length > 4 && (
+          <div className="flex flex-col items-center gap-1" style={{ width: 80 }}>
+            <div className="flex h-14 w-20 items-center justify-center rounded-lg bg-stone-100 text-xs font-bold text-stone-400">
+              +{unidades.length - 4}
+            </div>
+            <span className="w-20 text-center text-[10px] text-stone-400">más</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function BookingOptionsStepPage() {
   const navigate = useNavigate()
 
@@ -31,6 +89,32 @@ export default function BookingOptionsStepPage() {
 
   const [loadingPrice, setLoadingPrice] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [coverMap, setCoverMap] = useState<UnitCoverMap>({})
+
+  // Cargar foto de portada de cada unidad que aparece en las sugerencias
+  useEffect(() => {
+    if (!suggestions.length) return
+
+    const allUnitIds = Array.from(
+      new Set((suggestions as Combinacion[]).flatMap((c) => c.unidades.map((u) => u.unidad_id)))
+    )
+
+    supabase
+      .from('unidad_fotos')
+      .select('unidad_id, public_url, es_portada, orden')
+      .in('unidad_id', allUnitIds)
+      .order('orden', { ascending: true })
+      .then(({ data }: { data: { unidad_id: string; public_url: string; es_portada: boolean; orden: number | null }[] | null }) => {
+        if (!data) return
+        const map: UnitCoverMap = {}
+        for (const id of allUnitIds) {
+          const fotos = data.filter((f: { unidad_id: string }) => f.unidad_id === id)
+          const portada = fotos.find((f: { es_portada: boolean }) => f.es_portada) ?? fotos[0] ?? null
+          map[id] = portada?.public_url ?? null
+        }
+        setCoverMap(map)
+      })
+  }, [suggestions])
 
   const nights = useMemo(() => nightsBetween(checkIn, checkOut), [checkIn, checkOut])
 
@@ -212,6 +296,9 @@ export default function BookingOptionsStepPage() {
                           </div>
                         ))}
                       </div>
+
+                      {/* Miniaturas de fotos */}
+                      <CombinationUnitPhotos unidades={combo.unidades} coverMap={coverMap} />
                     </div>
 
                     <div className="shrink-0 text-right">

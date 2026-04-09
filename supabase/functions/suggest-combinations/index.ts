@@ -79,16 +79,19 @@ serve(async (req) => {
       );
     }
 
-    // Filtrar ocupadas
+    // Filtrar ocupadas — misma lógica que check-availability
     const ids = unidades.map(u => u.id);
+
+    // Reservas CONFIRMED + PENDING_PAYMENT (igual que check-availability)
     const { data: resOcupadas } = await supabase
       .from("reserva_unidades")
       .select("unidad_id, reservas!inner(fecha_entrada, fecha_salida, estado)")
       .in("unidad_id", ids)
-      .eq("reservas.estado", "CONFIRMED")
+      .in("reservas.estado", ["CONFIRMED", "PENDING_PAYMENT"])
       .lt("reservas.fecha_entrada", fecha_salida)
       .gt("reservas.fecha_salida", fecha_entrada);
 
+    // Bloqueos (manuales + iCal)
     const { data: bloqOcupados } = await supabase
       .from("bloqueos")
       .select("unidad_id")
@@ -96,9 +99,19 @@ serve(async (req) => {
       .lt("fecha_inicio", fecha_salida)
       .gt("fecha_fin", fecha_entrada);
 
+    // Reservation holds activos (pre-reservas en proceso de pago)
+    const { data: holdsActivos } = await supabase
+      .from("reservation_holds")
+      .select("unidad_id")
+      .in("unidad_id", ids)
+      .gt("expires_at", new Date().toISOString())
+      .lt("fecha_inicio", fecha_salida)
+      .gt("fecha_fin", fecha_entrada);
+
     const ocupadas = new Set<string>();
-    (resOcupadas ?? []).forEach((r: any) => ocupadas.add(r.unidad_id));
-    (bloqOcupados ?? []).forEach((b: any) => ocupadas.add(b.unidad_id));
+    (resOcupadas   ?? []).forEach((r: any) => ocupadas.add(r.unidad_id));
+    (bloqOcupados  ?? []).forEach((b: any) => ocupadas.add(b.unidad_id));
+    (holdsActivos  ?? []).forEach((h: any) => ocupadas.add(h.unidad_id));
     console.log("[5] Ocupadas:", [...ocupadas]);
 
     const disponibles = unidades.filter(u => !ocupadas.has(u.id));
@@ -252,15 +265,20 @@ serve(async (req) => {
       });
     }
 
-    // Ordenar
+    // ── Ordenar ─────────────────────────────────────────────────────────────
+    // 1. exceso_capacidad ASC — combinaciones exactas antes que sobredimensionadas
+    // 2. num_unidades ASC     — menos unidades (menos logística)
+    // 3. importe_total ASC    — más barata primero
     resultados.sort((a, b) => {
-      if (a.es_sin_extras !== b.es_sin_extras) return a.es_sin_extras ? -1 : 1;
-      if (a.extras_total  !== b.extras_total)  return a.extras_total - b.extras_total;
-      if (a.num_unidades  !== b.num_unidades)  return a.num_unidades - b.num_unidades;
+      if (a.exceso_capacidad !== b.exceso_capacidad) return a.exceso_capacidad - b.exceso_capacidad;
+      if (a.num_unidades     !== b.num_unidades)     return a.num_unidades - b.num_unidades;
       return a.importe_total - b.importe_total;
     });
 
-    console.log(`[8] Resultado: ${resultados.length} combinaciones válidas`);
+    console.log(`[8] ${resultados.length} combinaciones válidas`);
+    console.log("[8] Ranking:", resultados.map((r, i) =>
+      `#${i+1} [${r.unidades.map((u: any) => u.nombre).join("+")}] exceso=${r.exceso_capacidad} units=${r.num_unidades} total=${r.importe_total}`
+    ));
     console.log("[8b] Rechazadas:", JSON.stringify(debugRechazadas));
 
     return new Response(
@@ -269,8 +287,8 @@ serve(async (req) => {
         debug_rechazadas: debugRechazadas,
         resumen: {
           total:           resultados.length,
-          sin_extras:      resultados.filter(c => c.es_sin_extras).length,
-          con_extras:      resultados.filter(c => !c.es_sin_extras).length,
+          sin_extras:      resultados.filter((c: any) => c.es_sin_extras).length,
+          con_extras:      resultados.filter((c: any) => !c.es_sin_extras).length,
           min_precio:      resultados[0]?.importe_total ?? null,
           recomendada_idx: 0,
         },

@@ -193,7 +193,9 @@ export function BookingFlowProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      // availabilityByDate no se persiste — siempre se recarga desde el servidor
+      const { availabilityByDate: _ignored, ...toPersist } = state
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(toPersist))
     } catch {
       // ignore storage errors
     }

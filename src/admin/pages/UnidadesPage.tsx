@@ -780,7 +780,7 @@ export const UnidadesPage: React.FC = () => {
 
                       <div className="ml-auto flex items-center gap-1.5">
                         {u.foto_portada ? (
-                          <div className="h-9 w-14 overflow-hidden rounded-md border border-slate-700 bg-[#0f1b2d] shrink-0">
+                          <div className="h-14 w-20 overflow-hidden rounded-lg border border-slate-700 bg-[#0f1b2d] shrink-0">
                             <img
                               src={u.foto_portada}
                               alt={u.nombre}
@@ -789,8 +789,8 @@ export const UnidadesPage: React.FC = () => {
                             />
                           </div>
                         ) : (
-                          <div className="flex h-9 w-14 items-center justify-center rounded-md border border-slate-700 bg-[#0f1b2d] shrink-0">
-                            <ImageIcon size={14} className="text-slate-600" />
+                          <div className="flex h-14 w-20 items-center justify-center rounded-lg border border-slate-700 bg-[#0f1b2d] shrink-0">
+                            <ImageIcon size={16} className="text-slate-600" />
                           </div>
                         )}
                       </div>
@@ -1196,7 +1196,7 @@ function UnidadFormPanel({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
             <div className="md:col-span-1">
               <label className={lbl}>Tipo</label>
               <select
@@ -1252,6 +1252,18 @@ function UnidadFormPanel({
                 min={0}
                 value={form.num_banos}
                 onChange={(e) => set('num_banos', e.target.value)}
+                className={input}
+              />
+            </div>
+
+            <div>
+              <label className={lbl}>m²</label>
+              <input
+                type="number"
+                min={0}
+                value={form.superficie_m2}
+                onChange={(e) => set('superficie_m2', e.target.value)}
+                placeholder="—"
                 className={input}
               />
             </div>

@@ -777,25 +777,24 @@ export const UnidadesPage: React.FC = () => {
                           <span className="text-xs font-medium font-mono">{u.superficie_m2} m²</span>
                         </div>
                       )}
-
-                      <div className="ml-auto flex items-center gap-1.5">
-                        {u.foto_portada ? (
-                          <div className="h-14 w-20 overflow-hidden rounded-lg border border-slate-700 bg-[#0f1b2d] shrink-0">
-                            <img
-                              src={u.foto_portada}
-                              alt={u.nombre}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          </div>
-                        ) : (
-                          <div className="flex h-14 w-20 items-center justify-center rounded-lg border border-slate-700 bg-[#0f1b2d] shrink-0">
-                            <ImageIcon size={16} className="text-slate-600" />
-                          </div>
-                        )}
-                      </div>
                     </div>
                   </div>
+
+                  {/* Foto portada — alineada con el card de precios */}
+                  {u.foto_portada ? (
+                    <div className="hidden h-16 w-24 shrink-0 overflow-hidden rounded-xl border border-slate-700 bg-[#0f1b2d] lg:block">
+                      <img
+                        src={u.foto_portada}
+                        alt={u.nombre}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : (
+                    <div className="hidden h-16 w-24 shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-[#0f1b2d] lg:flex">
+                      <ImageIcon size={16} className="text-slate-600" />
+                    </div>
+                  )}
 
                   {/* Prices Preview */}
                   <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-[#0f1b2d] p-3">

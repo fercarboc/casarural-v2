@@ -73,6 +73,25 @@ interface Reserva {
   created_at: string
 }
 
+/** Normaliza una fila cruda de la DB (esquema v2) al interface Reserva local. */
+function normalizeReserva(r: any): Reserva {
+  const nombre    = r.nombre_cliente    ?? r.nombre    ?? ''
+  const apellidos = r.apellidos_cliente ?? r.apellidos ?? ''
+  const email     = r.email_cliente     ?? r.email     ?? ''
+  return {
+    ...r,
+    nombre,
+    apellidos,
+    email,
+    telefono:         r.telefono_cliente ?? r.telefono,
+    total:            Number(r.importe_total    ?? r.total          ?? 0),
+    importe_extra:    Number(r.importe_extras   ?? r.importe_extra  ?? 0),
+    descuento:        Number(r.descuento_aplicado ?? r.descuento    ?? 0),
+    importe_pagado:   Number(r.importe_pagado   ?? 0),
+    codigo: r.codigo || `R-${(r.id ?? '').replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+  }
+}
+
 interface Huesped {
   id: string
   nombre: string
@@ -160,31 +179,35 @@ export const CustomersPage: React.FC = () => {
       }
 
       for (const r of reservas ?? []) {
-        if (!map.has(r.email)) {
-          map.set(r.email, {
+        const nr    = normalizeReserva(r)
+        const email = nr.email || r.email_cliente || r.email || ''
+        if (!email) continue
+
+        if (!map.has(email)) {
+          map.set(email, {
             property_id: r.property_id,
-            email: r.email,
-            nombre: `${r.nombre} ${r.apellidos}`.trim(),
-            telefono: r.telefono,
+            email,
+            nombre: `${nr.nombre} ${nr.apellidos}`.trim() || 'Cliente sin nombre',
+            telefono: nr.telefono,
             consultas: [],
             reservas: [],
             ultimo_contacto: r.created_at,
           })
         }
 
-        const entry = map.get(r.email)!
-        entry.reservas.push(r)
+        const entry = map.get(email)!
+        entry.reservas.push(nr)
 
         if (!entry.property_id && r.property_id) {
           entry.property_id = r.property_id
         }
 
-        if (!entry.telefono && r.telefono) {
-          entry.telefono = r.telefono
+        if (!entry.telefono && nr.telefono) {
+          entry.telefono = nr.telefono
         }
 
-        if (r.nombre && r.apellidos) {
-          entry.nombre = `${r.nombre} ${r.apellidos}`.trim()
+        if (nr.nombre && nr.apellidos) {
+          entry.nombre = `${nr.nombre} ${nr.apellidos}`.trim()
         }
 
         if (r.created_at > entry.ultimo_contacto) {
@@ -251,7 +274,8 @@ export const CustomersPage: React.FC = () => {
     clientes: contactos.filter((c) => c.reservas.length > 0).length,
     ingresos: contactos
       .flatMap((c) => c.reservas)
-      .reduce((s, r) => s + Number(r.importe_pagado), 0),
+      .filter((r) => r.estado !== 'CANCELLED' && r.estado !== 'EXPIRED')
+      .reduce((s, r) => s + Number(r.total), 0),
   }
 
   return (
@@ -496,7 +520,11 @@ function ContactDetail({
     const tel = editTelefono.trim() || null
 
     await Promise.all([
-      supabase.from('reservas').update({ nombre, apellidos, telefono: tel }).eq('email', c.email),
+      supabase.from('reservas').update({
+        nombre_cliente: nombre,
+        apellidos_cliente: apellidos,
+        telefono_cliente: tel,
+      }).eq('email_cliente', c.email),
       supabase.from('consultas').update({ nombre: trimmed, telefono: tel }).eq('email', c.email),
     ])
 
@@ -508,7 +536,7 @@ function ContactDetail({
   const handleDelete = async () => {
     setDeleting(true)
     await Promise.all([
-      supabase.from('reservas').delete().eq('email', c.email),
+      supabase.from('reservas').delete().eq('email_cliente', c.email),
       supabase.from('consultas').delete().eq('email', c.email),
     ])
     setDeleting(false)

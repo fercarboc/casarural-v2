@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Selector de combinaciones — casarural-v2</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ff: 'DM Sans', sans-serif;
+    --fm: 'DM Mono', monospace;
+    --bg: #ffffff;
+    --bg2: #f5f5f3;
+    --bg3: #eeede9;
+    --txt: #1a1a18;
+    --txt2: #6b6b67;
+    --txt3: #9b9b96;
+    --border: rgba(0,0,0,0.10);
+    --border2: rgba(0,0,0,0.20);
+    --accent: #1a6b55;
+    --accent-light: #e8f5f1;
+    --accent-text: #0f4035;
+    --amber: #b87422;
+    --amber-light: #fdf3e3;
+    --amber-text: #7a4c0e;
+    --danger: #c0392b;
+    --danger-light: #fdf0ee;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a;
+      --bg2: #252523;
+      --bg3: #2e2e2b;
+      --txt: #e8e8e2;
+      --txt2: #9b9b96;
+      --txt3: #6b6b67;
+      --border: rgba(255,255,255,0.10);
+      --border2: rgba(255,255,255,0.20);
+      --accent: #2ecc9a;
+      --accent-light: #0d2b22;
+      --accent-text: #7eecd1;
+      --amber: #f0a840;
+      --amber-light: #2b1f08;
+      --amber-text: #f0c070;
+    }
+  }
+
+  html, body {
+    font-family: var(--ff);
+    color: var(--txt);
+    background: var(--bg);
+    min-height: 100vh;
+  }
+
+  .wrap {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    letter-spacing: -0.4px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: var(--txt2);
+    margin-bottom: 28px;
+    line-height: 1.5;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .control-group label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--txt3);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 6px;
+  }
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+  }
+  .control-row input[type=range] {
+    flex: 1;
+    accent-color: var(--accent);
+  }
+  .control-val {
+    font-family: var(--fm);
+    font-size: 13px;
+    font-weight: 500;
+    min-width: 28px;
+    text-align: right;
+    color: var(--txt);
+  }
+  .control-row select {
+    flex: 1;
+    background: transparent;
+    border: none;
+    font-family: var(--ff);
+    font-size: 13px;
+    color: var(--txt);
+    outline: none;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .section-head h2 { font-size: 14px; font-weight: 600; letter-spacing: -0.1px; }
+  .count-badge { font-size: 11px; color: var(--txt3); font-family: var(--fm); }
+
+  .combo-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 100px; }
+
+  .combo-card {
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  .combo-card:hover { border-color: var(--border2); }
+  .combo-card.selected { border-color: var(--accent); background: var(--accent-light); }
+
+  .combo-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .radio-dot {
+    width: 16px; height: 16px; min-width: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border2);
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s;
+  }
+  .combo-card.selected .radio-dot { border-color: var(--accent); }
+  .radio-inner {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .combo-card.selected .radio-inner { opacity: 1; }
+
+  .combo-info { flex: 1; min-width: 0; }
+  .combo-name { font-size: 14px; font-weight: 500; }
+  .combo-desc { font-size: 12px; color: var(--txt2); margin-top: 2px; }
+
+  .combo-price-col { text-align: right; flex-shrink: 0; }
+  .combo-total { font-size: 16px; font-weight: 600; font-family: var(--fm); }
+  .combo-per { font-size: 11px; color: var(--txt2); }
+
+  .badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+  .badge {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+  }
+  .badge-green { background: var(--accent-light); color: var(--accent-text); }
+  .badge-amber { background: var(--amber-light); color: var(--amber-text); }
+  .badge-gray  { background: var(--bg3); color: var(--txt3); }
+
+  .combo-detail {
+    border-top: 1px solid var(--border);
+    padding: 12px 14px;
+    display: none;
+  }
+  .combo-card.selected .combo-detail { display: block; }
+
+  .unit-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .unit-row {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+  }
+  .unit-row-head { display: flex; align-items: center; justify-content: space-between; }
+  .unit-row-name { font-size: 13px; font-weight: 500; }
+  .unit-row-price { font-size: 13px; font-family: var(--fm); }
+  .unit-row-desc { font-size: 11px; color: var(--txt2); margin-top: 3px; }
+
+  .extra-section { margin-top: 10px; }
+  .extra-label { font-size: 11px; color: var(--txt2); margin-bottom: 6px; }
+  .extra-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+  .extra-btn {
+    font-size: 11px;
+    font-family: var(--ff);
+    font-weight: 500;
+    padding: 4px 11px;
+    border-radius: 20px;
+    border: 1.5px solid var(--border2);
+    background: var(--bg);
+    color: var(--txt2);
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .extra-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .extra-btn.active { border-color: var(--amber); background: var(--amber-light); color: var(--amber-text); }
+
+  .desglose {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-top: 4px;
+  }
+  .desglose-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--txt2);
+    margin-bottom: 4px;
+  }
+  .desglose-row.total {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--txt);
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    margin-top: 6px;
+  }
+  .desglose-val { font-family: var(--fm); }
+
+  .empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--txt3);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .cta-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0; right: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    padding: 14px 20px 20px;
+    display: none;
+  }
+  .cta-bar.visible { display: block; }
+  .cta-inner { max-width: 700px; margin: 0 auto; }
+  .btn-reservar {
+    width: 100%;
+    padding: 13px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--ff);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: -0.2px;
+    transition: opacity 0.15s;
+  }
+  .btn-reservar:hover { opacity: 0.88; }
+  .cta-note {
+    font-size: 11px;
+    color: var(--txt3);
+    text-align: center;
+    margin-top: 7px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Selecciona tu alojamiento</h1>
+  <p class="subtitle">Todas las combinaciones disponibles, ordenadas de más económica a más amplia. Selecciona la que mejor se adapte a tu grupo.</p>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>Huéspedes</label>
+      <div class="control-row">
+        <input type="range" min="1" max="19" value="14" id="pax-slider" oninput="update()">
+        <span class="control-val" id="pax-val">14</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Noches</label>
+      <div class="control-row">
+        <input type="range" min="1" max="7" value="3" id="nights-slider" oninput="update()">
+        <span class="control-val" id="nights-val">3</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Temporada</label>
+      <div class="control-row">
+        <select id="season-sel" onchange="update()">
+          <option value="base">Base (fuera temporada alta)</option>
+          <option value="alta">Alta</option>
+        </select>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Tarifa</label>
+      <div class="control-row">
+        <select id="tarifa-sel" onchange="update()">
+          <option value="FLEXIBLE">Flexible</option>
+          <option value="NO_REEMBOLSABLE">No reembolsable (−10%)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <h2>Combinaciones disponibles</h2>
+    <span class="count-badge" id="count-badge"></span>
+  </div>
+
+  <div class="combo-list" id="combo-list"></div>
+</div>
+
+<div class="cta-bar" id="cta-bar">
+  <div class="cta-inner">
+    <button class="btn-reservar" id="btn-reservar" onclick="reservar()">Continuar con esta selección</button>
+    <p class="cta-note" id="cta-note"></p>
+  </div>
+</div>
+
+<script>
+const UNIDADES = [
+  { id:'casa',   nombre:'Casa',        capacidad_base:10, capacidad_max:11, precio_base:330, precio_alta:350, limpieza:60, extra_base:30, extra_alta:35 },
+  { id:'cabana', nombre:'Cabaña',      capacidad_base:4,  capacidad_max:5,  precio_base:140, precio_alta:160, limpieza:40, extra_base:20, extra_alta:25 },
+  { id:'apart',  nombre:'Apartamento', capacidad_base:4,  capacidad_max:5,  precio_base:140, precio_alta:160, limpieza:40, extra_base:20, extra_alta:25 },
+];
+
+let selectedComboIdx = null;
+let extraOverrides = {};
+
+function generateCombinations(units) {
+  const combos = [];
+  const n = units.length;
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const sel = [];
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) sel.push(units[i]);
+    combos.push(sel);
+  }
+  return combos;
+}
+
+function calcularPrecio(unidades, totalPax, noches, temporada, tarifa, extraOverride) {
+  const alta = temporada === 'alta';
+  let alojamiento = 0;
+  unidades.forEach(u => {
+    alojamiento += (alta ? u.precio_alta : u.precio_base) * noches;
+  });
+
+  const sumaBase = unidades.reduce((s, u) => s + u.capacidad_base, 0);
+  const sumaMax  = unidades.reduce((s, u) => s + u.capacidad_max, 0);
+  let extrasTotal = Math.max(0, totalPax - sumaBase);
+
+  if (totalPax > sumaMax) return null;
+
+  let extrasDesglose = {};
+  unidades.forEach(u => extrasDesglose[u.id] = 0);
+
+  if (extraOverride) {
+    let assigned = 0;
+    unidades.forEach(u => {
+      const v = extraOverride[u.id] || 0;
+      extrasDesglose[u.id] = v;
+      assigned += v;
+    });
+    if (assigned !== extrasTotal) extraOverride = null;
+  }
+
+  if (!extraOverride) {
+    const sorted = [...unidades].sort((a,b) => b.capacidad_base - a.capacidad_base);
+    let rem = extrasTotal;
+    sorted.forEach(u => {
+      const puede = u.capacidad_max - u.capacidad_base;
+      const asignar = Math.min(rem, puede);
+      extrasDesglose[u.id] = asignar;
+      rem -= asignar;
+    });
+    if (rem > 0) return null;
+  }
+
+  let importeExtras = 0;
+  unidades.forEach(u => {
+    const tarExt = alta ? u.extra_alta : u.extra_base;
+    importeExtras += extrasDesglose[u.id] * tarExt * noches;
+  });
+
+  const importeLimpieza = unidades.reduce((s, u) => s + u.limpieza, 0);
+  let subtotalAloj = alojamiento + importeExtras;
+  let descuento = 0;
+  if (tarifa === 'NO_REEMBOLSABLE') {
+    descuento = subtotalAloj * 0.10;
+    subtotalAloj -= descuento;
+  }
+  const total = subtotalAloj + importeLimpieza;
+
+  return {
+    unidades, totalPax, noches, sumaBase, extrasTotal, extrasDesglose,
+    alojamiento, importeExtras, importeLimpieza, descuento, subtotalAloj,
+    total,
+    porPersona: total / totalPax,
+    porPersonaNoche: total / totalPax / noches,
+    temporada, tarifa,
+  };
+}
+
+function getDistribuciones(admiten, total) {
+  const results = [];
+  function rec(idx, rem, current) {
+    if (idx === admiten.length) {
+      if (rem === 0) results.push({...current});
+      return;
+    }
+    const u = admiten[idx];
+    const maxExt = u.capacidad_max - u.capacidad_base;
+    for (let v = 0; v <= Math.min(maxExt, rem); v++) {
+      current[u.id] = v;
+      rec(idx + 1, rem - v, current);
+    }
+  }
+  rec(0, total, {});
+  return results.filter(d => Object.values(d).reduce((s,v)=>s+v,0) === total);
+}
+
+function comboName(unidades) {
+  return unidades.map(u => u.nombre).join(' + ');
+}
+
+function fmt(n) {
+  return Math.round(n).toLocaleString('es-ES');
+}
+
+function update() {
+  const pax    = parseInt(document.getElementById('pax-slider').value);
+  const noches = parseInt(document.getElementById('nights-slider').value);
+  const temp   = document.getElementById('season-sel').value;
+  const tarifa = document.getElementById('tarifa-sel').value;
+
+  document.getElementById('pax-val').textContent    = pax;
+  document.getElementById('nights-val').textContent = noches;
+
+  const allCombos = generateCombinations(UNIDADES);
+  let results = [];
+
+  allCombos.forEach((units, ci) => {
+    const override = (extraOverrides[ci] && selectedComboIdx === ci) ? extraOverrides[ci] : null;
+    const r = calcularPrecio(units, pax, noches, temp, tarifa, override);
+    if (r) results.push({ ...r, _idx: ci });
+  });
+
+  results.sort((a, b) => {
+    if (a.extrasTotal !== b.extrasTotal) return a.extrasTotal - b.extrasTotal;
+    if (a.total !== b.total) return a.total - b.total;
+    return a.unidades.length - b.unidades.length;
+  });
+
+  document.getElementById('count-badge').textContent =
+    results.length === 0 ? 'Sin opciones' : `${results.length} opción${results.length>1?'es':''}`;
+
+  const list = document.getElementById('combo-list');
+  list.innerHTML = '';
+
+  if (results.length === 0) {
+    list.innerHTML = '<div class="empty">No hay combinaciones disponibles para este grupo.<br>Máximo total: 19 huéspedes (casa + cabaña + apartamento).</div>';
+    document.getElementById('cta-bar').classList.remove('visible');
+    return;
+  }
+
+  results.forEach((r) => {
+    const isSel = selectedComboIdx === r._idx;
+    const card  = document.createElement('div');
+    card.className = 'combo-card' + (isSel ? ' selected' : '');
+    card.onclick = () => { selectedComboIdx = r._idx; update(); };
+
+    const badges = [];
+    if (r.extrasTotal === 0) badges.push({ cls:'badge-green', txt:'Sin extras' });
+    else badges.push({ cls:'badge-amber', txt:`+${r.extrasTotal} extra${r.extrasTotal>1?'s':''}` });
+    if (r.unidades.length === 1) badges.push({ cls:'badge-gray', txt:'1 unidad' });
+    if (r.tarifa === 'NO_REEMBOLSABLE') badges.push({ cls:'badge-amber', txt:'−10% no-reemb.' });
+    if (r.totalPax <= r.sumaBase) badges.push({ cls:'badge-green', txt:'Capacidad exacta' });
+
+    const badgeHTML = badges.map(b => `<span class="badge ${b.cls}">${b.txt}</span>`).join('');
+
+    let unitRowsHTML = '';
+    r.unidades.forEach(u => {
+      const pn  = r.temporada === 'alta' ? u.precio_alta : u.precio_base;
+      const ext = r.extrasDesglose[u.id] || 0;
+      const tarExt = r.temporada === 'alta' ? u.extra_alta : u.extra_base;
+      const subtot = pn * r.noches + ext * tarExt * r.noches;
+      const paxU = u.capacidad_base + ext;
+      let desc = `${pn} €/noche × ${r.noches} noches · ${paxU} pax`;
+      if (ext > 0) desc += ` (${u.capacidad_base} base + ${ext} extra × ${tarExt} €)`;
+      unitRowsHTML += `
+        <div class="unit-row">
+          <div class="unit-row-head">
+            <span class="unit-row-name">${u.nombre}</span>
+            <span class="unit-row-price">${fmt(subtot)} €</span>
+          </div>
+          <div class="unit-row-desc">${desc}</div>
+        </div>`;
+    });
+
+    let extraPickerHTML = '';
+    if (isSel && r.extrasTotal > 0) {
+      const admiten = r.unidades.filter(u => u.capacidad_max > u.capacidad_base);
+      if (admiten.length > 1) {
+        const distribuciones = getDistribuciones(admiten, r.extrasTotal);
+        const currentOverride = extraOverrides[r._idx] || {};
+        const btnHTML = distribuciones.map(dist => {
+          const sumDist = Object.values(dist).reduce((s,v)=>s+v,0);
+          const sumCurr = Object.values(currentOverride).reduce((s,v)=>s+v,0);
+          let isActive = sumCurr === 0
+            ? dist === distribuciones[0]
+            : JSON.stringify(Object.keys(dist).sort().map(k=>[k,dist[k]])) ===
+              JSON.stringify(Object.keys(currentOverride).sort().map(k=>[k,currentOverride[k]]));
+          const label = admiten.map(u => {
+            const v = dist[u.id] || 0;
+            return v > 0 ? `+${v} en ${u.nombre}` : null;
+          }).filter(Boolean).join(', ');
+          const distStr = encodeURIComponent(JSON.stringify(dist));
+          return `<button class="extra-btn ${isActive?'active':''}"
+            onclick="event.stopPropagation();setExtra(${r._idx},'${distStr}')">
+            ${label}
+          </button>`;
+        }).join('');
+        extraPickerHTML = `
+          <div class="extra-section">
+            <div class="extra-label">¿Dónde colocar el extra? (mismo precio total)</div>
+            <div class="extra-picker">${btnHTML}</div>
+          </div>`;
+      }
+    }
+
+    let desgloseHTML = `<div class="desglose">
+      <div class="desglose-row"><span>Alojamiento</span><span class="desglose-val">${fmt(r.alojamiento)} €</span></div>`;
+    if (r.importeExtras > 0)
+      desgloseHTML += `<div class="desglose-row"><span>Suplemento extra</span><span class="desglose-val">+${fmt(r.importeExtras)} €</span></div>`;
+    if (r.descuento > 0)
+      desgloseHTML += `<div class="desglose-row"><span>Descuento no-reembolsable</span><span class="desglose-val">−${fmt(r.descuento)} €</span></div>`;
+    desgloseHTML += `<div class="desglose-row"><span>Limpieza</span><span class="desglose-val">+${fmt(r.importeLimpieza)} €</span></div>`;
+    desgloseHTML += `<div class="desglose-row total"><span>Total ${r.noches} noche${r.noches>1?'s':''}</span><span class="desglose-val">${fmt(r.total)} €</span></div>`;
+    desgloseHTML += `<div class="desglose-row"><span>Por persona</span><span class="desglose-val">${fmt(r.porPersona)} €</span></div>`;
+    desgloseHTML += `</div>`;
+
+    card.innerHTML = `
+      <div class="combo-header">
+        <div class="radio-dot"><div class="radio-inner"></div></div>
+        <div class="combo-info">
+          <div class="combo-name">${comboName(r.unidades)}</div>
+          <div class="badges">${badgeHTML}</div>
+        </div>
+        <div class="combo-price-col">
+          <div class="combo-total">${fmt(r.total)} €</div>
+          <div class="combo-per">${fmt(r.porPersonaNoche)} €/pers/noche</div>
+        </div>
+      </div>
+      <div class="combo-detail">
+        <div class="unit-rows">${unitRowsHTML}</div>
+        ${extraPickerHTML}
+        ${desgloseHTML}
+      </div>`;
+
+    list.appendChild(card);
+  });
+
+  const ctaBar = document.getElementById('cta-bar');
+  if (selectedComboIdx !== null && results.some(r => r._idx === selectedComboIdx)) {
+    ctaBar.classList.add('visible');
+    const sel = results.find(r => r._idx === selectedComboIdx);
+    document.getElementById('cta-note').textContent =
+      `${comboName(sel.unidades)} · ${pax} pax · ${noches} noche${noches>1?'s':''} · ${fmt(sel.total)} €`;
+  } else {
+    ctaBar.classList.remove('visible');
+  }
+}
+
+function setExtra(comboIdx, distStr) {
+  extraOverrides[comboIdx] = JSON.parse(decodeURIComponent(distStr));
+  update();
+}
+
+function reservar() {
+  const sel = document.getElementById('cta-note').textContent;
+  alert('Continuando con: ' + sel);
+}
+
+update();
+</script>
+</body>
+</html>

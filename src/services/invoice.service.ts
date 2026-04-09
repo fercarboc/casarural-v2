@@ -45,24 +45,29 @@ export interface FacturaDetalle {
 export interface ReservaParaFactura {
   id: string;
   codigo: string;
-  nombre: string;
-  apellidos: string;
-  email: string;
+  nombre_cliente: string;
+  apellidos_cliente: string;
+  email_cliente: string;
   fecha_entrada: string;
   fecha_salida: string;
-  total: number;
+  importe_total: number;
   nif_factura: string | null;
   razon_social: string | null;
   direccion_factura: string | null;
+  // v1 compat (optional)
+  nombre?: string;
+  apellidos?: string;
+  email?: string;
+  total?: number;
 }
 
 // ─── Helpers internos ──────────────────────────────────────────────────────────
 
 const RESERVAS_SELECT = `
   codigo, fecha_entrada, fecha_salida, noches, num_huespedes,
-  tarifa, precio_noche, importe_alojamiento, importe_extra,
-  importe_limpieza, descuento, email,
-  nombre, apellidos, estado_pago, total, importe_pagado, importe_senal
+  tarifa, precio_noche, importe_alojamiento, importe_extras,
+  importe_limpieza, descuento_aplicado, email_cliente,
+  nombre_cliente, apellidos_cliente, estado_pago, importe_total, importe_pagado, importe_senal
 `;
 
 function calcIva10(totalConIva: number) {
@@ -96,14 +101,14 @@ function mapFactura(f: any): FacturaDetalle {
     reserva_tarifa:              f.reservas?.tarifa,
     reserva_precio_noche:        Number(f.reservas?.precio_noche ?? 0),
     reserva_importe_alojamiento: Number(f.reservas?.importe_alojamiento ?? 0),
-    reserva_importe_extra:       Number(f.reservas?.importe_extra ?? 0),
+    reserva_importe_extra:       Number(f.reservas?.importe_extras   ?? f.reservas?.importe_extra   ?? 0),
     reserva_importe_limpieza:    Number(f.reservas?.importe_limpieza ?? 0),
-    reserva_descuento:           Number(f.reservas?.descuento ?? 0),
-    reserva_email:               f.reservas?.email,
-    reserva_nombre:              f.reservas?.nombre,
-    reserva_apellidos:           f.reservas?.apellidos,
+    reserva_descuento:           Number(f.reservas?.descuento_aplicado ?? f.reservas?.descuento ?? 0),
+    reserva_email:               f.reservas?.email_cliente ?? f.reservas?.email,
+    reserva_nombre:              f.reservas?.nombre_cliente ?? f.reservas?.nombre,
+    reserva_apellidos:           f.reservas?.apellidos_cliente ?? f.reservas?.apellidos,
     reserva_estado_pago:         f.reservas?.estado_pago,
-    reserva_total:               Number(f.reservas?.total ?? 0),
+    reserva_total:               Number(f.reservas?.importe_total ?? f.reservas?.total ?? 0),
     reserva_importe_pagado:      Number(f.reservas?.importe_pagado ?? 0),
     reserva_importe_senal:       f.reservas?.importe_senal != null ? Number(f.reservas.importe_senal) : undefined,
   };
@@ -138,7 +143,7 @@ export const invoiceService = {
 
     const { data: reservas, error } = await supabase
       .from('reservas')
-      .select('id, codigo, nombre, apellidos, email, fecha_entrada, fecha_salida, total, nif_factura, razon_social, direccion_factura')
+      .select('id, codigo, nombre_cliente, apellidos_cliente, email_cliente, fecha_entrada, fecha_salida, importe_total, nif_factura, razon_social, direccion_factura')
       .eq('estado', 'CONFIRMED')
       .order('fecha_entrada', { ascending: false });
 
@@ -161,9 +166,10 @@ export const invoiceService = {
 
     const nombre = overrides.nombre?.trim() ||
       reserva.razon_social ||
-      `${reserva.nombre} ${reserva.apellidos}`;
+      `${reserva.nombre_cliente ?? reserva.nombre ?? ''} ${reserva.apellidos_cliente ?? reserva.apellidos ?? ''}`.trim();
 
-    const { base, iva } = calcIva10(Number(reserva.total));
+    const importeTotal = Number(reserva.importe_total ?? reserva.total ?? 0);
+    const { base, iva } = calcIva10(importeTotal);
 
     // Número correlativo via RPC (o fallback manual)
     let numero: string;
@@ -195,7 +201,7 @@ export const invoiceService = {
         base_imponible: base,
         iva_porcentaje: 10,
         iva_importe:    iva,
-        total:          Number(reserva.total),
+        total:          importeTotal,
         estado:         'EMITIDA',
       })
       .select(`*, reservas(${RESERVAS_SELECT})`)
@@ -266,7 +272,7 @@ export async function crearFacturaManual(params: {
 
   const nombre = params.nombre?.trim() ||
     reserva.razon_social ||
-    `${reserva.nombre} ${reserva.apellidos}`;
+    `${reserva.nombre_cliente ?? reserva.nombre ?? ''} ${reserva.apellidos_cliente ?? reserva.apellidos ?? ''}`.trim();
 
   const { base, iva } = calcIva10(params.importe);
   const concepto = params.concepto ?? 'Hospedaje Casa Rural';

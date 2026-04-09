@@ -3,9 +3,19 @@
 // Página independiente accesible desde el footer → /rgpd
 import React, { useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { usePublicProperty } from '../../shared/hooks/usePublicProperty'
 
 export function RGPD() {
   useEffect(() => { window.scrollTo(0, 0) }, [])
+
+  const { property } = usePublicProperty()
+
+  const propNombre    = property?.nombre ?? ''
+  const responsable   = property?.legal_business_name ?? propNombre
+  const emailContacto = property?.legal_email ?? property?.email ?? ''
+  const telefono      = property?.legal_phone ?? property?.telefono ?? ''
+  const domicilio     = property?.legal_address
+    ?? [property?.direccion, property?.localidad, property?.provincia, property?.pais].filter(Boolean).join(', ')
 
   return (
     <>
@@ -16,7 +26,7 @@ export function RGPD() {
         <div style={s.hero}>
           <div style={s.heroDecor} />
           <div style={s.heroContent}>
-            <p style={s.heroEyebrow}>La Rasilla · Casa Rural</p>
+            <p style={s.heroEyebrow}>{propNombre ? `${propNombre} · Casa Rural` : 'Casa Rural'}</p>
             <h1 style={s.heroTitle}>Tus derechos bajo el RGPD</h1>
             <p style={s.heroSub}>
               El Reglamento General de Protección de Datos te otorga control total
@@ -40,7 +50,7 @@ export function RGPD() {
               derechos digitales (LOPDGDD)</strong>.
             </p>
             <p style={s.introText}>
-              En La Rasilla tratamos tus datos con total transparencia y solo para las finalidades
+              En {propNombre || 'nuestra casa rural'} tratamos tus datos con total transparencia y solo para las finalidades
               estrictamente necesarias para gestionar tu reserva y nuestra relación contigo.
               Nunca los vendemos ni los cedemos a terceros con fines comerciales.
             </p>
@@ -111,9 +121,10 @@ export function RGPD() {
                   <p style={s.ejercerTitle}>Escríbenos por email</p>
                   <p style={s.ejercerDesc}>
                     Envía tu solicitud a{' '}
-                    <a href="mailto:contacto@casarurallarasilla.com" style={s.link}>
-                      contacto@casarurallarasilla.com
-                    </a>{' '}
+                    {emailContacto
+                      ? <a href={`mailto:${emailContacto}`} style={s.link}>{emailContacto}</a>
+                      : 'nuestro email de contacto'
+                    }{' '}
                     indicando claramente qué derecho deseas ejercer y adjuntando una copia de
                     tu DNI u otro documento de identidad válido para verificar tu identidad.
                   </p>
@@ -280,11 +291,11 @@ export function RGPD() {
                 </p>
                 <div style={s.contactDetails}>
                   {[
-                    ['Responsable', 'Fernando Carbonell de la Rasilla'],
-                    ['Email', 'contacto@casarurallarasilla.com'],
-                    ['Teléfono', '+34 690 288 707'],
-                    ['Dirección', 'Castillo Pedroso, Cantabria, España'],
-                  ].map(([label, value]) => (
+                    ['Responsable', responsable],
+                    ['Email',       emailContacto],
+                    ['Teléfono',    telefono],
+                    ['Dirección',   domicilio],
+                  ].filter(([, v]) => v).map(([label, value]) => (
                     <div key={label} style={s.contactRow}>
                       <span style={s.contactLabel}>{label}</span>
                       <span style={s.contactValue}>{value}</span>

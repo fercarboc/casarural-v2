@@ -17,6 +17,7 @@ import {
   Lock,
   Home,
 } from 'lucide-react'
+import { RemotePriceBreakdown } from '../booking/BookingFlowContext'
 
 export type RateType = 'FLEXIBLE' | 'NON_REFUNDABLE'
 
@@ -29,45 +30,6 @@ export interface CustomerFormData {
   email: string
   email_confirm: string
   menores: number
-}
-
-type RemotePriceUnit = {
-  unidad_id: string
-  unidad_nombre: string
-  unidad_slug: string
-  nights: number
-  num_huespedes: number
-  extra_guests: number
-  season: string
-  temporada_id: string | null
-  precio_noche: number
-  extra_huesped: number
-  importe_alojamiento: number
-  importe_extra: number
-  limpieza: number
-  descuento: number
-  subtotal: number
-  total: number
-  desglose: any
-}
-
-type RemotePriceBreakdown = {
-  ok?: boolean
-  mode: 'single' | 'multi'
-  property_id?: string
-  checkIn?: string
-  checkOut?: string
-  nights: number
-  num_huespedes: number
-  rate_type: string
-  unidades: RemotePriceUnit[]
-  importe_alojamiento: number
-  importe_extras: number
-  importe_limpieza: number
-  descuento_aplicado: number
-  importe_total: number
-  importe_senal: number | null
-  importe_resto: number | null
 }
 
 interface Props {
@@ -112,14 +74,13 @@ export const BookingCheckoutSection: React.FC<Props> = ({
   const [errors, setErrors] = useState<Partial<Record<keyof CustomerFormData | 'general', string>>>({})
 
   const nights = differenceInDays(checkOut, checkIn)
-  const hasDeposit = rateType === 'FLEXIBLE' && breakdown.importe_senal !== null
+  const hasDeposit = rateType === 'FLEXIBLE' && (breakdown.importe_senal ?? 0) > 0
 
   const set = (field: keyof CustomerFormData, value: string | number) =>
     setForm((prev) => ({ ...prev, [field]: value }))
 
   const validate = (): boolean => {
     const e: typeof errors = {}
-
     if (!form.nombre.trim()) e.nombre = 'Obligatorio'
     if (!form.apellidos.trim()) e.apellidos = 'Obligatorio'
     if (!form.numero_documento.trim()) e.numero_documento = 'Obligatorio'
@@ -129,7 +90,6 @@ export const BookingCheckoutSection: React.FC<Props> = ({
     }
     if (form.email !== form.email_confirm) e.email_confirm = 'Los emails no coinciden'
     if (form.menores < 0 || form.menores > guests) e.menores = `Entre 0 y ${guests}`
-
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -141,6 +101,15 @@ export const BookingCheckoutSection: React.FC<Props> = ({
 
   const fmtDate = (d: Date) =>
     format(d, "EEE d 'de' MMMM yyyy", { locale: es }).replace(/^\w/, (c) => c.toUpperCase())
+
+  // Totales con fallback a 0 para evitar crashes si algún campo es undefined
+  const importeAloj     = breakdown.importe_alojamiento_total ?? 0
+  const importeExtras   = breakdown.importe_extras_total ?? 0
+  const importeLimp     = breakdown.importe_limpieza_total ?? 0
+  const importeDesc     = breakdown.descuento_aplicado ?? 0
+  const importeTotal    = breakdown.importe_total ?? 0
+  const importeSenal    = breakdown.importe_senal ?? 0
+  const importeResto    = breakdown.importe_resto ?? 0
 
   return (
     <div className="space-y-4 pt-1">
@@ -245,7 +214,6 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                     +
                   </button>
                 </div>
-
                 <span className="text-xs text-stone-400">
                   {guests - form.menores} adultos · {form.menores} menores
                 </span>
@@ -304,23 +272,14 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                   <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500">
                     Flexible
                   </p>
-                  {rateType === 'FLEXIBLE' && (
-                    <CheckCircle2 size={16} className="text-emerald-600" />
-                  )}
+                  {rateType === 'FLEXIBLE' && <CheckCircle2 size={16} className="text-emerald-600" />}
                 </div>
-
-                <p className="text-lg font-bold text-stone-900">
-                  {breakdown.importe_total.toFixed(2)}€
-                </p>
-
+                <p className="text-lg font-bold text-stone-900">{importeTotal.toFixed(2)} €</p>
                 <p className="mt-1 text-xs text-stone-500">
-                  {breakdown.importe_senal !== null
-                    ? `Señal ${breakdown.importe_senal.toFixed(2)}€ · resto ${Number(
-                        breakdown.importe_resto ?? 0
-                      ).toFixed(2)}€`
+                  {hasDeposit
+                    ? `Señal ${importeSenal.toFixed(2)} € · resto ${importeResto.toFixed(2)} €`
                     : 'Pago completo'}
                 </p>
-
                 <p className="mt-1 text-[11px] font-medium text-emerald-700">
                   Cancelación según condiciones
                 </p>
@@ -343,16 +302,11 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                       −10%
                     </span>
                   </div>
-
                   {rateType === 'NON_REFUNDABLE' && (
                     <CheckCircle2 size={16} className="text-emerald-600" />
                   )}
                 </div>
-
-                <p className="text-lg font-bold text-stone-900">
-                  {breakdown.importe_total.toFixed(2)}€
-                </p>
-
+                <p className="text-lg font-bold text-stone-900">{importeTotal.toFixed(2)} €</p>
                 <p className="mt-1 text-xs text-stone-500">Pago completo al reservar</p>
                 <p className="mt-1 text-[11px] font-medium text-red-600">Sin cancelación ni cambios</p>
               </button>
@@ -374,27 +328,18 @@ export const BookingCheckoutSection: React.FC<Props> = ({
 
           <p className="text-xs leading-relaxed text-stone-400">
             Al confirmar aceptas nuestra{' '}
-            <a
-              href="/politica-privacidad"
-              target="_blank"
-              className="underline hover:text-stone-600"
-              rel="noreferrer"
-            >
+            <a href="/politica-privacidad" target="_blank" className="underline hover:text-stone-600" rel="noreferrer">
               política de privacidad
             </a>{' '}
             y las{' '}
-            <a
-              href="/condiciones-reserva"
-              target="_blank"
-              className="underline hover:text-stone-600"
-              rel="noreferrer"
-            >
+            <a href="/condiciones-reserva" target="_blank" className="underline hover:text-stone-600" rel="noreferrer">
               condiciones de reserva
             </a>
             .
           </p>
         </div>
 
+        {/* Sidebar resumen */}
         <aside className="h-fit space-y-4 xl:sticky xl:top-6">
           <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
             <div className="bg-stone-900 px-5 py-4 text-white">
@@ -410,15 +355,11 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                   <Calendar size={16} className="mt-0.5 shrink-0 text-stone-400" />
                   <div className="grid flex-1 grid-cols-2 gap-3">
                     <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                        Entrada
-                      </p>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Entrada</p>
                       <p className="mt-0.5 font-semibold text-stone-800">{fmtDate(checkIn)}</p>
                     </div>
                     <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                        Salida
-                      </p>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Salida</p>
                       <p className="mt-0.5 font-semibold text-stone-800">{fmtDate(checkOut)}</p>
                     </div>
                   </div>
@@ -434,8 +375,7 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                     <strong>{guests}</strong> huéspedes
                     {form.menores > 0 && (
                       <span className="text-stone-400">
-                        {' '}
-                        ({guests - form.menores} adultos · {form.menores} menores)
+                        {' '}({guests - form.menores} adultos · {form.menores} menores)
                       </span>
                     )}
                   </span>
@@ -445,123 +385,113 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                   <div className="flex items-start gap-2">
                     <Home size={15} className="mt-0.5 text-stone-400" />
                     <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                        Combinación
-                      </p>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">Combinación</p>
                       <p className="mt-0.5 font-medium text-stone-800">{selectedCombinationLabel}</p>
                     </div>
                   </div>
                 )}
               </div>
 
-              {breakdown.unidades?.length > 0 && (
+              {/* Desglose por unidad — campos del nuevo calculate-price */}
+              {(breakdown.unidades?.length ?? 0) > 0 && (
                 <div className="space-y-2 border-t border-stone-100 pt-4">
-                  {breakdown.unidades.map((u) => (
-                    <div key={u.unidad_id} className="rounded-lg bg-stone-50 px-3 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-stone-800">{u.unidad_nombre}</p>
-                          <p className="mt-0.5 text-xs text-stone-500">
-                            {u.num_huespedes} huésp. · {u.nights} noche{u.nights !== 1 ? 's' : ''}
-                          </p>
+                  {breakdown.unidades.map((u) => {
+                    // Campos reales de calculate-price: nombre, importe_alojamiento,
+                    // importe_extras, importe_limpieza, importe_subtotal, noches,
+                    // num_huespedes_asignados, extras_asignados
+                    const uTotal = (u.importe_alojamiento ?? 0) + (u.importe_extras ?? 0) + (u.importe_limpieza ?? 0)
+                    return (
+                      <div key={u.unidad_id} className="rounded-lg bg-stone-50 px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-stone-800">{u.nombre}</p>
+                            <p className="mt-0.5 text-xs text-stone-500">
+                              {u.num_huespedes_asignados} huésp. · {u.noches} noche{u.noches !== 1 ? 's' : ''}
+                              {u.extras_asignados > 0 && (
+                                <span className="ml-1 text-amber-600">+{u.extras_asignados} extra</span>
+                              )}
+                            </p>
+                          </div>
+                          <p className="font-bold text-stone-900">{uTotal.toFixed(2)} €</p>
                         </div>
-                        <p className="font-bold text-stone-900">{u.total.toFixed(2)}€</p>
-                      </div>
 
-                      <div className="mt-2 space-y-1 text-xs text-stone-500">
-                        <div className="flex justify-between">
-                          <span>Alojamiento</span>
-                          <span>{u.importe_alojamiento.toFixed(2)}€</span>
-                        </div>
-
-                        {u.importe_extra > 0 && (
+                        <div className="mt-2 space-y-1 text-xs text-stone-500">
                           <div className="flex justify-between">
-                            <span>Extras</span>
-                            <span>{u.importe_extra.toFixed(2)}€</span>
+                            <span>Alojamiento</span>
+                            <span>{(u.importe_alojamiento ?? 0).toFixed(2)} €</span>
                           </div>
-                        )}
-
-                        <div className="flex justify-between">
-                          <span>Limpieza</span>
-                          <span>{u.limpieza.toFixed(2)}€</span>
+                          {(u.importe_extras ?? 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span>Extras</span>
+                              <span>{(u.importe_extras ?? 0).toFixed(2)} €</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span>Limpieza</span>
+                            <span>{(u.importe_limpieza ?? 0).toFixed(2)} €</span>
+                          </div>
+                          {u.es_especial && (
+                            <div className="text-amber-600">Tarifa: {u.temporada_nombre}</div>
+                          )}
                         </div>
-
-                        {u.descuento > 0 && (
-                          <div className="flex justify-between text-emerald-700">
-                            <span>Descuento</span>
-                            <span>-{u.descuento.toFixed(2)}€</span>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
+              {/* Totales globales */}
               <div className="space-y-2 border-t border-stone-100 pt-4 text-sm">
                 <div className="flex justify-between text-stone-600">
                   <span>Alojamiento</span>
-                  <span>{breakdown.importe_alojamiento.toFixed(2)}€</span>
+                  <span>{importeAloj.toFixed(2)} €</span>
                 </div>
-
-                {breakdown.importe_extras > 0 && (
+                {importeExtras > 0 && (
                   <div className="flex justify-between text-stone-600">
                     <span>Extras</span>
-                    <span>{breakdown.importe_extras.toFixed(2)}€</span>
+                    <span>{importeExtras.toFixed(2)} €</span>
                   </div>
                 )}
-
                 <div className="flex justify-between text-stone-600">
                   <span>Limpieza</span>
-                  <span>{breakdown.importe_limpieza.toFixed(2)}€</span>
+                  <span>{importeLimp.toFixed(2)} €</span>
                 </div>
-
-                {breakdown.descuento_aplicado > 0 && (
+                {importeDesc > 0 && (
                   <div className="flex justify-between font-medium text-emerald-700">
-                    <span>Descuento</span>
-                    <span>-{breakdown.descuento_aplicado.toFixed(2)}€</span>
+                    <span>Descuento no reembolsable</span>
+                    <span>-{importeDesc.toFixed(2)} €</span>
                   </div>
                 )}
-
                 <div className="flex justify-between border-t border-stone-200 pt-3 text-base font-bold text-stone-900">
                   <span>Total</span>
-                  <span>{breakdown.importe_total.toFixed(2)}€</span>
+                  <span>{importeTotal.toFixed(2)} €</span>
                 </div>
               </div>
 
+              {/* Señal / pago */}
               <div className="space-y-2 border-t border-stone-100 pt-4 text-sm">
-                <div className="flex justify-between items-center">
+                <div className="flex items-center justify-between">
                   <span className="text-stone-500">Tarifa</span>
-                  <span
-                    className={`font-semibold ${
-                      rateType === 'FLEXIBLE' ? 'text-emerald-700' : 'text-stone-800'
-                    }`}
-                  >
+                  <span className={`font-semibold ${rateType === 'FLEXIBLE' ? 'text-emerald-700' : 'text-stone-800'}`}>
                     {rateType === 'FLEXIBLE' ? 'Flexible' : 'No reembolsable'}
                   </span>
                 </div>
 
                 {hasDeposit ? (
                   <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-stone-500">Señal ahora</span>
-                      <span className="font-bold text-emerald-700">
-                        {breakdown.importe_senal!.toFixed(2)}€
-                      </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-stone-500">Señal ahora ({breakdown.porcentaje_senal ?? 30}%)</span>
+                      <span className="font-bold text-emerald-700">{importeSenal.toFixed(2)} €</span>
                     </div>
-                    <div className="flex justify-between items-center">
+                    <div className="flex items-center justify-between">
                       <span className="text-stone-500">Resto</span>
-                      <span className="font-semibold text-stone-700">
-                        {Number(breakdown.importe_resto ?? 0).toFixed(2)}€
-                      </span>
+                      <span className="font-semibold text-stone-700">{importeResto.toFixed(2)} €</span>
                     </div>
                   </>
                 ) : (
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center justify-between">
                     <span className="text-stone-500">Pago ahora</span>
-                    <span className="font-bold text-stone-800">
-                      {breakdown.importe_total.toFixed(2)}€
-                    </span>
+                    <span className="font-bold text-stone-800">{importeTotal.toFixed(2)} €</span>
                   </div>
                 )}
               </div>
@@ -583,8 +513,8 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                 <Lock size={16} />
                 Pagar{' '}
                 {hasDeposit
-                  ? `${breakdown.importe_senal!.toFixed(2)}€ de señal`
-                  : `${breakdown.importe_total.toFixed(2)}€`}
+                  ? `${importeSenal.toFixed(2)} € de señal`
+                  : `${importeTotal.toFixed(2)} €`}
               </>
             )}
           </button>

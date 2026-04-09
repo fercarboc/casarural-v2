@@ -29,7 +29,8 @@ export default function BookingCheckoutStepPage() {
 
   const [isBooking, setIsBooking] = useState(false)
   const [bookingError, setBookingError] = useState<string | null>(null)
-  const [testConfirmPending, setTestConfirmPending] = useState<CustomerFormData | null>(null)
+  const [testConfirmPending, setTestConfirmPending] =
+    useState<CustomerFormData | null>(null)
 
   const checkInDate = isoToDate(checkIn)
   const checkOutDate = isoToDate(checkOut)
@@ -40,13 +41,13 @@ export default function BookingCheckoutStepPage() {
   }, [selectedCombination])
 
   useEffect(() => {
-    if (!checkIn || !checkOut || !selectedCombination || !priceBreakdown) {
+    if (!property || !checkIn || !checkOut || !selectedCombination || !priceBreakdown) {
       navigate('/reservar/opciones', { replace: true })
     }
-  }, [checkIn, checkOut, selectedCombination, priceBreakdown, navigate])
+  }, [property, checkIn, checkOut, selectedCombination, priceBreakdown, navigate])
 
   const executePayment = async (form: CustomerFormData) => {
-    if (!checkIn || !checkOut || !selectedCombination) return
+    if (!property || !checkIn || !checkOut || !selectedCombination) return
 
     setIsBooking(true)
     setBookingError(null)
@@ -58,25 +59,29 @@ export default function BookingCheckoutStepPage() {
         )
       }
 
+      const payload = {
+        property_id: property.id,
+        fecha_entrada: checkIn,
+        fecha_salida: checkOut,
+        num_huespedes: guests,
+        tarifa: rateType === 'NON_REFUNDABLE' ? 'NO_REEMBOLSABLE' : 'FLEXIBLE',
+        unidades: selectedCombination.unidades.map((u) => ({
+          unidad_id: u.unidad_id,
+          num_huespedes: u.num_huespedes_asignados,
+        })),
+        guestData: {
+          nombre_cliente: form.nombre,
+          apellidos_cliente: form.apellidos,
+          email_cliente: form.email,
+          telefono_cliente: form.telefono,
+          nif_cliente: form.numero_documento ?? '',
+        },
+      }
+
       const { data: preReserva, error: preError } = await supabase.functions.invoke(
         'create-pre-reservation',
         {
-          body: {
-            checkIn,
-            checkOut,
-            rateType,
-            unidades: selectedCombination.unidades.map((u) => ({
-              unidad_id: u.id,
-              num_huespedes: u.num_huespedes_asignados,
-            })),
-            guestData: {
-              nombre_cliente: form.nombre,
-              apellidos_cliente: form.apellidos,
-              email_cliente: form.email,
-              telefono_cliente: form.telefono,
-              nif_cliente: form.numero_documento ?? '',
-            },
-          },
+          body: payload,
         }
       )
 
@@ -88,12 +93,21 @@ export default function BookingCheckoutStepPage() {
         throw new Error(msg)
       }
 
+      const reservaId =
+        (preReserva as any)?.reserva_id ??
+        (preReserva as any)?.reservation_id ??
+        (preReserva as any)?.data?.reserva_id
+
+      if (!reservaId) {
+        throw new Error('La pre-reserva se creó, pero no devolvió reserva_id.')
+      }
+
       const { data: checkout, error: checkoutError } = await supabase.functions.invoke(
         'create-stripe-checkout',
         {
           body: {
-            reservaId: preReserva.reserva_id,
-            appUrl: window.location.origin,  // permite que Stripe redirija al entorno correcto (local o prod)
+            reservaId,
+            appUrl: window.location.origin,
           },
         }
       )
@@ -106,13 +120,24 @@ export default function BookingCheckoutStepPage() {
         throw new Error(msg)
       }
 
-      window.location.href = checkout.checkout_url
+      const checkoutUrl =
+        (checkout as any)?.checkout_url ??
+        (checkout as any)?.url ??
+        (checkout as any)?.data?.checkout_url
+
+      if (!checkoutUrl) {
+        throw new Error('Stripe no devolvió checkout_url.')
+      }
+
+      window.location.href = checkoutUrl
     } catch (err: any) {
       console.error('Booking error', err)
       const msg = err?.message ?? ''
 
-      if (msg.includes('disponible')) {
-        setBookingError('Las fechas seleccionadas ya no están disponibles. Vuelve a buscar.')
+      if (msg.toLowerCase().includes('disponible')) {
+        setBookingError(
+          'Las fechas seleccionadas ya no están disponibles. Vuelve a buscar.'
+        )
       } else if (msg) {
         setBookingError(msg)
       } else {
@@ -132,14 +157,14 @@ export default function BookingCheckoutStepPage() {
     await executePayment(form)
   }
 
-  if (!checkInDate || !checkOutDate || !selectedCombination || !priceBreakdown) {
+  if (!property || !checkInDate || !checkOutDate || !selectedCombination || !priceBreakdown) {
     return null
   }
 
   return (
     <div>
       <MetaTags
-        title={`Datos y pago | ${property?.nombre ?? 'Reserva directa'}`}
+        title={`Datos y pago | ${property.nombre ?? 'Reserva directa'}`}
         description="Completa los datos del titular y realiza el pago seguro de tu reserva."
       />
 
@@ -156,6 +181,7 @@ export default function BookingCheckoutStepPage() {
               <button
                 onClick={() => setTestConfirmPending(null)}
                 className="text-stone-400 hover:text-stone-600"
+                type="button"
               >
                 <X size={20} />
               </button>
@@ -178,6 +204,7 @@ export default function BookingCheckoutStepPage() {
               <button
                 onClick={() => setTestConfirmPending(null)}
                 className="flex-1 rounded-xl border border-stone-200 py-2.5 text-sm font-medium text-stone-600 hover:bg-stone-50"
+                type="button"
               >
                 Cancelar
               </button>
@@ -185,9 +212,10 @@ export default function BookingCheckoutStepPage() {
                 onClick={() => {
                   const form = testConfirmPending
                   setTestConfirmPending(null)
-                  if (form) executePayment(form)
+                  if (form) void executePayment(form)
                 }}
                 className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white hover:bg-amber-600"
+                type="button"
               >
                 Continuar con el test
               </button>
@@ -215,7 +243,7 @@ export default function BookingCheckoutStepPage() {
         guests={guests}
         rateType={rateType}
         breakdown={priceBreakdown}
-        propertyName={property?.nombre}
+        propertyName={property.nombre}
         selectedCombinationLabel={selectedComboLabel}
         onRateChange={setRateType}
         onPay={handlePay}

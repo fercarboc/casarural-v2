@@ -1,11 +1,14 @@
 // supabase/functions/create-pre-reservation/index.ts
-// v2 — endurecida
-// Crea pre-reserva + reserva_unidades + reservation_holds
-// POST {
-//   checkIn, checkOut, rateType,
-//   unidades: [{ unidad_id, num_huespedes }],
-//   guestData: { nombre_cliente, apellidos_cliente, email_cliente, telefono_cliente, nif_cliente? }
-// }
+// v2 — corregida para el nuevo formato de calculate-price y check-availability
+//
+// CAMBIOS respecto a la versión anterior:
+// - calculate-price ahora recibe: property_id, fecha_entrada, fecha_salida,
+//   num_huespedes, tarifa, unidades[{unidad_id, extras_manuales}]
+// - calculate-price ahora devuelve: importe_alojamiento_total, importe_extras_total,
+//   importe_limpieza_total (con sufijo _total), importe_senal, importe_resto
+// - check-availability ahora recibe: property_id, fecha_entrada, fecha_salida, unidad_ids
+// - reserva_unidades.importe usa importe_subtotal de la unidad, no subtotal
+// - reserva_unidades.desglose tiene la estructura nueva
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -20,49 +23,53 @@ function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
-function normalizeRateType(rateType: string): 'FLEXIBLE' | 'NO_REEMBOLSABLE' {
-  const normalized = String(rateType || '').trim().toUpperCase();
-
-  if (normalized === 'FLEXIBLE') return 'FLEXIBLE';
-  if (normalized === 'NON_REFUNDABLE' || normalized === 'NO_REEMBOLSABLE') {
-    return 'NO_REEMBOLSABLE';
-  }
-
+function normalizeTarifa(rateType: string): 'FLEXIBLE' | 'NO_REEMBOLSABLE' {
+  const v = String(rateType || '').trim().toUpperCase();
+  if (v === 'FLEXIBLE') return 'FLEXIBLE';
+  if (v === 'NON_REFUNDABLE' || v === 'NO_REEMBOLSABLE') return 'NO_REEMBOLSABLE';
   throw new Error(`rateType inválido: ${rateType}`);
 }
 
 async function resolvePropertyId(req: Request, supabase: any): Promise<string | null> {
-  const forcedPropertyId = req.headers.get('x-property-id');
-  if (forcedPropertyId) return forcedPropertyId;
+  const forced = req.headers.get('x-property-id');
+  if (forced) return forced;
 
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
-
   if (host) {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('custom_domains')
       .select('property_id')
       .eq('domain', host)
       .maybeSingle();
-
-    if (!error && data?.property_id) return data.property_id;
+    if (data?.property_id) return data.property_id;
   }
 
   return Deno.env.get('PROPERTY_ID') || Deno.env.get('VITE_PROPERTY_ID') || null;
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
     const body = await req.json();
-    const { checkIn, checkOut, unidades, guestData } = body;
-    const rateType = normalizeRateType(body.rateType);
+
+    // ── Compatibilidad de parámetros ─────────────────────────────────────────
+    // Acepta tanto el formato nuevo como el legacy del frontend
+    const checkIn    = body.fecha_entrada ?? body.checkIn;
+    const checkOut   = body.fecha_salida  ?? body.checkOut;
+    const unidades   = body.unidades;   // [{ unidad_id, num_huespedes, extras_manuales? }]
+    const guestData  = body.guestData;
+    const tarifa     = normalizeTarifa(body.tarifa ?? body.rateType ?? 'FLEXIBLE');
+    const numHuespedes = body.num_huespedes
+      ?? unidades?.reduce((s: number, u: any) => s + Number(u.num_huespedes || 0), 0)
+      ?? 0;
 
     if (!checkIn || !checkOut || !unidades?.length || !guestData?.email_cliente) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
+        JSON.stringify({
+          error: 'Faltan campos obligatorios',
+          required: 'fecha_entrada (o checkIn), fecha_salida (o checkOut), unidades[], guestData.email_cliente',
+        }),
         { status: 400, headers: corsHeaders }
       );
     }
@@ -73,7 +80,7 @@ Deno.serve(async (req) => {
     );
 
     const baseUrl = Deno.env.get('SUPABASE_URL')!;
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const svcKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const fnHeaders = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${svcKey}`,
@@ -82,17 +89,16 @@ Deno.serve(async (req) => {
     const property_id = await resolvePropertyId(req, supabase);
     if (!property_id) {
       return new Response(
-        JSON.stringify({ error: 'Unable to resolve property context in backend' }),
+        JSON.stringify({ error: 'No se pudo resolver el contexto de propiedad' }),
         { status: 400, headers: corsHeaders }
       );
     }
 
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    
-    const unidadIds = unidades.map((u: any) => u.unidad_id);
+    const expiresAt  = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const unidadIds  = unidades.map((u: any) => u.unidad_id);
 
     // =========================================================
-    // 1. Validar que las unidades pertenecen a la propiedad activa
+    // 1. Validar que las unidades pertenecen a la propiedad
     // =========================================================
     const { data: unidadesDb, error: unidadesError } = await supabase
       .from('unidades')
@@ -108,10 +114,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const invalidUnit = unidadesDb.find((u: any) => u.property_id !== property_id);
-    if (invalidUnit) {
+    const unitInvalida = unidadesDb.find((u: any) => u.property_id !== property_id);
+    if (unitInvalida) {
       return new Response(
-        JSON.stringify({ error: `La unidad ${invalidUnit.nombre} no pertenece a la propiedad activa` }),
+        JSON.stringify({ error: `La unidad "${unitInvalida.nombre}" no pertenece a esta propiedad` }),
         { status: 400, headers: corsHeaders }
       );
     }
@@ -123,102 +129,95 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: fnHeaders,
       body: JSON.stringify({
-        checkIn,
-        checkOut,
-        unidad_ids: unidadIds,
+        property_id,
+        fecha_entrada: checkIn,   // nombre nuevo
+        fecha_salida:  checkOut,  // nombre nuevo
+        unidad_ids:    unidadIds,
       }),
     });
 
     if (!availRes.ok) {
       const errText = await availRes.text();
-      throw new Error(`check-availability failed: ${availRes.status} ${errText}`);
+      throw new Error(`check-availability falló: ${availRes.status} ${errText}`);
     }
 
     const avail = await availRes.json();
 
     if (!avail.available) {
       const bloqueadas = avail.per_unit
-        ? Object.entries(avail.per_unit)
-            .filter(([, v]) => !v)
-            .map(([k]) => k)
+        ? Object.entries(avail.per_unit).filter(([, v]) => !v).map(([k]) => k)
         : [];
-
       return new Response(
-        JSON.stringify({
-          error: 'Una o más unidades no están disponibles',
-          unidades_bloqueadas: bloqueadas,
-        }),
+        JSON.stringify({ error: 'Una o más unidades no están disponibles', unidades_bloqueadas: bloqueadas }),
         { status: 409, headers: corsHeaders }
       );
     }
 
     // =========================================================
-    // 3. Recalcular precio en backend
+    // 3. Recalcular precio en backend (formato nuevo)
     // =========================================================
     const priceRes = await fetch(`${baseUrl}/functions/v1/calculate-price`, {
       method: 'POST',
       headers: fnHeaders,
       body: JSON.stringify({
-        checkIn,
-        checkOut,
-        rateType,
-        unidades,
+        property_id,
+        fecha_entrada: checkIn,   // nombre correcto
+        fecha_salida:  checkOut,  // nombre correcto
+        num_huespedes: numHuespedes,
+        tarifa,                   // nombre correcto (era rateType)
+        unidades: unidades.map((u: any) => ({
+          unidad_id:       u.unidad_id,
+          extras_manuales: u.extras_manuales ?? 0,
+        })),
       }),
     });
 
     if (!priceRes.ok) {
       const errText = await priceRes.text();
-      throw new Error(`calculate-price failed: ${priceRes.status} ${errText}`);
+      throw new Error(`calculate-price falló: ${priceRes.status} ${errText}`);
     }
 
     const price = await priceRes.json();
-
     if (price.error) {
-      return new Response(
-        JSON.stringify({ error: price.error }),
-        { status: 400, headers: corsHeaders }
-      );
+      return new Response(JSON.stringify({ error: price.error }), { status: 400, headers: corsHeaders });
     }
 
     // =========================================================
     // 4. Crear reserva principal
     // =========================================================
-    const numHuespedesTotal = unidades.reduce(
-      (s: number, u: any) => s + Number(u.num_huespedes || 0),
-      0
-    );
-
-    const importeTotal = Number(price.importe_total ?? 0);
-    const importeBase = round2(importeTotal / 1.10);
-    const importeIva = round2(importeTotal - importeBase);
+    // Los campos de precio ahora tienen sufijo _total en calculate-price
+    const importeTotal    = Number(price.importe_total ?? 0);
+    const importeBase     = round2(importeTotal / 1.10);
+    const importeIva      = round2(importeTotal - importeBase);
 
     const { data: reserva, error: reservaError } = await supabase
       .from('reservas')
       .insert({
         property_id,
-        fecha_entrada: checkIn,
-        fecha_salida: checkOut,
-        num_huespedes: numHuespedesTotal,
-        nombre_cliente: guestData.nombre_cliente ?? '',
-        apellidos_cliente: guestData.apellidos_cliente ?? '',
-        email_cliente: guestData.email_cliente,
-        telefono_cliente: guestData.telefono_cliente ?? '',
-        nif_cliente: guestData.nif_cliente ?? '',
-        tarifa: rateType,
-        importe_alojamiento: price.importe_alojamiento,
-        importe_extras: price.importe_extras,
-        importe_limpieza: price.importe_limpieza,
-        descuento_aplicado: price.descuento_aplicado,
-        importe_total: importeTotal,
-        importe_senal: price.importe_senal,
-        importe_resto: price.importe_resto,
-        iva_porcentaje: 10,
-        importe_iva: importeIva,
-        importe_base: importeBase,
-        estado: 'PENDING_PAYMENT',
-        estado_pago: 'UNPAID',
-        origen: 'DIRECT_WEB',
-        expires_at: expiresAt,
+        fecha_entrada:        checkIn,
+        fecha_salida:         checkOut,
+        num_huespedes:        numHuespedes,
+        nombre_cliente:       guestData.nombre_cliente    ?? '',
+        apellidos_cliente:    guestData.apellidos_cliente ?? '',
+        email_cliente:        guestData.email_cliente,
+        telefono_cliente:     guestData.telefono_cliente  ?? '',
+        nif_cliente:          guestData.nif_cliente       ?? '',
+        tarifa,
+        // Campos de precio con los nombres correctos del nuevo calculate-price
+        importe_alojamiento:  price.importe_alojamiento_total ?? 0,
+        importe_extras:       price.importe_extras_total      ?? 0,
+        importe_limpieza:     price.importe_limpieza_total    ?? 0,
+        descuento_aplicado:   price.descuento_aplicado        ?? 0,
+        importe_base:         importeBase,
+        iva_porcentaje:       10,
+        importe_iva:          importeIva,
+        importe_total:        importeTotal,
+        importe_senal:        price.importe_senal  ?? 0,
+        importe_resto:        price.importe_resto  ?? 0,
+        estado:               'PENDING_PAYMENT',
+        estado_pago:          'UNPAID',
+        origen:               'DIRECT_WEB',
+        expires_at:           expiresAt,
       })
       .select('id, token_cliente')
       .single();
@@ -229,14 +228,26 @@ Deno.serve(async (req) => {
     // 5. Crear reserva_unidades
     // =========================================================
     const reservaUnidadesRows = unidades.map((u: any) => {
+      // price.unidades tiene los campos del nuevo calculate-price
       const precioUnidad = price.unidades?.find((p: any) => p.unidad_id === u.unidad_id);
 
       return {
-        reserva_id: reserva.id,
-        unidad_id: u.unidad_id,
-        num_huespedes: u.num_huespedes,
-        importe: precioUnidad?.subtotal ?? 0,
-        desglose: precioUnidad?.desglose ?? {},
+        reserva_id:   reserva.id,
+        unidad_id:    u.unidad_id,
+        num_huespedes: u.num_huespedes ?? (precioUnidad?.num_huespedes_asignados ?? 0),
+        // importe_subtotal es el campo correcto en el nuevo calculate-price
+        importe:      precioUnidad?.importe_subtotal ?? 0,
+        desglose: {
+          noches:          precioUnidad?.noches                ?? 0,
+          precio_noche:    precioUnidad?.precio_noche          ?? 0,
+          extra_huesped:   precioUnidad?.extra_huesped_noche   ?? 0,
+          num_extras:      precioUnidad?.extras_asignados      ?? 0,
+          limpieza:        precioUnidad?.importe_limpieza      ?? 0,
+          descuento:       price.descuento_aplicado            ?? 0,
+          temporada_id:    precioUnidad?.temporada_id          ?? null,
+          temporada_nombre:precioUnidad?.temporada_nombre      ?? 'Base',
+          es_especial:     precioUnidad?.es_especial           ?? false,
+        },
       };
     });
 
@@ -250,14 +261,14 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================
-    // 6. Crear reservation_holds (CRÍTICO)
+    // 6. Crear reservation_holds
     // =========================================================
     const holdRows = unidades.map((u: any) => ({
       property_id,
-      unidad_id: u.unidad_id,
+      unidad_id:   u.unidad_id,
       fecha_inicio: checkIn,
-      fecha_fin: checkOut,
-      expires_at: expiresAt,
+      fecha_fin:    checkOut,
+      expires_at:   expiresAt,
     }));
 
     const { error: holdError } = await supabase
@@ -275,13 +286,14 @@ Deno.serve(async (req) => {
       JSON.stringify({
         ok: true,
         property_id,
-        reserva_id: reserva.id,
+        reserva_id:    reserva.id,
         token_cliente: reserva.token_cliente,
-        expires_at: expiresAt,
+        expires_at:    expiresAt,
         price,
       }),
       { status: 200, headers: corsHeaders }
     );
+
   } catch (err: any) {
     console.error('create-pre-reservation error:', err);
     return new Response(

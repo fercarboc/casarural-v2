@@ -87,7 +87,11 @@ serve(async (req) => {
         .eq('id', reservation_id)
         .single()
 
-      if (!reservaPidError && reservaPid?.property_id) {
+      if (reservaPidError) {
+        console.error('send-email property_id query error:', reservaPidError)
+      }
+
+      if (reservaPid?.property_id) {
         resolvedPropertyId = reservaPid.property_id
       }
     }
@@ -96,7 +100,7 @@ serve(async (req) => {
     let template: any = null
 
     if (resolvedPropertyId) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('email_templates')
         .select('*')
         .eq('property_id', resolvedPropertyId)
@@ -104,17 +108,25 @@ serve(async (req) => {
         .eq('activa', true)
         .maybeSingle()
 
+      if (error) {
+        console.error('send-email template query error (scoped):', error)
+      }
+
       template = data
     }
 
-    // Fallback opcional para compatibilidad
+    // Fallback opcional si no aparece por property_id
     if (!template) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('email_templates')
         .select('*')
         .eq('key', template_key)
         .eq('activa', true)
         .maybeSingle()
+
+      if (error) {
+        console.error('send-email template query error (fallback):', error)
+      }
 
       template = data
     }
@@ -147,23 +159,33 @@ serve(async (req) => {
           tarifa,
           importe_total,
           importe_senal,
-          importe_pagado,
           token_cliente
         `)
         .eq('id', reservation_id)
         .single()
 
-      if (!reservaError && reserva) {
+      if (reservaError) {
+        console.error('send-email reserva query error:', reservaError)
+      }
+
+      if (reservation_id && !reserva) {
+        return Response.json(
+          { error: `No se pudo cargar la reserva ${reservation_id}` },
+          { status: 500, headers: corsHeaders }
+        )
+      }
+
+      if (reserva) {
         const appUrl = Deno.env.get('APP_URL') ?? 'https://www.casarurallarasilla.com'
         const total = num(reserva.importe_total)
         const senal = Math.max(num(reserva.importe_senal), 0)
-        const pagado = Math.max(num(reserva.importe_pagado), senal)
+        const pagado = senal
         const resto = Math.max(0, total - pagado)
 
         reservaVars = {
           reservation_id: str(reserva.id),
           reservation_code: buildReservationCode(reserva),
-          reserva_codigo: buildReservationCode(reserva), // compatibilidad con plantillas antiguas
+          reserva_codigo: buildReservationCode(reserva), // compatibilidad
           guest_name: `${str(reserva.nombre_cliente)} ${str(reserva.apellidos_cliente)}`.trim(),
           check_in: formatDateEs(str(reserva.fecha_entrada)),
           check_out: formatDateEs(str(reserva.fecha_salida)),
@@ -187,7 +209,6 @@ serve(async (req) => {
                 : str(reserva.tarifa),
         }
 
-        // Si no habíamos resuelto property_id antes, lo aprovechamos aquí
         if (!resolvedPropertyId && reserva.property_id) {
           resolvedPropertyId = reserva.property_id
         }
@@ -199,11 +220,15 @@ serve(async (req) => {
     let fromName = 'La Rasilla'
 
     if (resolvedPropertyId) {
-      const { data: prop } = await supabase
+      const { data: prop, error: propError } = await supabase
         .from('properties')
         .select('resend_from_email, resend_from_name, email, nombre')
         .eq('id', resolvedPropertyId)
         .single()
+
+      if (propError) {
+        console.error('send-email property sender query error:', propError)
+      }
 
       if (prop) {
         fromEmail = prop.resend_from_email ?? prop.email ?? fromEmail
@@ -211,21 +236,21 @@ serve(async (req) => {
       }
     }
 
-    // ── Montar variables finales ────────────────────────────────────────────
-    // Prioridad:
-    // 1. fallback por to_name
-    // 2. vars de reserva
-    // 3. extra_vars pisa lo anterior
+    // ── Variables finales ───────────────────────────────────────────────────
     const vars = {
       guest_name: str(to_name),
       ...reservaVars,
       ...extra_vars,
     }
 
+    console.log('send-email template_key:', template_key)
+    console.log('send-email reservation_id:', reservation_id ?? null)
+    console.log('send-email resolvedPropertyId:', resolvedPropertyId ?? null)
+    console.log('send-email vars keys:', Object.keys(vars))
+
     const subject = interpolate(template.asunto, vars)
     const html = interpolate(template.cuerpo_html, vars)
 
-    // ── Envío con Resend ────────────────────────────────────────────────────
     const resendKey = Deno.env.get('RESEND_API_KEY')
     if (!resendKey) {
       console.warn('RESEND_API_KEY no configurada — email omitido')

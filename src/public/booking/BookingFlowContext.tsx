@@ -24,77 +24,116 @@ export type UnitRow = {
   activa: boolean
 }
 
+// ─── Tipos que devuelve suggest-combinations ──────────────────────────────────
+
 export type SuggestedUnit = {
-  id: string
+  unidad_id: string           // era: id
+  nombre: string
   slug: string
+  capacidad_base: number
+  capacidad_maxima: number
+  extras_asignados: number
+  num_huespedes_asignados: number
+  // Campos opcionales que puede incluir la versión debug/detallada
+  importe_alojamiento?: number
+  importe_extras?: number
+  importe_limpieza?: number
+  es_especial?: boolean
+  temporada_nombre?: string
+}
+
+export type SuggestedCombination = {
+  unidades: SuggestedUnit[]
+
+  // Capacidad
+  suma_capacidades_base: number
+  suma_capacidades_maximas: number
+  extras_total: number
+  exceso_capacidad: number
+
+  // Importes
+  importe_alojamiento: number
+  importe_extras: number
+  importe_limpieza: number
+  importe_base: number
+  descuento: number
+  importe_neto: number
+  importe_total: number       // era: precio_total
+  importe_senal: number
+  importe_resto: number
+
+  // Métricas
+  precio_por_persona: number          // era: precio_por_huesped
+  precio_por_persona_noche: number
+  num_unidades: number
+  es_sin_extras: boolean
+  es_capacidad_exacta: boolean
+  noches: number
+  min_noches_restriccion?: number
+  warnings: string[]
+}
+
+// ─── Tipos que devuelve calculate-price ───────────────────────────────────────
+
+export type PriceUnit = {
+  unidad_id: string
   nombre: string
   capacidad_base: number
   capacidad_maxima: number
   num_huespedes_asignados: number
-  importe_alojamiento: number
-  importe_limpieza: number
-  importe_extras: number
-  importe_total_unidad: number
-  desglose?: any
-}
-
-export type SuggestedCombination = {
-  ranking: number
-  tipo: 'RECOMENDADA' | 'ALTERNATIVA' | 'COMPLETA'
-  unidades: SuggestedUnit[]
-  total_capacidad_base: number
-  total_capacidad_maxima: number
-  total_huespedes_asignados: number
-  precio_total: number
-  precio_por_huesped: number
-  es_exacta_capacidad_base: boolean
-  exceso_capacidad: number
-  num_unidades: number
-}
-
-export type RemotePriceUnit = {
-  unidad_id: string
-  unidad_nombre: string
-  unidad_slug: string
-  nights: number
-  num_huespedes: number
-  extra_guests: number
-  season: string
-  temporada_id: string | null
+  extras_asignados: number
   precio_noche: number
-  extra_huesped: number
+  extra_huesped_noche: number
+  tarifa_limpieza: number
+  noches: number
   importe_alojamiento: number
-  importe_extra: number
-  limpieza: number
-  descuento: number
-  subtotal: number
-  total: number
-  desglose: any
+  importe_extras: number
+  importe_limpieza: number
+  importe_subtotal: number
+  es_especial: boolean
+  temporada_nombre: string
+  temporada_id: string | null
+  min_noches: number
 }
 
 export type RemotePriceBreakdown = {
-  ok?: boolean
-  mode: 'single' | 'multi'
-  property_id?: string
-  checkIn?: string
-  checkOut?: string
-  nights: number
+  property_id: string
+  fecha_entrada: string
+  fecha_salida: string
+  noches: number
   num_huespedes: number
-  rate_type: string
-  unidades: RemotePriceUnit[]
-  importe_alojamiento: number
-  importe_extras: number
-  importe_limpieza: number
+  tarifa: string
+
+  suma_capacidades_base: number
+  suma_capacidades_maximas: number
+  extras_total: number
+
+  unidades: PriceUnit[]
+
+  importe_alojamiento_total: number   // era: importe_alojamiento
+  importe_extras_total: number        // era: importe_extras
+  importe_limpieza_total: number      // era: importe_limpieza
+  importe_base: number
   descuento_aplicado: number
+  importe_neto: number
   importe_total: number
-  importe_senal: number | null
-  importe_resto: number | null
+
+  porcentaje_senal: number
+  importe_senal: number
+  importe_resto: number
+
+  precio_por_persona: number
+  precio_por_persona_noche: number
+
+  warnings: string[]
 }
 
 export type DayAvailability = {
   blocked: number
   total: number
 }
+
+// ─── Estado del flujo ─────────────────────────────────────────────────────────
 
 type BookingFlowState = {
   property: PropertyRow | null

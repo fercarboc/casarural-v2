@@ -375,7 +375,7 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
 
   function selectReserva(r: ReservaParaFactura) {
     setSelected(r)
-    setNombre(r.razon_social || `${r.nombre} ${r.apellidos}`)
+    setNombre(r.razon_social || `${r.nombre_cliente ?? r.nombre ?? ''} ${r.apellidos_cliente ?? r.apellidos ?? ''}`.trim())
     setNif(r.nif_factura ?? '')
     setDireccion(r.direccion_factura ?? '')
   }
@@ -436,8 +436,8 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
                     <span
                       className={`ml-2 ${selected?.id === r.id ? 'text-slate-200' : 'text-slate-400'}`}
                     >
-                      {r.nombre} {r.apellidos} · {fmtDate(r.fecha_entrada)} –{' '}
-                      {fmtDate(r.fecha_salida)} · {fmtEur(Number(r.total))}
+                      {r.nombre_cliente ?? r.nombre} {r.apellidos_cliente ?? r.apellidos} · {fmtDate(r.fecha_entrada)} –{' '}
+                      {fmtDate(r.fecha_salida)} · {fmtEur(Number(r.importe_total ?? r.total))}
                     </span>
                   </button>
                 ))}
@@ -476,7 +476,7 @@ function CreateModal({ onClose, onCreated }: CreateModalProps) {
                     Importe
                   </label>
                   <div className="flex h-[42px] items-center rounded-lg border border-sidebar-border bg-admin-card px-4 text-sm font-bold text-white">
-                    {fmtEur(Number(selected.total))}
+                    {fmtEur(Number(selected.importe_total ?? selected.total))}
                   </div>
                 </div>
               </div>

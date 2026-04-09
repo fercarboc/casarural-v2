@@ -64,6 +64,7 @@ interface Bloqueo {
   motivo: string | null
   origen: string | null
   uid_ical: string | null
+  linkedReservation?: Reserva | null
 }
 
 interface UnidadOption {
@@ -78,6 +79,43 @@ type CalEvent =
 type ViewMode = 'property' | 'global'
 type BlockAction = 'block' | 'unblock'
 type BlockScope = 'global' | 'individual'
+
+// ─── Helpers de negocio ───────────────────────────────────────────────────────
+function safeGuestName(reserva: Reserva): string {
+  return `${reserva.nombre_cliente ?? ''} ${reserva.apellidos_cliente ?? ''}`.trim() || 'Cliente sin nombre'
+}
+
+function extractReservationIdFromMotivo(motivo?: string | null): string | null {
+  if (!motivo) return null
+
+  const match = motivo.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i)
+  return match?.[0]?.trim().toLowerCase() ?? null
+}
+
+function getReservationDisplayCode(reserva: Reserva): string {
+  const raw = (reserva.id ?? '').trim()
+  return `R-${raw.slice(0, 8).toUpperCase()}`
+}
+
+function enrichBloqueosWithReservations(
+  bloqueos: Bloqueo[],
+  reservas: Reserva[]
+): Bloqueo[] {
+  const reservationMap = new Map<string, Reserva>()
+
+  for (const reserva of reservas) {
+    reservationMap.set((reserva.id ?? '').trim().toLowerCase(), reserva)
+  }
+
+  return bloqueos.map((bloqueo) => {
+    const reservationId = extractReservationIdFromMotivo(bloqueo.motivo)
+
+    return {
+      ...bloqueo,
+      linkedReservation: reservationId ? reservationMap.get(reservationId) ?? null : null,
+    }
+  })
+}
 
 // ─── Colores por tipo/origen ──────────────────────────────────────────────────
 function eventColor(ev: CalEvent): { bg: string; text: string; border: string; dot: string } {
@@ -103,6 +141,15 @@ function eventColor(ev: CalEvent): { bg: string; text: string; border: string; d
       text: 'text-white',
       border: 'border-slate-600',
       dot: 'bg-slate-500',
+    }
+  }
+
+  if (ev.data.linkedReservation) {
+    return {
+      bg: 'bg-emerald-500',
+      text: 'text-white',
+      border: 'border-emerald-600',
+      dot: 'bg-emerald-500',
     }
   }
 
@@ -139,14 +186,29 @@ function eventColor(ev: CalEvent): { bg: string; text: string; border: string; d
   }
 }
 
-function eventLabel(ev: CalEvent): string {
+function eventLabel(
+  ev: CalEvent,
+  unidadesMap?: Record<string, string>
+): string {
   if (ev.kind === 'reserva') {
-    return `${ev.data.nombre_cliente} ${ev.data.apellidos_cliente ?? ''}`.trim()
+    const code = getReservationDisplayCode(ev.data)
+    const guest = safeGuestName(ev.data)
+    return `${code} · ${guest}`
   }
+
+  if (ev.data.linkedReservation) {
+    const code = getReservationDisplayCode(ev.data.linkedReservation)
+    const guest = safeGuestName(ev.data.linkedReservation)
+    return `${code} · ${guest}`
+  }
+
   const o = ev.data.origen ?? ''
   if (o.includes('BOOKING')) return 'Booking'
   if (o.includes('AIRBNB')) return 'Airbnb'
   if (o.includes('ESCAPADARURAL')) return 'Escapada Rural'
+  if (ev.data.unidad_id && unidadesMap?.[ev.data.unidad_id]) {
+    return `Bloqueo · ${unidadesMap[ev.data.unidad_id]}`
+  }
   return ev.data.motivo ?? 'Bloqueo'
 }
 
@@ -163,6 +225,86 @@ function occupiesDay(ev: CalEvent, day: Date): boolean {
   const start = parseISO(eventStart(ev))
   const end = parseISO(eventEnd(ev))
   return !isBefore(day, start) && isBefore(day, end)
+}
+
+function belongsToMonth(ev: CalEvent, month: Date): boolean {
+  const mStart = startOfMonth(month)
+  const mEnd = endOfMonth(month)
+  const start = parseISO(eventStart(ev))
+  const endExclusive = parseISO(eventEnd(ev))
+  const lastOccupiedDay = addDays(endExclusive, -1)
+
+  return !isAfter(start, mEnd) && !isBefore(lastOccupiedDay, mStart)
+}
+
+function fmtDate(d: string) {
+  return format(parseISO(d), 'd MMM yyyy', { locale: es })
+}
+
+function monthEventStats(events: CalEvent[], month: Date) {
+  const monthEvents = events.filter((ev) => belongsToMonth(ev, month))
+
+  return {
+    confirmedReservations: monthEvents.filter(
+      (ev) =>
+        (ev.kind === 'reserva' && ev.data.estado === 'CONFIRMED') ||
+        (ev.kind === 'bloqueo' && !!ev.data.linkedReservation)
+    ).length,
+    pendingReservations: monthEvents.filter(
+      (ev) => ev.kind === 'reserva' && ev.data.estado === 'PENDING_PAYMENT'
+    ).length,
+    icalBlocks: monthEvents.filter((ev) => ev.kind === 'bloqueo' && !!ev.data.uid_ical).length,
+  }
+}
+
+function monthOccupation(events: CalEvent[], month: Date) {
+  const diasMes = getDaysInMonth(month)
+  const set = new Set<string>()
+  const mStart = startOfMonth(month)
+  const mEnd = endOfMonth(month)
+
+  for (const ev of events) {
+    let d = parseISO(eventStart(ev))
+    const fin = parseISO(eventEnd(ev))
+
+    while (isBefore(d, fin)) {
+      if (!isBefore(d, mStart) && !isAfter(d, mEnd)) {
+        set.add(format(d, 'yyyy-MM-dd'))
+      }
+      d = addDays(d, 1)
+    }
+  }
+
+  return diasMes > 0 ? Math.round((set.size / diasMes) * 100) : 0
+}
+
+function getEventsForDay(events: CalEvent[], day: Date): CalEvent[] {
+  return events.filter((ev) => occupiesDay(ev, day))
+}
+
+function getGlobalEventsForDay(
+  day: Date,
+  unidades: UnidadOption[],
+  reservas: Reserva[],
+  bloqueos: Bloqueo[]
+): Array<{ unidad: UnidadOption; events: CalEvent[] }> {
+  return unidades
+    .map((unidad) => {
+      const unitEvents: CalEvent[] = [
+        ...reservas
+          .filter((r) => r.unidad_id === unidad.id)
+          .map((r) => ({ kind: 'reserva' as const, data: r })),
+        ...bloqueos
+          .filter((b) => b.unidad_id === unidad.id)
+          .map((b) => ({ kind: 'bloqueo' as const, data: b })),
+      ]
+
+      return {
+        unidad,
+        events: getEventsForDay(unitEvents, day),
+      }
+    })
+    .filter((item) => item.events.length > 0)
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -182,6 +324,15 @@ export const CalendarPage: React.FC = () => {
   const [selectedUnidadId, setSelectedUnidadId] = useState<string>('GLOBAL')
 
   const today = startOfToday()
+
+  const unidadesMap = useMemo(
+    () =>
+      unidades.reduce<Record<string, string>>((acc, u) => {
+        acc[u.id] = u.nombre
+        return acc
+      }, {}),
+    [unidades]
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -221,8 +372,12 @@ export const CalendarPage: React.FC = () => {
         .select('id,unidad_id,fecha_inicio,fecha_fin,motivo,origen,uid_ical'),
     ])
 
-    setReservas(r ?? [])
-    setBloqueos(b ?? [])
+    const typedReservas = (r ?? []) as Reserva[]
+    const typedBloqueos = (b ?? []) as Bloqueo[]
+    const enrichedBloqueos = enrichBloqueosWithReservations(typedBloqueos, typedReservas)
+
+    setReservas(typedReservas)
+    setBloqueos(enrichedBloqueos)
     setLoading(false)
   }, [selectedUnidadId, viewMode])
 
@@ -257,32 +412,20 @@ export const CalendarPage: React.FC = () => {
     [filteredReservas, filteredBloqueos]
   )
 
-  function getEventsForDay(day: Date): CalEvent[] {
-    return events.filter((ev) => occupiesDay(ev, day))
-  }
+  // ─── Ocupación y métricas del mes ──────────────────────────────────────────
+  const ocupacion = useMemo(() => monthOccupation(events, month), [events, month])
+  const monthStats = useMemo(() => monthEventStats(events, month), [events, month])
 
-  // ─── Ocupación del mes ─────────────────────────────────────────────────────
-  const ocupacion = useMemo(() => {
-    const diasMes = getDaysInMonth(month)
-    const set = new Set<string>()
-    const mStart = startOfMonth(month)
-    const mEnd = endOfMonth(month)
+  const selectedEvents = selected ? getEventsForDay(events, selected) : []
 
-    for (const ev of events) {
-      let d = parseISO(eventStart(ev))
-      const fin = parseISO(eventEnd(ev))
-      while (isBefore(d, fin)) {
-        if (!isBefore(d, mStart) && !isAfter(d, mEnd)) {
-          set.add(format(d, 'yyyy-MM-dd'))
-        }
-        d = addDays(d, 1)
-      }
-    }
+  const selectedGlobalDayEvents = useMemo(() => {
+    if (!selected || viewMode !== 'global') return []
+    return getGlobalEventsForDay(selected, unidades, reservas, bloqueos)
+  }, [selected, viewMode, unidades, reservas, bloqueos])
 
-    return Math.round((set.size / diasMes) * 100)
-  }, [events, month])
-
-  const selectedEvents = selected ? getEventsForDay(selected) : []
+  const selectedHeaderLabel = selected
+    ? format(selected, "EEEE d 'de' MMMM", { locale: es })
+    : 'Selecciona un día'
 
   return (
     <div className="space-y-6 text-slate-100">
@@ -313,12 +456,13 @@ export const CalendarPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Selector vista / propiedad */}
+      {/* Selector vista / unidad */}
       <div className="flex flex-col gap-3 rounded-3xl border border-slate-700 bg-[#08111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)] md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
               setViewMode('property')
+              setSelected(null)
               if (selectedUnidadId === 'GLOBAL' && unidades[0]?.id) {
                 setSelectedUnidadId(unidades[0].id)
               }
@@ -329,7 +473,7 @@ export const CalendarPage: React.FC = () => {
                 : 'bg-[#0f1b2d] text-slate-300 hover:bg-[#16263a]'
             }`}
           >
-            Por propiedad
+            Por unidad
           </button>
 
           <button
@@ -350,7 +494,7 @@ export const CalendarPage: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-            Propiedad
+            Unidad
           </label>
 
           <select
@@ -379,171 +523,196 @@ export const CalendarPage: React.FC = () => {
         </div>
       </div>
 
-      {viewMode === 'property' ? (
-        <div className="grid gap-6 lg:grid-cols-4">
-          {/* ── Calendario mensual ─────────────────────────────────────── */}
-          <div className="overflow-hidden rounded-3xl border border-slate-700 bg-[#08111f] shadow-[0_20px_60px_rgba(0,0,0,0.22)] lg:col-span-3">
-            <div className="flex items-center justify-between border-b border-slate-700 bg-[#0b1728] px-6 py-4">
+      <div className="grid gap-6 lg:grid-cols-4">
+        {/* ── Calendario / vista global ───────────────────────────────────── */}
+        <div className="overflow-hidden rounded-3xl border border-slate-700 bg-[#08111f] shadow-[0_20px_60px_rgba(0,0,0,0.22)] lg:col-span-3">
+          <div className="flex items-center justify-between border-b border-slate-700 bg-[#0b1728] px-6 py-4">
+            <div>
               <h3 className="text-base font-semibold capitalize text-slate-50">
+                {viewMode === 'global' ? 'Vista global · ' : ''}
                 {format(month, 'MMMM yyyy', { locale: es })}
               </h3>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setMonth(new Date())}
-                  className="rounded-xl border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 transition-all hover:bg-[#0f1b2d]"
-                >
-                  Hoy
-                </button>
-
-                <button
-                  onClick={() => setMonth((m) => subMonths(m, 1))}
-                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-[#0f1b2d] hover:text-slate-200"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-
-                <button
-                  onClick={() => setMonth((m) => addMonths(m, 1))}
-                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-[#0f1b2d] hover:text-slate-200"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
+              {viewMode === 'global' && (
+                <p className="mt-1 text-xs text-slate-400">
+                  Todas las unidades en una sola rejilla
+                </p>
+              )}
             </div>
 
-            {loading ? (
-              <div className="flex items-center justify-center py-40">
-                <Loader2 className="animate-spin text-slate-500" size={32} />
-              </div>
-            ) : (
-              <div className="p-4">
-                <div className="mb-1 grid grid-cols-7">
-                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
-                    <div
-                      key={d}
-                      className="py-2 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400"
-                    >
-                      {d}
-                    </div>
-                  ))}
-                </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  setMonth(new Date())
+                  setSelected(null)
+                }}
+                className="rounded-xl border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 transition-all hover:bg-[#0f1b2d]"
+              >
+                Hoy
+              </button>
 
-                <div className="grid grid-cols-7 gap-px overflow-hidden rounded-2xl border border-slate-700 bg-slate-800">
-                  {days.map((day) => {
-                    const evs = getEventsForDay(day)
-                    const inMonth = isSameMonth(day, month)
-                    const isToday = isSameDay(day, today)
-                    const isSel = selected ? isSameDay(day, selected) : false
-                    const isPast = isBefore(day, today) && !isToday
-                    const isWeekEnd = getDay(day) === 0
+              <button
+                onClick={() => {
+                  setMonth((m) => subMonths(m, 1))
+                  setSelected(null)
+                }}
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-[#0f1b2d] hover:text-slate-200"
+              >
+                <ChevronLeft size={16} />
+              </button>
 
-                    return (
-                      <button
-                        key={day.toISOString()}
-                        onClick={() =>
-                          setSelected((d) => (d && isSameDay(d, day) ? null : day))
-                        }
-                        className={`
-                          relative flex min-h-[88px] flex-col bg-[#08111f] p-1.5 text-left transition-all
-                          ${!inMonth ? 'pointer-events-none opacity-20' : ''}
-                          ${isSel ? 'z-10 ring-2 ring-inset ring-sky-400' : 'hover:bg-[#0b1728]'}
-                          ${isPast && inMonth ? 'bg-[#0a1322]' : ''}
-                        `}
-                      >
-                        <span
-                          className={`mb-1 flex h-5 w-5 items-center justify-center self-start text-xs font-bold ${
-                            isToday
-                              ? 'rounded-full bg-sky-500 text-[#07111f] text-[10px]'
-                              : isPast
-                                ? 'text-slate-500'
-                                : isWeekEnd
-                                  ? 'text-rose-400'
-                                  : 'text-slate-300'
-                          }`}
-                        >
-                          {format(day, 'd')}
-                        </span>
-
-                        <div className="flex w-full flex-col gap-0.5">
-                          {evs.slice(0, 2).map((ev) => {
-                            const c = eventColor(ev)
-                            const start = parseISO(eventStart(ev))
-                            const isStart = isSameDay(day, start)
-                            const isFirstOfWeek =
-                              getDay(day) === 1 || isSameDay(day, startOfMonth(month))
-                            const showLabel = isStart || isFirstOfWeek
-
-                            return (
-                              <div
-                                key={`${ev.kind}-${ev.data.id}`}
-                                className={`w-full truncate rounded-sm px-1 py-0.5 text-[9px] font-bold leading-tight ${c.bg} ${c.text} ${
-                                  !isStart && !isFirstOfWeek ? 'opacity-80' : ''
-                                }`}
-                              >
-                                {showLabel ? eventLabel(ev) : ''}
-                              </div>
-                            )
-                          })}
-
-                          {evs.length > 2 && (
-                            <div className="pl-1 text-[9px] font-bold text-slate-400">
-                              +{evs.length - 2}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-700 pt-4">
-                  {[
-                    { color: 'bg-emerald-500', label: 'Confirmada (web)' },
-                    { color: 'bg-amber-400', label: 'Pdte. de pago' },
-                    { color: 'bg-blue-500', label: 'Booking.com' },
-                    { color: 'bg-rose-500', label: 'Airbnb' },
-                    { color: 'bg-orange-500', label: 'Escapada Rural' },
-                    { color: 'bg-slate-400', label: 'Bloqueo manual' },
-                  ].map((l) => (
-                    <div key={l.label} className="flex items-center gap-1.5">
-                      <div className={`h-2.5 w-2.5 rounded-sm ${l.color}`} />
-                      <span className="text-[10px] font-semibold text-slate-400">
-                        {l.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              <button
+                onClick={() => {
+                  setMonth((m) => addMonths(m, 1))
+                  setSelected(null)
+                }}
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-[#0f1b2d] hover:text-slate-200"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
 
-          {/* ── Sidebar ─────────────────────────────────────────────── */}
-          <div className="space-y-4">
-            <div className="overflow-hidden rounded-3xl border border-slate-700 bg-[#08111f] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
-              <div className="flex items-center justify-between border-b border-slate-700 bg-[#0b1728] px-5 py-4">
-                <h3 className="text-sm font-semibold text-slate-50">
-                  {selected
-                    ? format(selected, "EEEE d 'de' MMMM", { locale: es })
-                    : 'Selecciona un día'}
-                </h3>
-
-                {selected && (
-                  <button
-                    onClick={() => setSelected(null)}
-                    className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-[#0f1b2d] hover:text-slate-200"
+          {loading ? (
+            <div className="flex items-center justify-center py-40">
+              <Loader2 className="animate-spin text-slate-500" size={32} />
+            </div>
+          ) : viewMode === 'property' ? (
+            <div className="p-4">
+              <div className="mb-1 grid grid-cols-7">
+                {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((d) => (
+                  <div
+                    key={d}
+                    className="py-2 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400"
                   >
-                    <X size={13} />
-                  </button>
-                )}
+                    {d}
+                  </div>
+                ))}
               </div>
 
-              <div className="p-4">
-                {!selected ? (
-                  <p className="py-8 text-center text-sm text-slate-400">
-                    Pulsa cualquier día del calendario para ver sus eventos.
-                  </p>
-                ) : selectedEvents.length === 0 ? (
+              <div className="grid grid-cols-7 gap-px overflow-hidden rounded-2xl border border-slate-700 bg-slate-800">
+                {days.map((day) => {
+                  const evs = getEventsForDay(events, day)
+                  const inMonth = isSameMonth(day, month)
+                  const isToday = isSameDay(day, today)
+                  const isSel = selected ? isSameDay(day, selected) : false
+                  const isPast = isBefore(day, today) && !isToday
+                  const isWeekEnd = getDay(day) === 0
+
+                  return (
+                    <button
+                      key={day.toISOString()}
+                      onClick={() =>
+                        setSelected((d) => (d && isSameDay(d, day) ? null : day))
+                      }
+                      className={`
+                        relative flex min-h-[88px] flex-col bg-[#08111f] p-1.5 text-left transition-all
+                        ${!inMonth ? 'pointer-events-none opacity-20' : ''}
+                        ${isSel ? 'z-10 ring-2 ring-inset ring-sky-400' : 'hover:bg-[#0b1728]'}
+                        ${isPast && inMonth ? 'bg-[#0a1322]' : ''}
+                      `}
+                    >
+                      <span
+                        className={`mb-1 flex h-5 w-5 items-center justify-center self-start text-xs font-bold ${
+                          isToday
+                            ? 'rounded-full bg-sky-500 text-[#07111f] text-[10px]'
+                            : isPast
+                              ? 'text-slate-500'
+                              : isWeekEnd
+                                ? 'text-rose-400'
+                                : 'text-slate-300'
+                        }`}
+                      >
+                        {format(day, 'd')}
+                      </span>
+
+                      <div className="flex w-full flex-col gap-0.5">
+                        {evs.slice(0, 2).map((ev) => {
+                          const c = eventColor(ev)
+                          const start = parseISO(eventStart(ev))
+                          const isStart = isSameDay(day, start)
+                          const isFirstOfWeek =
+                            getDay(day) === 1 || isSameDay(day, startOfMonth(month))
+                          const showLabel = isStart || isFirstOfWeek
+
+                          return (
+                            <div
+                              key={`${ev.kind}-${ev.data.id}`}
+                              className={`w-full truncate rounded-sm px-1 py-0.5 text-[9px] font-bold leading-tight ${c.bg} ${c.text} ${
+                                !isStart && !isFirstOfWeek ? 'opacity-80' : ''
+                              }`}
+                            >
+                              {showLabel ? eventLabel(ev, unidadesMap) : ''}
+                            </div>
+                          )
+                        })}
+
+                        {evs.length > 2 && (
+                          <div className="pl-1 text-[9px] font-bold text-slate-400">
+                            +{evs.length - 2}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-700 pt-4">
+                {[
+                  { color: 'bg-emerald-500', label: 'Confirmada (web)' },
+                  { color: 'bg-amber-400', label: 'Pdte. de pago' },
+                  { color: 'bg-blue-500', label: 'Booking.com' },
+                  { color: 'bg-rose-500', label: 'Airbnb' },
+                  { color: 'bg-orange-500', label: 'Escapada Rural' },
+                  { color: 'bg-slate-400', label: 'Bloqueo manual' },
+                ].map((l) => (
+                  <div key={l.label} className="flex items-center gap-1.5">
+                    <div className={`h-2.5 w-2.5 rounded-sm ${l.color}`} />
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      {l.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <GlobalCalendarGrid
+              month={month}
+              selected={selected}
+              onSelectDay={setSelected}
+              unidades={unidades}
+              reservas={reservas}
+              bloqueos={bloqueos}
+              unidadesMap={unidadesMap}
+            />
+          )}
+        </div>
+
+        {/* ── Sidebar ─────────────────────────────────────────────────────── */}
+        <div className="space-y-4">
+          <div className="overflow-hidden rounded-3xl border border-slate-700 bg-[#08111f] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
+            <div className="flex items-center justify-between border-b border-slate-700 bg-[#0b1728] px-5 py-4">
+              <h3 className="text-sm font-semibold capitalize text-slate-50">
+                {selectedHeaderLabel}
+              </h3>
+
+              {selected && (
+                <button
+                  onClick={() => setSelected(null)}
+                  className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-[#0f1b2d] hover:text-slate-200"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            <div className="p-4">
+              {!selected ? (
+                <p className="py-8 text-center text-sm text-slate-400">
+                  Pulsa cualquier día del calendario para ver sus eventos.
+                </p>
+              ) : viewMode === 'property' ? (
+                selectedEvents.length === 0 ? (
                   <div className="space-y-3 py-6 text-center">
                     <Calendar className="mx-auto text-slate-600" size={32} />
                     <p className="text-sm text-slate-400">Día libre</p>
@@ -557,102 +726,131 @@ export const CalendarPage: React.FC = () => {
                 ) : (
                   <div className="space-y-3">
                     {selectedEvents.map((ev) => (
-                      <EventCard key={`${ev.kind}-${ev.data.id}`} ev={ev} />
+                      <EventCard
+                        key={`${ev.kind}-${ev.data.id}`}
+                        ev={ev}
+                        unidadNombre={unidadesMap[ev.data.unidad_id ?? '']}
+                      />
                     ))}
                   </div>
-                )}
-              </div>
+                )
+              ) : selectedGlobalDayEvents.length === 0 ? (
+                <div className="space-y-3 py-6 text-center">
+                  <Calendar className="mx-auto text-slate-600" size={32} />
+                  <p className="text-sm text-slate-400">Día libre en todas las unidades</p>
+                  <button
+                    onClick={() => setBlockModal(true)}
+                    className="w-full rounded-2xl bg-emerald-500 py-2.5 text-xs font-bold text-[#07111f] transition-all hover:bg-emerald-400"
+                  >
+                    + Crear bloqueo manual
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {selectedGlobalDayEvents.map((item) => (
+                    <div key={item.unidad.id} className="space-y-2">
+                      <div className="rounded-xl border border-slate-700 bg-[#0f1b2d] px-3 py-2">
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-300">
+                          {item.unidad.nombre}
+                        </p>
+                      </div>
+
+                      <div className="space-y-3">
+                        {item.events.map((ev) => (
+                          <EventCard
+                            key={`${item.unidad.id}-${ev.kind}-${ev.data.id}`}
+                            ev={ev}
+                            unidadNombre={item.unidad.nombre}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-
-            <div className="space-y-3 rounded-3xl border border-slate-700 bg-[#08111f] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
-              <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Ocupación · {format(month, 'MMMM', { locale: es })}
-              </h4>
-
-              <div>
-                <div className="mb-2 flex items-end justify-between">
-                  <span className="text-2xl font-bold text-slate-50">{ocupacion}%</span>
-                  <span className="mb-1 text-xs text-slate-400">
-                    {ocupacion >= 80 ? 'Alta' : ocupacion >= 50 ? 'Media' : 'Baja'}
-                  </span>
-                </div>
-
-                <div className="h-2 w-full overflow-hidden rounded-full bg-[#0f1b2d]">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      ocupacion >= 80
-                        ? 'bg-emerald-500'
-                        : ocupacion >= 50
-                          ? 'bg-amber-400'
-                          : 'bg-slate-500'
-                    }`}
-                    style={{ width: `${ocupacion}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5 border-t border-slate-700 pt-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Reservas confirmadas</span>
-                  <span className="font-semibold text-slate-200">
-                    {filteredReservas.filter((r) => r.estado === 'CONFIRMED').length}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Pdte. de pago</span>
-                  <span className="font-semibold text-slate-200">
-                    {filteredReservas.filter((r) => r.estado === 'PENDING_PAYMENT').length}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Bloqueos iCal</span>
-                  <span className="font-semibold text-slate-200">
-                    {filteredBloqueos.filter((b) => b.uid_ical).length}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <Link
-              to="/admin/reservas"
-              className="group flex items-center justify-between gap-3 rounded-3xl border border-slate-700 bg-[#08111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)] transition-all hover:border-slate-500 hover:bg-[#0b1728]"
-            >
-              <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-[#0f1b2d] p-2 transition-colors group-hover:bg-[#16263a]">
-                  <Calendar size={15} className="text-slate-300" />
-                </div>
-                <span className="text-sm font-semibold text-slate-200">
-                  Gestionar reservas
-                </span>
-              </div>
-              <ExternalLink size={13} className="text-slate-500 group-hover:text-slate-300" />
-            </Link>
-
-            <Link
-              to="/admin/ical"
-              className="group flex items-center justify-between gap-3 rounded-3xl border border-slate-700 bg-[#08111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)] transition-all hover:border-slate-500 hover:bg-[#0b1728]"
-            >
-              <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-sky-500/10 p-2 transition-colors group-hover:bg-sky-500/15">
-                  <Wifi size={16} className="text-sky-300" />
-                </div>
-                <span className="text-sm font-bold text-slate-200">
-                  iCal / Sincronización
-                </span>
-              </div>
-              <ExternalLink size={14} className="text-slate-500 group-hover:text-slate-300" />
-            </Link>
           </div>
+
+          <div className="space-y-3 rounded-3xl border border-slate-700 bg-[#08111f] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
+            <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Ocupación · {format(month, 'MMMM', { locale: es })}
+            </h4>
+
+            <div>
+              <div className="mb-2 flex items-end justify-between">
+                <span className="text-2xl font-bold text-slate-50">{ocupacion}%</span>
+                <span className="mb-1 text-xs text-slate-400">
+                  {ocupacion >= 80 ? 'Alta' : ocupacion >= 50 ? 'Media' : 'Baja'}
+                </span>
+              </div>
+
+              <div className="h-2 w-full overflow-hidden rounded-full bg-[#0f1b2d]">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    ocupacion >= 80
+                      ? 'bg-emerald-500'
+                      : ocupacion >= 50
+                        ? 'bg-amber-400'
+                        : 'bg-slate-500'
+                  }`}
+                  style={{ width: `${ocupacion}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5 border-t border-slate-700 pt-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Reservas confirmadas</span>
+                <span className="font-semibold text-slate-200">
+                  {monthStats.confirmedReservations}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Pdte. de pago</span>
+                <span className="font-semibold text-slate-200">
+                  {monthStats.pendingReservations}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Bloqueos iCal</span>
+                <span className="font-semibold text-slate-200">
+                  {monthStats.icalBlocks}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <Link
+            to="/admin/reservas"
+            className="group flex items-center justify-between gap-3 rounded-3xl border border-slate-700 bg-[#08111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)] transition-all hover:border-slate-500 hover:bg-[#0b1728]"
+          >
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-[#0f1b2d] p-2 transition-colors group-hover:bg-[#16263a]">
+                <Calendar size={15} className="text-slate-300" />
+              </div>
+              <span className="text-sm font-semibold text-slate-200">
+                Gestionar reservas
+              </span>
+            </div>
+            <ExternalLink size={13} className="text-slate-500 group-hover:text-slate-300" />
+          </Link>
+
+          <Link
+            to="/admin/ical"
+            className="group flex items-center justify-between gap-3 rounded-3xl border border-slate-700 bg-[#08111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)] transition-all hover:border-slate-500 hover:bg-[#0b1728]"
+          >
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-sky-500/10 p-2 transition-colors group-hover:bg-sky-500/15">
+                <Wifi size={16} className="text-sky-300" />
+              </div>
+              <span className="text-sm font-bold text-slate-200">
+                iCal / Sincronización
+              </span>
+            </div>
+            <ExternalLink size={14} className="text-slate-500 group-hover:text-slate-300" />
+          </Link>
         </div>
-      ) : (
-        <GlobalCalendarGrid
-          month={month}
-          unidades={unidades}
-          reservas={reservas}
-          bloqueos={bloqueos}
-          onOpenBlockModal={() => setBlockModal(true)}
-        />
-      )}
+      </div>
 
       {/* Modal bloqueo manual */}
       {blockModal && (
@@ -675,16 +873,20 @@ export const CalendarPage: React.FC = () => {
 // ─── Vista global ─────────────────────────────────────────────────────────────
 function GlobalCalendarGrid({
   month,
+  selected,
+  onSelectDay,
   unidades,
   reservas,
   bloqueos,
-  onOpenBlockModal,
+  unidadesMap,
 }: {
   month: Date
+  selected: Date | null
+  onSelectDay: (date: Date | null) => void
   unidades: UnidadOption[]
   reservas: Reserva[]
   bloqueos: Bloqueo[]
-  onOpenBlockModal: () => void
+  unidadesMap: Record<string, string>
 }) {
   const days = eachDayOfInterval({
     start: startOfMonth(month),
@@ -701,99 +903,93 @@ function GlobalCalendarGrid({
   ]
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between rounded-3xl border border-slate-700 bg-[#08111f] px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
-        <div>
-          <h3 className="text-base font-semibold capitalize text-slate-50">
-            Vista global · {format(month, 'MMMM yyyy', { locale: es })}
-          </h3>
-          <p className="mt-1 text-sm text-slate-400">
-            Todas las propiedades en una sola rejilla
-          </p>
+    <div className="overflow-auto">
+      <div className="min-w-[1200px]">
+        <div
+          className="grid border-b border-slate-700 bg-[#0b1728]"
+          style={{
+            gridTemplateColumns: `240px repeat(${days.length}, minmax(44px, 1fr))`,
+          }}
+        >
+          <div className="border-r border-slate-700 px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+            Unidad
+          </div>
+
+          {days.map((day) => {
+            const isSel = selected ? isSameDay(selected, day) : false
+            const isToday = isSameDay(day, startOfToday())
+
+            return (
+              <button
+                key={day.toISOString()}
+                onClick={() => onSelectDay(selected && isSameDay(selected, day) ? null : day)}
+                className={`border-r border-slate-800 px-1 py-3 text-center text-[10px] font-bold transition-all ${
+                  isSel ? 'bg-sky-500/15 text-sky-200' : 'text-slate-400 hover:bg-[#0f1b2d]'
+                }`}
+              >
+                <div className={isToday ? 'text-sky-300' : ''}>{format(day, 'd')}</div>
+                <div className="text-[9px] opacity-70">
+                  {format(day, 'EEE', { locale: es })}
+                </div>
+              </button>
+            )
+          })}
         </div>
 
-        <button
-          onClick={onOpenBlockModal}
-          className="rounded-2xl bg-emerald-500 px-4 py-2 text-sm font-bold text-[#07111f] transition-all hover:bg-emerald-400"
-        >
-          + Bloqueo manual
-        </button>
-      </div>
+        {unidades.map((u) => {
+          const events = unitEvents(u.id)
 
-      <div className="overflow-hidden rounded-3xl border border-slate-700 bg-[#08111f] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
-        <div className="overflow-auto">
-          <div className="min-w-[1200px]">
+          return (
             <div
-              className="grid border-b border-slate-700 bg-[#0b1728]"
+              key={u.id}
+              className="grid border-b border-slate-800"
               style={{
                 gridTemplateColumns: `240px repeat(${days.length}, minmax(44px, 1fr))`,
               }}
             >
-              <div className="border-r border-slate-700 px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                Propiedad
+              <div className="border-r border-slate-700 px-4 py-4">
+                <div className="text-sm font-semibold text-slate-200">{u.nombre}</div>
               </div>
 
-              {days.map((day) => (
-                <div
-                  key={day.toISOString()}
-                  className="border-r border-slate-800 px-1 py-3 text-center text-[10px] font-bold text-slate-400"
-                >
-                  <div>{format(day, 'd')}</div>
-                  <div className="text-[9px] opacity-70">
-                    {format(day, 'EEE', { locale: es })}
-                  </div>
-                </div>
-              ))}
-            </div>
+              {days.map((day) => {
+                const ev = events.find((e) => occupiesDay(e, day))
+                const c = ev ? eventColor(ev) : null
+                const showLabel = ev && isSameDay(day, parseISO(eventStart(ev)))
+                const isSel = selected ? isSameDay(selected, day) : false
 
-            {unidades.map((u) => {
-              const events = unitEvents(u.id)
-
-              return (
-                <div
-                  key={u.id}
-                  className="grid border-b border-slate-800"
-                  style={{
-                    gridTemplateColumns: `240px repeat(${days.length}, minmax(44px, 1fr))`,
-                  }}
-                >
-                  <div className="border-r border-slate-700 px-4 py-4">
-                    <div className="text-sm font-semibold text-slate-200">{u.nombre}</div>
-                  </div>
-
-                  {days.map((day) => {
-                    const ev = events.find((e) => occupiesDay(e, day))
-                    const c = ev ? eventColor(ev) : null
-                    const showLabel = ev && isSameDay(day, parseISO(eventStart(ev)))
-
-                    return (
-                      <div
-                        key={day.toISOString()}
-                        className={`h-14 border-r border-slate-800 ${
-                          ev ? `${c?.bg} ${c?.text}` : 'bg-[#08111f]'
-                        }`}
-                        title={ev ? eventLabel(ev) : ''}
-                      >
-                        {ev && (
-                          <div className="truncate px-1 py-1 text-[9px] font-bold">
-                            {showLabel ? eventLabel(ev) : ''}
-                          </div>
-                        )}
+                return (
+                  <button
+                    key={day.toISOString()}
+                    onClick={() => onSelectDay(selected && isSameDay(selected, day) ? null : day)}
+                    className={`h-14 border-r border-slate-800 text-left transition-all ${
+                      ev ? `${c?.bg} ${c?.text}` : 'bg-[#08111f] hover:bg-[#0b1728]'
+                    } ${isSel ? 'ring-2 ring-inset ring-sky-400' : ''}`}
+                    title={ev ? eventLabel(ev, unidadesMap) : ''}
+                  >
+                    {ev && (
+                      <div className="truncate px-1 py-1 text-[9px] font-bold">
+                        {showLabel ? eventLabel(ev, unidadesMap) : ''}
                       </div>
-                    )
-                  })}
-                </div>
-              )
-            })}
-          </div>
-        </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
 
 // ─── Tarjeta de evento en el sidebar ──────────────────────────────────────────
-function EventCard({ ev }: { ev: CalEvent }) {
+function EventCard({
+  ev,
+  unidadNombre,
+}: {
+  ev: CalEvent
+  unidadNombre?: string
+}) {
   const c = eventColor(ev)
 
   if (ev.kind === 'reserva') {
@@ -802,10 +998,18 @@ function EventCard({ ev }: { ev: CalEvent }) {
     return (
       <div className="overflow-hidden rounded-2xl border border-slate-700 bg-[#0f1b2d]">
         <div className={`flex items-center justify-between px-4 py-2 ${c.bg}`}>
-          <span className={`text-xs font-bold ${c.text}`}>{eventLabel(ev)}</span>
+          <span className={`text-xs font-bold ${c.text}`}>
+            {getReservationDisplayCode(r)} · {safeGuestName(r)}
+          </span>
+          {unidadNombre && (
+            <span className={`text-[10px] font-semibold ${c.text} opacity-90`}>
+              {unidadNombre}
+            </span>
+          )}
         </div>
 
         <div className="space-y-2 px-4 py-3 text-xs">
+          {unidadNombre && <InfoRow label="Unidad" value={unidadNombre} />}
           <InfoRow
             label="Fechas"
             value={`${fmtDate(r.fecha_entrada)} → ${fmtDate(r.fecha_salida)} · ${r.noches ?? ''} noches`}
@@ -842,14 +1046,18 @@ function EventCard({ ev }: { ev: CalEvent }) {
   }
 
   const b = ev.data
+  const linkedReservation = b.linkedReservation
+
   const origenLabel =
-    b.origen?.includes('BOOKING')
-      ? 'Booking.com'
-      : b.origen?.includes('AIRBNB')
-        ? 'Airbnb'
-        : b.origen?.includes('ESCAPADARURAL')
-          ? 'Escapada Rural'
-          : 'Bloqueo manual'
+    linkedReservation
+      ? 'Reserva confirmada'
+      : b.origen?.includes('BOOKING')
+        ? 'Booking.com'
+        : b.origen?.includes('AIRBNB')
+          ? 'Airbnb'
+          : b.origen?.includes('ESCAPADARURAL')
+            ? 'Escapada Rural'
+            : 'Bloqueo manual'
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-700 bg-[#0f1b2d]">
@@ -859,9 +1067,19 @@ function EventCard({ ev }: { ev: CalEvent }) {
       </div>
 
       <div className="space-y-2 px-4 py-3 text-xs">
+        {unidadNombre && <InfoRow label="Unidad" value={unidadNombre} />}
         <InfoRow label="Desde" value={fmtDate(b.fecha_inicio)} />
         <InfoRow label="Hasta" value={fmtDate(b.fecha_fin)} />
-        {b.motivo && <InfoRow label="Motivo" value={b.motivo} />}
+
+        {linkedReservation ? (
+          <>
+            <InfoRow label="Código" value={getReservationDisplayCode(linkedReservation)} />
+            <InfoRow label="Cliente" value={safeGuestName(linkedReservation)} />
+          </>
+        ) : (
+          b.motivo && <InfoRow label="Motivo" value={b.motivo} />
+        )}
+
         {b.uid_ical && (
           <div className="flex items-center gap-1 pt-1 text-slate-400">
             <Wifi size={10} />
@@ -925,7 +1143,7 @@ function BlockModal({
     }
 
     if (scope === 'individual' && !selectedUnitId) {
-      setError('Selecciona una propiedad/unidad.')
+      setError('Selecciona una unidad.')
       return
     }
 
@@ -963,7 +1181,6 @@ function BlockModal({
         return
       }
 
-      // ── Desbloqueo ─────────────────────────────────────────────
       const targetUnitIds =
         scope === 'global'
           ? unidades.map((u) => u.id)
@@ -975,26 +1192,26 @@ function BlockModal({
         throw new Error('No hay unidades seleccionadas para desbloquear.')
       }
 
-     const { data: matches, error: searchError } = await supabase
-  .from('bloqueos')
-  .select('id,unidad_id,fecha_inicio,fecha_fin,origen')
-  .eq('property_id', propertyId)
-  .eq('origen', 'ADMIN')
-  .in('unidad_id', targetUnitIds)
-  .lt('fecha_inicio', form.fecha_fin)
-  .gt('fecha_fin', form.fecha_inicio)
+      const { data: matches, error: searchError } = await supabase
+        .from('bloqueos')
+        .select('id,unidad_id,fecha_inicio,fecha_fin,origen')
+        .eq('property_id', propertyId)
+        .eq('origen', 'ADMIN')
+        .in('unidad_id', targetUnitIds)
+        .lt('fecha_inicio', form.fecha_fin)
+        .gt('fecha_fin', form.fecha_inicio)
 
-if (searchError) throw searchError
+      if (searchError) throw searchError
 
-const typedMatches = (matches ?? []) as Array<{
-  id: string
-  unidad_id: string | null
-  fecha_inicio: string
-  fecha_fin: string
-  origen: string | null
-}>
+      const typedMatches = (matches ?? []) as Array<{
+        id: string
+        unidad_id: string | null
+        fecha_inicio: string
+        fecha_fin: string
+        origen: string | null
+      }>
 
-const idsToDelete = typedMatches.map((m) => m.id)
+      const idsToDelete = typedMatches.map((m) => m.id)
 
       if (idsToDelete.length === 0) {
         setInfo('No se han encontrado bloqueos manuales que coincidan con ese rango.')
@@ -1030,7 +1247,6 @@ const idsToDelete = typedMatches.map((m) => m.id)
         </div>
 
         <div className="space-y-5 p-6">
-          {/* Acción */}
           <div className="space-y-2">
             <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
               Acción
@@ -1068,7 +1284,6 @@ const idsToDelete = typedMatches.map((m) => m.id)
             </div>
           </div>
 
-          {/* Alcance */}
           <div className="space-y-2">
             <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
               Alcance
@@ -1100,10 +1315,9 @@ const idsToDelete = typedMatches.map((m) => m.id)
             </div>
           </div>
 
-          {/* Selector unidad */}
           {scope === 'individual' && (
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400">Propiedad / unidad</label>
+              <label className="text-xs font-semibold text-slate-400">Unidad</label>
               <select
                 value={selectedUnitId}
                 onChange={(e) => setSelectedUnitId(e.target.value)}
@@ -1118,7 +1332,6 @@ const idsToDelete = typedMatches.map((m) => m.id)
             </div>
           )}
 
-          {/* Fechas */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-400">Desde</label>
@@ -1144,7 +1357,7 @@ const idsToDelete = typedMatches.map((m) => m.id)
           {noches > 0 && (
             <p className="text-xs text-slate-400">
               {scope === 'global'
-                ? `${noches} noches · ${action === 'block' ? 'afectará a todas las unidades activas visibles' : 'buscará bloqueos manuales en todas las unidades'}`
+                ? `${noches} noches · ${action === 'block' ? 'afectará a todas las unidades visibles' : 'buscará bloqueos manuales en todas las unidades'}`
                 : `${noches} noches`}
             </p>
           )}
@@ -1155,7 +1368,6 @@ const idsToDelete = typedMatches.map((m) => m.id)
             </p>
           )}
 
-          {/* Motivo */}
           {action === 'block' && (
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-400">Motivo (opcional)</label>
@@ -1217,13 +1429,9 @@ const idsToDelete = typedMatches.map((m) => m.id)
   )
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
+// ─── Helpers UI ───────────────────────────────────────────────────────────────
 const inputCls =
   'w-full rounded-2xl border border-slate-600 bg-[#0f1b2d] px-3 py-2.5 text-sm text-slate-100 placeholder-slate-400 transition-all focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20'
-
-function fmtDate(d: string) {
-  return format(parseISO(d), 'd MMM yyyy', { locale: es })
-}
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (

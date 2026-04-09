@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../integrations/supabase/client'
 import { MetaTags } from '../components/MetaTags'
+import { usePublicProperty } from '../../shared/hooks/usePublicProperty'
 
 interface Reserva {
   id: string; codigo: string; nombre: string; apellidos: string
@@ -22,6 +23,22 @@ interface Reserva {
   importe_senal: number | null
   estado: string; estado_pago: string; importe_pagado: number
   created_at: string
+}
+
+/** Normaliza fila DB (esquema v2) al interface local */
+function normalizeReserva(r: any): Reserva {
+  return {
+    ...r,
+    codigo:    r.codigo || `R-${(r.id ?? '').replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+    nombre:    r.nombre_cliente    ?? r.nombre    ?? '',
+    apellidos: r.apellidos_cliente ?? r.apellidos ?? '',
+    email:     r.email_cliente     ?? r.email     ?? '',
+    telefono:  r.telefono_cliente  ?? r.telefono  ?? '',
+    importe_extra:  Number(r.importe_extras       ?? r.importe_extra  ?? 0),
+    descuento:      Number(r.descuento_aplicado   ?? r.descuento      ?? 0),
+    total:          Number(r.importe_total         ?? r.total          ?? 0),
+    importe_pagado: Number(r.importe_pagado ?? 0),
+  }
 }
 
 interface Huesped {
@@ -38,6 +55,8 @@ type View = 'detalle' | 'huespedes' | 'cambio'
 
 export const ReservationViewPage: React.FC = () => {
   const { token } = useParams<{ token: string }>()
+  const { property } = usePublicProperty()
+  const propNombre = property?.nombre ?? 'Casa Rural'
   const [reserva, setReserva] = useState<Reserva | null>(null)
   const [huespedes, setHuespedes] = useState<Huesped[]>([])
   const [loading, setLoading] = useState(true)
@@ -53,7 +72,7 @@ export const ReservationViewPage: React.FC = () => {
         .eq('token_cliente', token)
         .single()
       if (err || !data) { setError('Reserva no encontrada o enlace caducado'); setLoading(false); return }
-      setReserva(data)
+      setReserva(normalizeReserva(data))
       const { data: hData } = await supabase
         .from('huespedes')
         .select('*')
@@ -91,8 +110,8 @@ export const ReservationViewPage: React.FC = () => {
   return (
     <div className="mx-auto max-w-3xl px-6 py-10 space-y-6">
       <MetaTags
-        title={`Reserva ${reserva.codigo} · La Rasilla`}
-        description="Detalle de tu reserva en La Rasilla, casa rural Cantabria"
+        title={`Reserva ${reserva.codigo} · ${propNombre}`}
+        description={`Detalle de tu reserva en ${propNombre}`}
       />
 
       {/* Header */}
@@ -152,7 +171,7 @@ export const ReservationViewPage: React.FC = () => {
         <div className="space-y-4">
           <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
             <div className="bg-stone-900 px-6 py-4 text-white">
-              <p className="font-serif font-bold text-lg">La Rasilla · Valles Pasiegos, Cantabria</p>
+              <p className="font-serif font-bold text-lg">{propNombre}{property?.localidad ? ` · ${property.localidad}` : ''}</p>
             </div>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">

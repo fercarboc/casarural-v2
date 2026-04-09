@@ -1,290 +1,352 @@
 // supabase/functions/calculate-price/index.ts
-// v2 ajustada al modelo real:
-// - unidades contiene precios BASE y ESPECIAL
-// - temporadas_unidad solo define si una fecha cae en periodo especial
-// POST single:
-//   { checkIn, checkOut, guests, rateType, unidad_id }
-// POST multi:
-//   { checkIn, checkOut, rateType, unidades: [{ unidad_id, num_huespedes }] }
+// casarural-v2
+//
+// MODELO DE PRECIOS REAL:
+//   - Precio base SIEMPRE → campos en tabla `unidades`
+//   - Precio especial SOLO si el rango cae en `temporadas_unidad`
+//   - EXTRAS: sobre (total_pax - suma_capacidades_base), NUNCA unidad a unidad
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Content-Type": "application/json",
 };
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json',
-    },
-  });
+// ─── TIPOS ────────────────────────────────────────────────────────────────────
+
+interface UnidadDB {
+  id: string;
+  nombre: string;
+  slug: string;
+  capacidad_base: number;
+  capacidad_maxima: number;
+  precio_noche: number;
+  extra_huesped_noche: number;
+  tarifa_limpieza: number;
+  min_noches: number;
+  precio_noche_especial: number | null;
+  extra_huesped_especial: number | null;
+  tarifa_limpieza_especial: number | null;
+  min_noches_especial: number | null;
 }
 
-function round2(value: number) {
-  return Math.round(value * 100) / 100;
+interface TemporadaDB {
+  id: string;
+  unidad_id: string;
+  nombre: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  precio_noche: number;
+  extra_huesped_noche: number;
+  tarifa_limpieza: number;
+  min_noches: number;
+  max_noches: number | null;
+  activa: boolean;
 }
 
-async function calcularPrecioUnidad(
-  supabase: any,
-  unidad_id: string,
-  checkIn: string,
-  checkOut: string,
-  numHuespedes: number,
-  rateType: string
+interface UnidadInput {
+  unidad_id: string;
+  extras_manuales?: number; // override manual de dónde va el extra
+}
+
+interface RequestBody {
+  property_id: string;
+  fecha_entrada: string;
+  fecha_salida: string;
+  num_huespedes: number;
+  tarifa: "FLEXIBLE" | "NO_REEMBOLSABLE";
+  unidades: UnidadInput[];
+  porcentaje_senal?: number;
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+function toDate(d: string): Date {
+  return new Date(d + "T00:00:00Z");
+}
+
+function calcNoches(entrada: string, salida: string): number {
+  return Math.round((toDate(salida).getTime() - toDate(entrada).getTime()) / 86400000);
+}
+
+// Devuelve precios efectivos: especial si hay temporada, base si no.
+// NUNCA devuelve null.
+function getPreciosEfectivos(
+  unidad: UnidadDB,
+  temporadas: TemporadaDB[],
+  fechaEntrada: string,
+  fechaSalida: string
 ) {
-  const nights = Math.round(
-    (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)
+  const e = toDate(fechaEntrada);
+  const s = toDate(fechaSalida);
+
+  const tempEspecial = temporadas.find(
+    (t) =>
+      t.unidad_id === unidad.id &&
+      t.activa &&
+      toDate(t.fecha_inicio) <= e &&
+      toDate(t.fecha_fin) >= s
   );
 
-  if (nights < 1) {
-    throw new Error('Invalid date range');
+  if (tempEspecial) {
+    return {
+      precio_noche:        tempEspecial.precio_noche,
+      extra_huesped_noche: tempEspecial.extra_huesped_noche,
+      tarifa_limpieza:     tempEspecial.tarifa_limpieza,
+      min_noches:          tempEspecial.min_noches,
+      max_noches:          tempEspecial.max_noches,
+      es_especial:         true,
+      temporada_nombre:    tempEspecial.nombre,
+      temporada_id:        tempEspecial.id,
+    };
   }
-
-  // 1. Obtener la unidad con precios base y especiales
-  const { data: unidad, error: unidadError } = await supabase
-    .from('unidades')
-    .select(`
-      id,
-      nombre,
-      slug,
-      capacidad_base,
-      capacidad_maxima,
-      precio_noche,
-      extra_huesped_noche,
-      tarifa_limpieza,
-      precio_noche_especial,
-      extra_huesped_especial,
-      tarifa_limpieza_especial,
-      min_noches,
-      min_noches_especial
-    `)
-    .eq('id', unidad_id)
-    .single();
-
-  if (unidadError || !unidad) {
-    throw new Error(`Unidad ${unidad_id} no encontrada`);
-  }
-
-  // 2. Verificar si la fecha de entrada cae en una temporada especial activa
-  const { data: temporadaEspecial, error: temporadaError } = await supabase
-    .from('temporadas_unidad')
-    .select('id, nombre, fecha_inicio, fecha_fin, activa')
-    .eq('unidad_id', unidad_id)
-    .eq('activa', true)
-    .lte('fecha_inicio', checkIn)
-    .gte('fecha_fin', checkIn)
-    .order('fecha_inicio', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (temporadaError) {
-    throw temporadaError;
-  }
-
-  const esEspecial = !!temporadaEspecial;
-
-  // 3. Elegir tarifas BASE o ESPECIAL según corresponda
-  const precioNoche = esEspecial
-    ? Number(unidad.precio_noche_especial ?? unidad.precio_noche ?? 0)
-    : Number(unidad.precio_noche ?? 0);
-
-  const extraHuesped = esEspecial
-    ? Number(unidad.extra_huesped_especial ?? unidad.extra_huesped_noche ?? 0)
-    : Number(unidad.extra_huesped_noche ?? 0);
-
-  const limpieza = esEspecial
-    ? Number(unidad.tarifa_limpieza_especial ?? unidad.tarifa_limpieza ?? 0)
-    : Number(unidad.tarifa_limpieza ?? 0);
-
-  const minNoches = esEspecial
-    ? Number(unidad.min_noches_especial ?? unidad.min_noches ?? 1)
-    : Number(unidad.min_noches ?? 1);
-
-  if (!precioNoche || precioNoche <= 0) {
-    throw new Error(`La unidad ${unidad.nombre} no tiene precio base válido`);
-  }
-
-  // 4. Validar estancia mínima
-  if (nights < minNoches) {
-    throw new Error(`Estancia mínima para ${unidad.nombre}: ${minNoches} noches`);
-  }
-
-  // 5. Cálculo económico
-  const extraHuespedes = Math.max(0, numHuespedes - Number(unidad.capacidad_base ?? 0));
-  const importeAlojamiento = round2(precioNoche * nights);
-  const importeExtra = round2(extraHuespedes * extraHuesped * nights);
-
-  let descuento = 0;
-  if (rateType === 'NON_REFUNDABLE' || rateType === 'NO_REEMBOLSABLE') {
-    descuento = round2((importeAlojamiento + importeExtra) * 0.10);
-  }
-
-  const subtotal = round2(importeAlojamiento + importeExtra + limpieza - descuento);
 
   return {
-    unidad_id,
-    unidad_nombre: unidad.nombre,
-    unidad_slug: unidad.slug,
-    nights,
-    num_huespedes: numHuespedes,
-    extra_guests: extraHuespedes,
-    season: esEspecial ? (temporadaEspecial?.nombre ?? 'ESPECIAL') : 'BASE',
-    temporada_id: temporadaEspecial?.id ?? null,
-    precio_noche: precioNoche,
-    extra_huesped: extraHuesped,
-    importe_alojamiento: importeAlojamiento,
-    importe_extra: importeExtra,
-    limpieza: round2(limpieza),
-    descuento,
-    subtotal,
-    total: subtotal,
-    desglose: {
-      noches: nights,
-      precio_noche: precioNoche,
-      extra_huesped: extraHuesped,
-      num_extras: extraHuespedes,
-      limpieza: round2(limpieza),
-      descuento,
-      temporada_id: temporadaEspecial?.id ?? null,
-      season_type: esEspecial ? 'ESPECIAL' : 'BASE',
-      season_name: esEspecial ? (temporadaEspecial?.nombre ?? 'ESPECIAL') : 'BASE',
-    },
+    precio_noche:        unidad.precio_noche,
+    extra_huesped_noche: unidad.extra_huesped_noche,
+    tarifa_limpieza:     unidad.tarifa_limpieza,
+    min_noches:          unidad.min_noches ?? 1,
+    max_noches:          null,
+    es_especial:         false,
+    temporada_nombre:    "Base",
+    temporada_id:        null,
   };
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+function distribuirExtras(
+  unidades: UnidadDB[],
+  inputUnidades: UnidadInput[],
+  extrasTotal: number
+): Record<string, number> {
+  const res: Record<string, number> = {};
+  unidades.forEach((u) => (res[u.id] = 0));
+
+  // Primero: respetar extras manuales del usuario
+  let asignados = 0;
+  inputUnidades.forEach((iu) => {
+    if (iu.extras_manuales != null && iu.extras_manuales > 0) {
+      const u = unidades.find((x) => x.id === iu.unidad_id);
+      if (!u) return;
+      const max = u.capacidad_maxima - u.capacidad_base;
+      const asignar = Math.min(iu.extras_manuales, max);
+      res[u.id] = asignar;
+      asignados += asignar;
+    }
+  });
+
+  // Resto: distribuir automáticamente por mayor capacidad base
+  let rem = extrasTotal - asignados;
+  if (rem > 0) {
+    const sorted = [...unidades].sort((a, b) => b.capacidad_base - a.capacidad_base);
+    for (const u of sorted) {
+      if (rem <= 0) break;
+      const yaAsig = res[u.id];
+      const max = u.capacidad_maxima - u.capacidad_base - yaAsig;
+      if (max <= 0) continue;
+      const asignar = Math.min(rem, max);
+      res[u.id] += asignar;
+      rem -= asignar;
+    }
   }
 
-  if (req.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed' }, 405);
-  }
+  return res;
+}
+
+// ─── HANDLER ─────────────────────────────────────────────────────────────────
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const body = await req.json();
-    const { checkIn, checkOut, rateType } = body;
+    const body: RequestBody = await req.json();
+    const {
+      property_id,
+      fecha_entrada,
+      fecha_salida,
+      num_huespedes,
+      tarifa = "FLEXIBLE",
+      unidades: inputUnidades,
+      porcentaje_senal = 30,
+    } = body;
 
-    if (!checkIn || !checkOut || !rateType) {
-      return jsonResponse(
-        { error: 'Missing required fields: checkIn, checkOut, rateType' },
-        400
+    if (!property_id || !fecha_entrada || !fecha_salida || !num_huespedes || !inputUnidades?.length) {
+      return new Response(
+        JSON.stringify({ error: "Faltan parámetros obligatorios" }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const noches = calcNoches(fecha_entrada, fecha_salida);
+    if (noches <= 0) {
+      return new Response(
+        JSON.stringify({ error: "fecha_salida debe ser posterior a fecha_entrada" }),
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // ─────────────────────────────────────────────────────────────
-    // MODO MULTI-UNIDAD
-    // body.unidades = [{ unidad_id, num_huespedes }]
-    // ─────────────────────────────────────────────────────────────
-    if (Array.isArray(body.unidades) && body.unidades.length > 0) {
-      const unidades = body.unidades as Array<{
-        unidad_id: string;
-        num_huespedes: number;
-      }>;
+    const unidadIds = inputUnidades.map((u) => u.unidad_id);
 
-      const desglosePorUnidad = await Promise.all(
-        unidades.map((u) =>
-          calcularPrecioUnidad(
-            supabase,
-            u.unidad_id,
-            checkIn,
-            checkOut,
-            u.num_huespedes,
-            rateType
-          )
-        )
-      );
+    // Cargar unidades con todos los campos de precio
+    const { data: unidadesDB, error: uErr } = await supabase
+      .from("unidades")
+      .select(`
+        id, nombre, slug,
+        capacidad_base, capacidad_maxima,
+        precio_noche, extra_huesped_noche, tarifa_limpieza, min_noches,
+        precio_noche_especial, extra_huesped_especial,
+        tarifa_limpieza_especial, min_noches_especial
+      `)
+      .in("id", unidadIds)
+      .eq("property_id", property_id)
+      .eq("activa", true);
 
-      const totalHuespedes = unidades.reduce((s, u) => s + Number(u.num_huespedes || 0), 0);
-      const totalAlojamiento = round2(
-        desglosePorUnidad.reduce((s, u) => s + Number(u.importe_alojamiento || 0), 0)
+    if (uErr || !unidadesDB?.length) {
+      return new Response(
+        JSON.stringify({ error: "No se encontraron unidades válidas", detail: uErr?.message }),
+        { status: 404, headers: corsHeaders }
       );
-      const totalExtra = round2(
-        desglosePorUnidad.reduce((s, u) => s + Number(u.importe_extra || 0), 0)
-      );
-      const totalLimpieza = round2(
-        desglosePorUnidad.reduce((s, u) => s + Number(u.limpieza || 0), 0)
-      );
-      const totalDescuento = round2(
-        desglosePorUnidad.reduce((s, u) => s + Number(u.descuento || 0), 0)
-      );
-      const total = round2(
-        desglosePorUnidad.reduce((s, u) => s + Number(u.subtotal || 0), 0)
-      );
+    }
 
-      const pctSenal = 0.30;
-      const importeSenal =
-        rateType === 'FLEXIBLE' ? round2(total * pctSenal) : null;
+    if (unidadesDB.length !== unidadIds.length) {
+      return new Response(
+        JSON.stringify({ error: "Algunas unidades no pertenecen a esta propiedad o no están activas" }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
 
-      return jsonResponse({
-        mode: 'multi',
-        checkIn,
-        checkOut,
-        nights: desglosePorUnidad[0]?.nights ?? 0,
-        num_huespedes: totalHuespedes,
-        rate_type: rateType,
-        unidades: desglosePorUnidad,
-        importe_alojamiento: totalAlojamiento,
-        importe_extras: totalExtra,
-        importe_limpieza: totalLimpieza,
-        descuento_aplicado: totalDescuento,
-        importe_total: total,
-        importe_senal: importeSenal,
-        importe_resto: importeSenal !== null ? round2(total - importeSenal) : null,
+    // Cargar temporadas especiales (puede ser [])
+    const { data: temporadas } = await supabase
+      .from("temporadas_unidad")
+      .select("*")
+      .in("unidad_id", unidadIds)
+      .eq("property_id", property_id)
+      .eq("activa", true);
+
+    // ── CÁLCULO ───────────────────────────────────────────────────────────────
+
+    const warnings: string[] = [];
+    const sumaBase = unidadesDB.reduce((s, u) => s + u.capacidad_base, 0);
+    const sumaMax  = unidadesDB.reduce((s, u) => s + u.capacidad_maxima, 0);
+
+    if (num_huespedes > sumaMax) {
+      return new Response(
+        JSON.stringify({
+          error: `El grupo de ${num_huespedes} huéspedes supera la capacidad máxima (${sumaMax})`,
+          suma_capacidades_maximas: sumaMax,
+        }),
+        { status: 422, headers: corsHeaders }
+      );
+    }
+
+    // EXTRAS: sobre la suma total, no unidad a unidad
+    const extrasTotal = Math.max(0, num_huespedes - sumaBase);
+    const extrasDesglose = distribuirExtras(unidadesDB as UnidadDB[], inputUnidades, extrasTotal);
+
+    let importeAloj  = 0;
+    let importeExtra = 0;
+    let importeLimp  = 0;
+    const desgloseUnidades = [];
+
+    for (const u of unidadesDB as UnidadDB[]) {
+      const precios = getPreciosEfectivos(u, temporadas ?? [], fecha_entrada, fecha_salida);
+
+      if (noches < precios.min_noches) {
+        warnings.push(`"${u.nombre}" requiere mínimo ${precios.min_noches} noches`);
+      }
+      if (precios.max_noches && noches > precios.max_noches) {
+        warnings.push(`"${u.nombre}" permite máximo ${precios.max_noches} noches`);
+      }
+
+      const extU  = extrasDesglose[u.id] ?? 0;
+      const iAloj = precios.precio_noche * noches;
+      const iExt  = precios.extra_huesped_noche * extU * noches;
+      const iLimp = precios.tarifa_limpieza;
+
+      importeAloj  += iAloj;
+      importeExtra += iExt;
+      importeLimp  += iLimp;
+
+      desgloseUnidades.push({
+        unidad_id:               u.id,
+        nombre:                  u.nombre,
+        capacidad_base:          u.capacidad_base,
+        capacidad_maxima:        u.capacidad_maxima,
+        num_huespedes_asignados: u.capacidad_base + extU,
+        extras_asignados:        extU,
+        precio_noche:            precios.precio_noche,
+        extra_huesped_noche:     precios.extra_huesped_noche,
+        tarifa_limpieza:         precios.tarifa_limpieza,
+        noches,
+        importe_alojamiento:     iAloj,
+        importe_extras:          iExt,
+        importe_limpieza:        iLimp,
+        importe_subtotal:        iAloj + iExt + iLimp,
+        es_especial:             precios.es_especial,
+        temporada_nombre:        precios.temporada_nombre,
+        temporada_id:            precios.temporada_id,
+        min_noches:              precios.min_noches,
       });
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // MODO UNIDAD ÚNICA
-    // body: { unidad_id, guests }
-    // ─────────────────────────────────────────────────────────────
-    const { unidad_id, guests } = body;
+    const importeBase = importeAloj + importeExtra;
+    const descuento   = tarifa === "NO_REEMBOLSABLE"
+      ? Math.round(importeBase * 0.10 * 100) / 100
+      : 0;
+    const importeNeto  = importeBase - descuento;
+    const importeTotal = importeNeto + importeLimp;
 
-    if (!unidad_id || !guests) {
-      return jsonResponse(
-        { error: 'Missing unidad_id and guests (or unidades array)' },
-        400
-      );
-    }
+    const porcSenal    = Math.min(100, Math.max(0, porcentaje_senal));
+    const importeSenal = tarifa === "NO_REEMBOLSABLE"
+      ? importeTotal
+      : Math.round(importeTotal * (porcSenal / 100) * 100) / 100;
 
-    const resultado = await calcularPrecioUnidad(
-      supabase,
-      unidad_id,
-      checkIn,
-      checkOut,
-      guests,
-      rateType
+    return new Response(
+      JSON.stringify({
+        property_id,
+        fecha_entrada,
+        fecha_salida,
+        noches,
+        num_huespedes,
+        tarifa,
+
+        suma_capacidades_base:    sumaBase,
+        suma_capacidades_maximas: sumaMax,
+        extras_total:             extrasTotal,
+
+        unidades: desgloseUnidades,
+
+        importe_alojamiento_total: importeAloj,
+        importe_extras_total:      importeExtra,
+        importe_limpieza_total:    importeLimp,
+        importe_base:              importeBase,
+        descuento_aplicado:        descuento,
+        importe_neto:              importeNeto,
+        importe_total:             importeTotal,
+
+        porcentaje_senal:  porcSenal,
+        importe_senal:     importeSenal,
+        importe_resto:     importeTotal - importeSenal,
+
+        precio_por_persona:       Math.round((importeTotal / num_huespedes) * 100) / 100,
+        precio_por_persona_noche: Math.round((importeTotal / num_huespedes / noches) * 100) / 100,
+
+        warnings,
+      }),
+      { status: 200, headers: corsHeaders }
     );
 
-    const pctSenal = 0.30;
-    const importeSenal =
-      rateType === 'FLEXIBLE' ? round2(resultado.subtotal * pctSenal) : null;
-
-    return jsonResponse({
-      mode: 'single',
-      ...resultado,
-      importe_total: resultado.subtotal,
-      importe_senal: importeSenal,
-      importe_resto: importeSenal !== null ? round2(resultado.subtotal - importeSenal) : null,
-    });
-  } catch (err: any) {
-    console.error('calculate-price error:', err);
-    return jsonResponse(
-      {
-        error: err?.message ?? 'Internal server error',
-      },
-      500
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: "Unexpected error", detail: String(err) }),
+      { status: 500, headers: corsHeaders }
     );
   }
 });

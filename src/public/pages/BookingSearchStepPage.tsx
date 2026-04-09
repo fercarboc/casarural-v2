@@ -91,13 +91,12 @@ export default function BookingSearchStepPage() {
     }
   }, [property, units.length, setProperty, setUnits])
 
- useEffect(() => {
-  setAvailabilityByDate({})
-}, [units.length])
+  useEffect(() => {
+    setAvailabilityByDate({})
+  }, [units.length])
 
   const handleSelectDate = (date: Date) => {
     const iso = dateToISO(date)
-
     if (!iso) return
 
     if (!checkIn || (checkIn && checkOut)) {
@@ -113,7 +112,6 @@ export default function BookingSearchStepPage() {
         setCheckIn(iso)
         return
       }
-
       setCheckOut(iso)
       resetSearchResults()
       setSearchError(null)
@@ -121,7 +119,7 @@ export default function BookingSearchStepPage() {
   }
 
   const handleSearch = async () => {
-    if (!isValidSearch || !checkIn || !checkOut) return
+    if (!isValidSearch || !checkIn || !checkOut || !property) return
 
     setIsSearching(true)
     setSearchError(null)
@@ -132,15 +130,16 @@ export default function BookingSearchStepPage() {
         throw new Error('La conexión con el servidor no está configurada.')
       }
 
-      const preferredSlug =
-        guests <= 11 ? units.find((unit) => unit.slug === 'casa-principal')?.slug : undefined
-
+      // ── PAYLOAD CORRECTO para suggest-combinations ────────────────────────
+      // La función espera: property_id, fecha_entrada, fecha_salida, num_huespedes
+      // NO enviar unidad_slug_preferida — el motor decide las combinaciones solo.
       const { data, error } = await supabase.functions.invoke('suggest-combinations', {
         body: {
-          checkIn,
-          checkOut,
-          huespedes: guests,
-          unidad_slug_preferida: preferredSlug,
+          property_id:   property.id,
+          fecha_entrada: checkIn,
+          fecha_salida:  checkOut,
+          num_huespedes: guests,
+          tarifa:        'FLEXIBLE',
         },
       })
 
@@ -148,15 +147,18 @@ export default function BookingSearchStepPage() {
         throw new Error(error.message || 'Error consultando disponibilidad')
       }
 
+      // La respuesta tiene: { combinaciones: [...], resumen: {...}, disponibilidad: {...} }
       const combos = (data?.combinaciones ?? []) as any[]
 
       if (!combos.length) {
-        setSearchError('No hay disponibilidad para ese grupo y fechas.')
+        setSearchError(
+          data?.mensaje ?? 'No hay disponibilidad para ese grupo y fechas.'
+        )
         return
       }
 
       setSuggestions(combos)
-      setSelectedCombination(combos[0])
+      setSelectedCombination(combos[0])   // preseleccionar la más económica
       setPriceBreakdown(null)
 
       navigate('/reservar/opciones')

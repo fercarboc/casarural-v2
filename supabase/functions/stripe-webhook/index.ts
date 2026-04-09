@@ -104,7 +104,11 @@ Deno.serve(async (req) => {
           apellidos_cliente,
           tarifa,
           importe_total,
-          importe_senal
+          importe_senal,
+          noches,
+          nif_factura,
+          razon_social,
+          direccion_factura
         `)
         .eq('id', reservaId)
         .single();
@@ -218,10 +222,8 @@ Deno.serve(async (req) => {
       if (holdsDeleteError) throw holdsDeleteError;
 
       // ---------------------------------------------------------
-      // 9. Email confirmación (opcional)
+      // 9. Email confirmación
       // ---------------------------------------------------------
-      // Mejor dejarlo comentado hasta tener claro el contrato de send-email
-      /*
       fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
         method: 'POST',
         headers: {
@@ -234,8 +236,59 @@ Deno.serve(async (req) => {
           to_name: `${reservaActual.nombre_cliente} ${reservaActual.apellidos_cliente ?? ''}`.trim(),
           reservation_id: reservaId,
         }),
-      }).catch(err => console.error('Email send error:', err));
-      */
+      }).catch((err: unknown) => console.error('Email send error:', err));
+
+      // ---------------------------------------------------------
+      // 10. Auto-factura (sólo en pago total, best-effort)
+      // ---------------------------------------------------------
+      if (!esSenal) {
+        (async () => {
+          try {
+            const totalFactura = Number(reservaActual.importe_total ?? 0);
+            if (totalFactura <= 0) return;
+
+            const base = Math.round((totalFactura / 1.1) * 100) / 100;
+            const iva  = Math.round((totalFactura - base) * 100) / 100;
+
+            const { data: numRpc } = await supabase.rpc('generar_numero_factura');
+            let numero: string;
+            if (numRpc) {
+              numero = numRpc as string;
+            } else {
+              const year = new Date().getFullYear();
+              const { data: last } = await supabase
+                .from('facturas').select('numero')
+                .or(`numero.like.FAC-${year}-%`)
+                .order('created_at', { ascending: false })
+                .limit(1).maybeSingle();
+              const parts = ((last as any)?.numero ?? '').split('-');
+              const seq = (parseInt(parts[parts.length - 1] ?? '0') || 0) + 1;
+              numero = `FAC-${year}-${String(seq).padStart(4, '0')}`;
+            }
+
+            const nombre = reservaActual.razon_social ||
+              `${reservaActual.nombre_cliente ?? ''} ${reservaActual.apellidos_cliente ?? ''}`.trim();
+
+            await supabase.from('facturas').insert({
+              numero,
+              reserva_id:     reservaId,
+              nombre,
+              nif:            reservaActual.nif_factura ?? null,
+              direccion:      reservaActual.direccion_factura ?? null,
+              concepto:       'Hospedaje Casa Rural',
+              base_imponible: base,
+              iva_porcentaje: 10,
+              iva_importe:    iva,
+              total:          totalFactura,
+              estado:         'EMITIDA',
+            });
+
+            console.log(`Factura auto-generada para reserva ${reservaId}: ${numero}`);
+          } catch (invoiceErr) {
+            console.error('Error al auto-generar factura:', invoiceErr);
+          }
+        })();
+      }
 
       console.log(`Reserva ${reservaId} confirmada correctamente`);
     }

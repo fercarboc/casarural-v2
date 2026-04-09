@@ -1,468 +1,294 @@
 // supabase/functions/suggest-combinations/index.ts
-// v2 — NUEVA (revisión endurecida)
-// POST { checkIn, checkOut, huespedes, unidad_slug_preferida? }
+// VERSION DEBUG — logs detallados para diagnosticar combinaciones vacías
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-forwarded-host, host',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Content-Type': 'application/json',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Content-Type": "application/json",
 };
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+const MAX_EXCESO = 2;
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { checkIn, checkOut, huespedes, unidad_slug_preferida } = await req.json();
+    const body = await req.json();
+    console.log("[1] Body recibido:", JSON.stringify(body));
 
-    if (!checkIn || !checkOut || !huespedes) {
+    const property_id   = body.property_id   ?? Deno.env.get("DEFAULT_PROPERTY_ID") ?? null;
+    const fecha_entrada = body.fecha_entrada  ?? body.checkIn   ?? null;
+    const fecha_salida  = body.fecha_salida   ?? body.checkOut  ?? null;
+    const num_huespedes = body.num_huespedes  ?? body.huespedes ?? null;
+    const tarifa        = body.tarifa ?? "FLEXIBLE";
+    const porcSenal     = body.porcentaje_senal ?? 30;
+
+    console.log("[2] Params resueltos:", { property_id, fecha_entrada, fecha_salida, num_huespedes });
+
+    if (!property_id || !fecha_entrada || !fecha_salida || !num_huespedes) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: checkIn, checkOut, huespedes' }),
+        JSON.stringify({ error: "Faltan parámetros", recibidos: { property_id, fecha_entrada, fecha_salida, num_huespedes } }),
         { status: 400, headers: corsHeaders }
       );
     }
 
-    const nights = Math.round(
-      (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)
+    const noches = Math.round(
+      (new Date(fecha_salida + "T00:00:00Z").getTime() - new Date(fecha_entrada + "T00:00:00Z").getTime()) / 86400000
     );
-
-    if (nights < 1) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid date range' }),
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    if (!Number.isInteger(huespedes) || huespedes <= 0) {
-      return new Response(
-        JSON.stringify({ error: 'huespedes must be a positive integer' }),
-        { status: 400, headers: corsHeaders }
-      );
-    }
+    console.log("[3] Noches:", noches);
 
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // =========================================================
-    // 1. Resolver property_id en backend (NO confiar en frontend)
-    // =========================================================
-    const property_id = await resolvePropertyId(req, supabase);
+    // Cargar unidades con campos de precio base
+    const { data: unidades, error: uErr } = await supabase
+      .from("unidades")
+      .select("id, nombre, slug, capacidad_base, capacidad_maxima, precio_noche, extra_huesped_noche, tarifa_limpieza, min_noches, precio_noche_especial, extra_huesped_especial, tarifa_limpieza_especial, min_noches_especial")
+      .eq("property_id", property_id)
+      .eq("activa", true)
+      .order("orden", { ascending: true });
 
-    if (!property_id) {
+    if (uErr) {
+      console.error("[ERROR] Error cargando unidades:", uErr);
+      return new Response(JSON.stringify({ error: "Error cargando unidades", detail: uErr.message }), { status: 500, headers: corsHeaders });
+    }
+
+    console.log("[4] Unidades cargadas:", unidades?.length, unidades?.map(u => ({
+      nombre: u.nombre,
+      precio_noche: u.precio_noche,
+      capacidad_base: u.capacidad_base,
+      capacidad_maxima: u.capacidad_maxima,
+    })));
+
+    if (!unidades?.length) {
+      return new Response(JSON.stringify({ error: "No hay unidades activas" }), { status: 404, headers: corsHeaders });
+    }
+
+    // Verificar precios base
+    const sinPrecio = unidades.filter(u => !u.precio_noche || u.precio_noche <= 0);
+    if (sinPrecio.length > 0) {
+      console.error("[ERROR] Unidades sin precio_noche:", sinPrecio.map(u => u.nombre));
       return new Response(
-        JSON.stringify({ error: 'Unable to resolve property context in backend' }),
-        { status: 400, headers: corsHeaders }
+        JSON.stringify({ error: "Unidades sin precio base", unidades: sinPrecio.map(u => ({ id: u.id, nombre: u.nombre, precio_noche: u.precio_noche })) }),
+        { status: 422, headers: corsHeaders }
       );
     }
 
-    // =========================================================
-    // 2. Cargar unidades activas
-    // =========================================================
-    const { data: todasUnidades, error: unidadesError } = await supabase
-      .from('unidades')
-      .select('id, property_id, nombre, slug, capacidad_base, capacidad_maxima, orden')
-      .eq('property_id', property_id)
-      .eq('activa', true)
-      .order('orden', { ascending: true })
-      .order('nombre', { ascending: true });
+    // Filtrar ocupadas
+    const ids = unidades.map(u => u.id);
+    const { data: resOcupadas } = await supabase
+      .from("reserva_unidades")
+      .select("unidad_id, reservas!inner(fecha_entrada, fecha_salida, estado)")
+      .in("unidad_id", ids)
+      .eq("reservas.estado", "CONFIRMED")
+      .lt("reservas.fecha_entrada", fecha_salida)
+      .gt("reservas.fecha_salida", fecha_entrada);
 
-    if (unidadesError) throw unidadesError;
+    const { data: bloqOcupados } = await supabase
+      .from("bloqueos")
+      .select("unidad_id")
+      .in("unidad_id", ids)
+      .lt("fecha_inicio", fecha_salida)
+      .gt("fecha_fin", fecha_entrada);
 
-    if (!todasUnidades?.length) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          property_id,
-          checkIn,
-          checkOut,
-          nights,
-          huespedes,
-          combinaciones: [],
-          disponibilidad_parcial: false,
-          mensaje: 'No hay unidades activas para esta propiedad',
-        }),
-        { status: 200, headers: corsHeaders }
-      );
-    }
+    const ocupadas = new Set<string>();
+    (resOcupadas ?? []).forEach((r: any) => ocupadas.add(r.unidad_id));
+    (bloqOcupados ?? []).forEach((b: any) => ocupadas.add(b.unidad_id));
+    console.log("[5] Ocupadas:", [...ocupadas]);
 
-    const capacidadMaxTotal = todasUnidades.reduce((s, u) => s + u.capacidad_maxima, 0);
+    const disponibles = unidades.filter(u => !ocupadas.has(u.id));
+    console.log("[6] Disponibles:", disponibles.map(u => u.nombre));
 
-    if (huespedes > capacidadMaxTotal) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          property_id,
-          checkIn,
-          checkOut,
-          nights,
-          huespedes,
-          combinaciones: [],
-          disponibilidad_parcial: false,
-          max_huespedes_posible: capacidadMaxTotal,
-          mensaje: `La capacidad máxima total de la propiedad es ${capacidadMaxTotal}`,
-        }),
-        { status: 200, headers: corsHeaders }
-      );
-    }
+    // Temporadas especiales
+    const { data: temporadas } = await supabase
+      .from("temporadas_unidad")
+      .select("*")
+      .in("unidad_id", ids)
+      .eq("property_id", property_id)
+      .eq("activa", true);
+    console.log("[7] Temporadas especiales:", temporadas?.length ?? 0);
 
-    // =========================================================
-    // 3. Cargar conflictos EN BLOQUE
-    // =========================================================
+    // Generar combinaciones y calcular
+    const n = disponibles.length;
+    const resultados = [];
+    const debugRechazadas = [];
 
-    // 3.1 Bloqueos directos
-    const { data: bloqueos, error: bloqueosError } = await supabase
-      .from('bloqueos')
-      .select('unidad_id, fecha_inicio, fecha_fin')
-      .eq('property_id', property_id)
-      .lt('fecha_inicio', checkOut)
-      .gt('fecha_fin', checkIn);
+    for (let mask = 1; mask < (1 << n); mask++) {
+      const subset = [];
+      for (let i = 0; i < n; i++) if (mask & (1 << i)) subset.push(disponibles[i]);
 
-    if (bloqueosError) throw bloqueosError;
+      const nombres = subset.map(u => u.nombre).join("+");
+      const sumaBase = subset.reduce((s, u) => s + u.capacidad_base, 0);
+      const sumaMax  = subset.reduce((s, u) => s + u.capacidad_maxima, 0);
+      const exceso   = sumaBase - num_huespedes;
+      const extrasTotal = Math.max(0, num_huespedes - sumaBase);
 
-    const blockedUnitIds = new Set((bloqueos ?? []).map((b) => b.unidad_id));
+      // Log de cada combinación evaluada
+      console.log(`[combo] ${nombres} | sumaBase:${sumaBase} sumaMax:${sumaMax} exceso:${exceso} extras:${extrasTotal}`);
 
-    // 3.2 Holds activos (CRÍTICO)
-    let heldUnitIds = new Set<string>();
-    const { data: holds, error: holdsError } = await supabase
-      .from('reservation_holds')
-      .select('unidad_id, fecha_inicio, fecha_fin, expires_at')
-      .eq('property_id', property_id)
-      .gt('expires_at', new Date().toISOString())
-      .lt('fecha_inicio', checkOut)
-      .gt('fecha_fin', checkIn);
-
-    // Si la tabla no existe todavía, no rompas el desarrollo.
-    // En producción lo ideal es eliminar esta tolerancia.
-    if (!holdsError) {
-      heldUnitIds = new Set((holds ?? []).map((h) => h.unidad_id));
-    }
-
-    // 3.3 Reservas confirmadas y PENDING_PAYMENT NO expiradas
-    const { data: reservasConflict, error: reservasError } = await supabase
-      .from('reservas')
-      .select(`
-        id,
-        estado,
-        expires_at,
-        fecha_entrada,
-        fecha_salida,
-        reserva_unidades!inner(unidad_id)
-      `)
-      .eq('property_id', property_id)
-      .in('estado', ['CONFIRMED', 'PENDING_PAYMENT'])
-      .lt('fecha_entrada', checkOut)
-      .gt('fecha_salida', checkIn);
-
-    if (reservasError) throw reservasError;
-
-    const reservedUnitIds = new Set<string>();
-
-    for (const reserva of reservasConflict ?? []) {
-      const isConfirmed = reserva.estado === 'CONFIRMED';
-      const isPendingActive =
-        reserva.estado === 'PENDING_PAYMENT' &&
-        reserva.expires_at &&
-        new Date(reserva.expires_at).getTime() > Date.now();
-
-      if (!isConfirmed && !isPendingActive) continue;
-
-      for (const ru of (reserva as any).reserva_unidades ?? []) {
-        reservedUnitIds.add(ru.unidad_id);
-      }
-    }
-
-    const unavailableIds = new Set<string>([
-      ...blockedUnitIds,
-      ...heldUnitIds,
-      ...reservedUnitIds,
-    ]);
-
-    const unidadesDisponibles = todasUnidades.filter((u) => !unavailableIds.has(u.id));
-
-    if (!unidadesDisponibles.length) {
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          property_id,
-          checkIn,
-          checkOut,
-          nights,
-          huespedes,
-          combinaciones: [],
-          disponibilidad_parcial: false,
-          mensaje: 'No hay unidades disponibles para las fechas seleccionadas',
-        }),
-        { status: 200, headers: corsHeaders }
-      );
-    }
-
-    // =========================================================
-    // 4. Generar combinaciones válidas
-    // =========================================================
-    const combinacionesValidas: Array<{
-      unidades: typeof todasUnidades;
-      total_capacidad_base: number;
-      total_capacidad_maxima: number;
-      exceso_capacidad: number;
-      es_exacta_capacidad_base: boolean;
-    }> = [];
-
-    const MAX_UNIDADES_POR_COMBO = 4;
-
-    function generarCombinaciones(
-      disponibles: typeof todasUnidades,
-      inicio: number,
-      actual: typeof todasUnidades,
-    ) {
-      const totalBase = actual.reduce((s, u) => s + u.capacidad_base, 0);
-      const totalMax = actual.reduce((s, u) => s + u.capacidad_maxima, 0);
-
-      if (totalMax >= huespedes) {
-        combinacionesValidas.push({
-          unidades: [...actual],
-          total_capacidad_base: totalBase,
-          total_capacidad_maxima: totalMax,
-          exceso_capacidad: totalMax - huespedes,
-          es_exacta_capacidad_base: totalBase === huespedes,
-        });
-        return;
+      // Verificar que no supera el máximo
+      if (num_huespedes > sumaMax) {
+        debugRechazadas.push({ combo: nombres, razon: `num_huespedes(${num_huespedes}) > sumaMax(${sumaMax})` });
+        continue;
       }
 
-      if (actual.length >= MAX_UNIDADES_POR_COMBO) return;
-
-      for (let i = inicio; i < disponibles.length; i++) {
-        actual.push(disponibles[i]);
-        generarCombinaciones(disponibles, i + 1, actual);
-        actual.pop();
+      // Filtro de exceso
+      if (exceso > MAX_EXCESO && num_huespedes <= sumaBase) {
+        debugRechazadas.push({ combo: nombres, razon: `exceso(${exceso}) > MAX_EXCESO(${MAX_EXCESO})` });
+        continue;
       }
-    }
 
-    generarCombinaciones(unidadesDisponibles, 0, []);
+      // Verificar que los extras caben
+      const maxExtrasPos = subset.reduce((s, u) => s + (u.capacidad_maxima - u.capacidad_base), 0);
+      if (extrasTotal > maxExtrasPos) {
+        debugRechazadas.push({ combo: nombres, razon: `extrasTotal(${extrasTotal}) > maxExtrasPos(${maxExtrasPos})` });
+        continue;
+      }
 
-    if (!combinacionesValidas.length) {
-      const maxPosible = unidadesDisponibles.reduce((s, u) => s + u.capacidad_maxima, 0);
+      // Calcular precios
+      let aloj = 0, extras = 0, limp = 0;
+      const detalle = [];
 
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          property_id,
-          checkIn,
-          checkOut,
-          nights,
-          huespedes,
-          combinaciones: [],
-          disponibilidad_parcial: unidadesDisponibles.length < todasUnidades.length,
-          max_huespedes_posible: maxPosible,
-          mensaje: `Capacidad máxima disponible en esas fechas: ${maxPosible} huéspedes`,
-        }),
-        { status: 200, headers: corsHeaders }
-      );
-    }
-
-    // =========================================================
-    // 5. Calcular precio por combinación llamando a calculate-price
-    // =========================================================
-    const baseUrl = Deno.env.get('SUPABASE_URL')!;
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const fnHeaders = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${svcKey}`,
-    };
-
-    const combinacionesConPrecio = await Promise.all(
-      combinacionesValidas.map(async (combo) => {
-        const unidadesConHuespedes = distribuirHuespedesDeterminista(
-          combo.unidades,
-          huespedes,
-          unidad_slug_preferida
+      for (const u of subset) {
+        // Buscar temporada especial
+        const e = new Date(fecha_entrada + "T00:00:00Z");
+        const s = new Date(fecha_salida   + "T00:00:00Z");
+        const tempEsp = (temporadas ?? []).find(
+          (t: any) => t.unidad_id === u.id && t.activa &&
+            new Date(t.fecha_inicio + "T00:00:00Z") <= e &&
+            new Date(t.fecha_fin   + "T00:00:00Z") >= s
         );
 
-        const priceRes = await fetch(`${baseUrl}/functions/v1/calculate-price`, {
-          method: 'POST',
-          headers: fnHeaders,
-          body: JSON.stringify({
-            checkIn,
-            checkOut,
-            rateType: 'FLEXIBLE',
-            unidades: unidadesConHuespedes.map((u) => ({
-              unidad_id: u.id,
-              num_huespedes: u.asignados,
-            })),
-          }),
-        });
+        const pn   = tempEsp ? tempEsp.precio_noche        : u.precio_noche;
+        const pe   = tempEsp ? tempEsp.extra_huesped_noche : u.extra_huesped_noche;
+        const pl   = tempEsp ? tempEsp.tarifa_limpieza     : u.tarifa_limpieza;
+        const pmn  = tempEsp ? tempEsp.min_noches          : (u.min_noches ?? 1);
+        const esEsp = !!tempEsp;
 
-        if (!priceRes.ok) {
-          const errText = await priceRes.text();
-          throw new Error(`calculate-price failed: ${priceRes.status} ${errText}`);
-        }
+        console.log(`  [precio] ${u.nombre}: pn=${pn} pe=${pe} pl=${pl} pmn=${pmn} especial=${esEsp}`);
 
-        const precio = await priceRes.json();
+        // Distribuir extras (mayor capacidad base primero)
+        // (simplificado inline para debug)
+        const extU = 0; // se calcula abajo
 
-        const unidades = unidadesConHuespedes.map((u) => {
-          const priceUnit = precio.unidades?.find((p: any) => p.unidad_id === u.id);
+        aloj += pn * noches;
+        limp += pl;
+        detalle.push({ unidad_id: u.id, nombre: u.nombre, precio_noche: pn, extra: pe, limpieza: pl, minNoches: pmn });
+      }
 
-          return {
-            id: u.id,
-            nombre: u.nombre,
-            slug: u.slug,
-            capacidad_base: u.capacidad_base,
-            capacidad_maxima: u.capacidad_maxima,
-            num_huespedes_asignados: u.asignados,
-            importe_alojamiento: priceUnit?.subtotal ?? 0,
-            importe_limpieza: priceUnit?.desglose?.limpieza ?? 0,
-            importe_extras: priceUnit?.desglose?.extras ?? 0,
-            importe_total_unidad: priceUnit?.total ?? priceUnit?.subtotal ?? 0,
-            desglose: priceUnit?.desglose ?? {},
-          };
-        });
+      // Distribuir extras correctamente
+      const extrasD: Record<string, number> = {};
+      subset.forEach(u => extrasD[u.id] = 0);
+      let rem = extrasTotal;
+      const sorted = [...subset].sort((a, b) => b.capacidad_base - a.capacidad_base);
+      for (const u of sorted) {
+        if (rem <= 0) break;
+        const puede = u.capacidad_maxima - u.capacidad_base;
+        const asignar = Math.min(rem, puede);
+        extrasD[u.id] = asignar;
+        rem -= asignar;
+      }
 
-        const precio_total = precio.importe_total ?? 0;
+      // Recalcular con extras
+      let totalAloj = 0, totalExtras = 0, totalLimp = 0;
+      for (const u of subset) {
+        const tempEsp = (temporadas ?? []).find(
+          (t: any) => t.unidad_id === u.id && t.activa &&
+            new Date(t.fecha_inicio + "T00:00:00Z") <= new Date(fecha_entrada + "T00:00:00Z") &&
+            new Date(t.fecha_fin   + "T00:00:00Z") >= new Date(fecha_salida   + "T00:00:00Z")
+        );
+        const pn = tempEsp ? tempEsp.precio_noche        : u.precio_noche;
+        const pe = tempEsp ? tempEsp.extra_huesped_noche : u.extra_huesped_noche;
+        const pl = tempEsp ? tempEsp.tarifa_limpieza     : u.tarifa_limpieza;
+        const extU = extrasD[u.id] ?? 0;
+        totalAloj   += pn * noches;
+        totalExtras += pe * extU * noches;
+        totalLimp   += pl;
+      }
 
-        return {
-          unidades,
-          total_capacidad_base: combo.total_capacidad_base,
-          total_capacidad_maxima: combo.total_capacidad_maxima,
-          total_huespedes_asignados: huespedes,
-          precio_total,
-          precio_por_huesped: huespedes > 0 ? Math.round((precio_total / huespedes) * 100) / 100 : 0,
-          es_exacta_capacidad_base: combo.es_exacta_capacidad_base,
-          exceso_capacidad: combo.exceso_capacidad,
-          num_unidades: combo.unidades.length,
-        };
-      })
-    );
+      const base  = totalAloj + totalExtras;
+      const desc  = tarifa === "NO_REEMBOLSABLE" ? Math.round(base * 0.1 * 100) / 100 : 0;
+      const neto  = base - desc;
+      const total = neto + totalLimp;
+      const senal = tarifa === "NO_REEMBOLSABLE" ? total : Math.round(total * (porcSenal / 100) * 100) / 100;
 
-    // =========================================================
-    // 6. Ordenación final correcta
-    // 1. menos unidades
-    // 2. menor exceso de capacidad
-    // 3. menor precio total
-    // 4. prioridad a unidad_slug_preferida
-    // =========================================================
-    combinacionesConPrecio.sort((a, b) => {
-      if (a.num_unidades !== b.num_unidades) return a.num_unidades - b.num_unidades;
-      if (a.exceso_capacidad !== b.exceso_capacidad) return a.exceso_capacidad - b.exceso_capacidad;
-      if (a.precio_total !== b.precio_total) return a.precio_total - b.precio_total;
+      console.log(`  [OK] ${nombres} total=${total}`);
 
-      const aPreferred = unidad_slug_preferida
-        ? a.unidades.some((u: any) => u.slug === unidad_slug_preferida)
-        : false;
+      resultados.push({
+        unidades: subset.map(u => ({
+          unidad_id: u.id,
+          nombre: u.nombre,
+          slug: u.slug,
+          capacidad_base: u.capacidad_base,
+          capacidad_maxima: u.capacidad_maxima,
+          extras_asignados: extrasD[u.id] ?? 0,
+          num_huespedes_asignados: u.capacidad_base + (extrasD[u.id] ?? 0),
+        })),
+        suma_capacidades_base:    sumaBase,
+        suma_capacidades_maximas: sumaMax,
+        extras_total:             extrasTotal,
+        exceso_capacidad:         exceso,
+        importe_alojamiento:      totalAloj,
+        importe_extras:           totalExtras,
+        importe_limpieza:         totalLimp,
+        importe_base:             base,
+        descuento:                desc,
+        importe_neto:             neto,
+        importe_total:            total,
+        importe_senal:            senal,
+        importe_resto:            total - senal,
+        precio_por_persona:       Math.round((total / num_huespedes) * 100) / 100,
+        precio_por_persona_noche: Math.round((total / num_huespedes / noches) * 100) / 100,
+        num_unidades:             subset.length,
+        es_sin_extras:            extrasTotal === 0,
+        es_capacidad_exacta:      num_huespedes === sumaBase,
+        noches,
+        warnings: [],
+      });
+    }
 
-      const bPreferred = unidad_slug_preferida
-        ? b.unidades.some((u: any) => u.slug === unidad_slug_preferida)
-        : false;
-
-      if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
-
-      return 0;
+    // Ordenar
+    resultados.sort((a, b) => {
+      if (a.es_sin_extras !== b.es_sin_extras) return a.es_sin_extras ? -1 : 1;
+      if (a.extras_total  !== b.extras_total)  return a.extras_total - b.extras_total;
+      if (a.num_unidades  !== b.num_unidades)  return a.num_unidades - b.num_unidades;
+      return a.importe_total - b.importe_total;
     });
 
-    const top3 = combinacionesConPrecio.slice(0, 3).map((combo, idx, arr) => ({
-      ranking: idx + 1,
-      tipo:
-        idx === 0
-          ? 'RECOMENDADA'
-          : idx === arr.length - 1
-          ? 'COMPLETA'
-          : 'ALTERNATIVA',
-      ...combo,
-    }));
+    console.log(`[8] Resultado: ${resultados.length} combinaciones válidas`);
+    console.log("[8b] Rechazadas:", JSON.stringify(debugRechazadas));
 
     return new Response(
       JSON.stringify({
-        ok: true,
-        property_id,
-        checkIn,
-        checkOut,
-        nights,
-        huespedes,
-        combinaciones: top3,
-        disponibilidad_parcial: unidadesDisponibles.length < todasUnidades.length,
-        total_combinaciones_posibles: combinacionesConPrecio.length,
+        combinaciones: resultados,
+        debug_rechazadas: debugRechazadas,
+        resumen: {
+          total:           resultados.length,
+          sin_extras:      resultados.filter(c => c.es_sin_extras).length,
+          con_extras:      resultados.filter(c => !c.es_sin_extras).length,
+          min_precio:      resultados[0]?.importe_total ?? null,
+          recomendada_idx: 0,
+        },
+        disponibilidad: {
+          unidades_totales:     unidades.length,
+          unidades_disponibles: disponibles.length,
+          unidades_ocupadas:    ocupadas.size,
+        },
+        input: { property_id, fecha_entrada, fecha_salida, num_huespedes, noches, tarifa },
       }),
       { status: 200, headers: corsHeaders }
     );
-  } catch (err: any) {
-    console.error('suggest-combinations error:', err);
+
+  } catch (err) {
+    console.error("[FATAL]", err);
     return new Response(
-      JSON.stringify({ error: err.message ?? 'Internal server error' }),
+      JSON.stringify({ error: "Unexpected error", detail: String(err) }),
       { status: 500, headers: corsHeaders }
     );
   }
 });
-
-// =========================================================
-// Resolver property_id en backend
-// =========================================================
-async function resolvePropertyId(req: Request, supabase: any): Promise<string | null> {
-  const forcedPropertyId = req.headers.get('x-property-id');
-  if (forcedPropertyId) return forcedPropertyId;
-
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
-
-  if (host) {
-    const { data, error } = await supabase
-      .from('custom_domains')
-      .select('property_id')
-      .eq('domain', host)
-      .maybeSingle();
-
-    if (!error && data?.property_id) return data.property_id;
-  }
-
-  return Deno.env.get('PROPERTY_ID') || Deno.env.get('VITE_PROPERTY_ID') || null;
-}
-
-// =========================================================
-// Reparto determinista de huéspedes
-// Prioridad:
-// 1. unidad preferida si existe
-// 2. unidades con mayor capacidad máxima
-// 3. orden ASC
-// =========================================================
-function distribuirHuespedesDeterminista(
-  unidades: Array<{
-    id: string;
-    nombre: string;
-    slug: string;
-    capacidad_base: number;
-    capacidad_maxima: number;
-    orden?: number | null;
-  }>,
-  totalHuespedes: number,
-  unidad_slug_preferida?: string
-) {
-  let restantes = totalHuespedes;
-
-  const sorted = [...unidades].sort((a, b) => {
-    const aPref = unidad_slug_preferida && a.slug === unidad_slug_preferida ? 1 : 0;
-    const bPref = unidad_slug_preferida && b.slug === unidad_slug_preferida ? 1 : 0;
-
-    if (aPref !== bPref) return bPref - aPref;
-    if (a.capacidad_maxima !== b.capacidad_maxima) return b.capacidad_maxima - a.capacidad_maxima;
-
-    const ao = a.orden ?? 999999;
-    const bo = b.orden ?? 999999;
-    return ao - bo;
-  });
-
-  return sorted.map((u, idx) => {
-    const esUltima = idx === sorted.length - 1;
-    const asignados = esUltima
-      ? restantes
-      : Math.min(u.capacidad_maxima, restantes);
-
-    restantes -= asignados;
-
-    return {
-      ...u,
-      asignados: Math.max(0, asignados),
-    };
-  });
-}

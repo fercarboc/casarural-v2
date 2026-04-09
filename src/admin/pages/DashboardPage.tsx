@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Users,
   Calendar,
@@ -14,32 +14,70 @@ import {
   LogOut,
   MessageSquare,
   Euro,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Link } from 'react-router-dom'
-import { format, parseISO, formatDistanceToNow } from 'date-fns'
+import {
+  format,
+  parseISO,
+  formatDistanceToNow,
+  addMonths,
+  isSameMonth,
+  startOfMonth,
+} from 'date-fns'
 import { es } from 'date-fns/locale'
 import { dashboardService } from '../../services/dashboard.service'
 
-export const DashboardPage: React.FC = () => {
-  const [stats, setStats] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+type DashboardStats = {
+  monthlyReservations?: number
+  cancellations?: number
+  monthlyRevenue?: number
+  yearlyRevenue?: number
+  ocupacionMes?: number
+  pendingPayments?: number
+  consultasNuevas?: number
+  upcomingCheckins?: any[]
+  actividadReciente?: any[]
+  checkinHoy?: any[]
+  checkoutHoy?: any[]
+  enCasaAhora?: any[]
+}
 
-  const load = async () => {
+export const DashboardPage: React.FC = () => {
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [selectedMonth, setSelectedMonth] = useState<Date>(startOfMonth(new Date()))
+
+  const isCurrentMonth = useMemo(
+    () => isSameMonth(selectedMonth, new Date()),
+    [selectedMonth]
+  )
+
+  const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await dashboardService.getStats()
+      const data = await dashboardService.getStats({
+        year: selectedMonth.getFullYear(),
+        month: selectedMonth.getMonth() + 1,
+      })
       setStats(data)
     } catch (error) {
       console.error('Error fetching dashboard stats:', error)
+      setStats(null)
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedMonth])
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
+
+  const goPrevMonth = () => setSelectedMonth(prev => addMonths(prev, -1))
+  const goNextMonth = () => setSelectedMonth(prev => addMonths(prev, 1))
+  const goCurrentMonth = () => setSelectedMonth(startOfMonth(new Date()))
 
   if (loading) {
     return (
@@ -49,42 +87,98 @@ export const DashboardPage: React.FC = () => {
     )
   }
 
-  if (!stats) return null
+  if (!stats) {
+    return (
+      <div className="rounded-3xl border border-slate-800/80 bg-[#08111f] p-8 text-slate-100 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertCircle className="mb-3 text-amber-400" size={34} />
+          <h2 className="text-lg font-bold text-slate-50">No se pudo cargar el dashboard</h2>
+          <p className="mt-2 text-sm text-slate-400">
+            Revisa el servicio de estadísticas o vuelve a intentarlo.
+          </p>
+          <button
+            onClick={load}
+            className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-[#0b1728] px-4 py-2.5 text-sm font-semibold text-slate-100 transition-all hover:border-slate-500 hover:bg-[#102039]"
+          >
+            <RefreshCw size={15} />
+            Reintentar
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   const hayEventosHoy =
-    (stats.checkinHoy?.length > 0) ||
-    (stats.checkoutHoy?.length > 0) ||
-    (stats.enCasaAhora?.length > 0)
+    (stats.checkinHoy?.length ?? 0) > 0 ||
+    (stats.checkoutHoy?.length ?? 0) > 0 ||
+    (stats.enCasaAhora?.length ?? 0) > 0
+
+  const monthLabel = format(selectedMonth, 'MMMM yyyy', { locale: es })
+  const todayLabel = new Date().toLocaleDateString('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
 
   return (
     <div className="space-y-8 text-slate-100">
       {/* Header */}
-      <header className="flex flex-col gap-4 rounded-3xl border border-slate-800/80 bg-[#08111f] px-6 py-5 shadow-[0_20px_60px_rgba(0,0,0,0.28)] md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-50">Dashboard</h1>
-          <p className="mt-1.5 text-sm capitalize text-slate-300">
-            {new Date().toLocaleDateString('es-ES', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })}
-          </p>
-        </div>
+      <header className="flex flex-col gap-4 rounded-3xl border border-slate-800/80 bg-[#08111f] px-6 py-5 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-50">Dashboard</h1>
+            <p className="mt-1.5 text-sm capitalize text-slate-300">{todayLabel}</p>
+          </div>
 
-        <button
-          onClick={load}
-          className="flex items-center gap-2 rounded-2xl border border-slate-700 bg-[#08111f] px-4 py-2.5 text-sm font-semibold text-slate-100 transition-all hover:border-slate-500 hover:bg-[#0b1728]"
-        >
-          <RefreshCw size={15} />
-          Actualizar
-        </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={goPrevMonth}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-[#08111f] text-slate-100 transition-all hover:border-slate-500 hover:bg-[#0b1728]"
+              title="Mes anterior"
+            >
+              <ChevronLeft size={18} />
+            </button>
+
+            <div className="min-w-[180px] rounded-2xl border border-slate-700 bg-[#0b1728] px-4 py-2.5 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Mes analizado
+              </p>
+              <p className="mt-0.5 text-sm font-bold capitalize text-slate-50">{monthLabel}</p>
+            </div>
+
+            <button
+              onClick={goNextMonth}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-[#08111f] text-slate-100 transition-all hover:border-slate-500 hover:bg-[#0b1728]"
+              title="Mes siguiente"
+            >
+              <ChevronRight size={18} />
+            </button>
+
+            <button
+              onClick={goCurrentMonth}
+              disabled={isCurrentMonth}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-[#08111f] px-4 py-2.5 text-sm font-semibold text-slate-100 transition-all hover:border-slate-500 hover:bg-[#0b1728] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Calendar size={15} />
+              Este mes
+            </button>
+
+            <button
+              onClick={load}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-[#08111f] px-4 py-2.5 text-sm font-semibold text-slate-100 transition-all hover:border-slate-500 hover:bg-[#0b1728]"
+            >
+              <RefreshCw size={15} />
+              Actualizar
+            </button>
+          </div>
+        </div>
       </header>
 
-      {/* ── Alertas de hoy ─────────────────────────────────────────────────── */}
+      {/* Alertas de hoy */}
       {hayEventosHoy && (
         <div className="grid gap-4 sm:grid-cols-3">
-          {stats.enCasaAhora?.length > 0 && (
+          {(stats.enCasaAhora?.length ?? 0) > 0 && (
             <div className="rounded-3xl border border-emerald-500/20 bg-[#08111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
               <div className="flex items-start gap-3">
                 <div className="shrink-0 rounded-xl bg-emerald-500/10 p-2.5">
@@ -94,9 +188,9 @@ export const DashboardPage: React.FC = () => {
                   <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
                     En casa ahora
                   </p>
-                  {stats.enCasaAhora.map((r: any) => (
+                  {stats.enCasaAhora?.map((r: any) => (
                     <p key={r.id} className="truncate text-sm font-medium text-slate-100">
-                      {r.guestName} · {r.guests} pax
+                      {safeGuestName(r)} · {safeNumber(r.guests)} pax
                     </p>
                   ))}
                 </div>
@@ -104,7 +198,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           )}
 
-          {stats.checkinHoy?.length > 0 && (
+          {(stats.checkinHoy?.length ?? 0) > 0 && (
             <div className="rounded-3xl border border-sky-500/20 bg-[#08111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
               <div className="flex items-start gap-3">
                 <div className="shrink-0 rounded-xl bg-sky-500/10 p-2.5">
@@ -114,9 +208,9 @@ export const DashboardPage: React.FC = () => {
                   <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-300">
                     Check-in hoy
                   </p>
-                  {stats.checkinHoy.map((r: any) => (
+                  {stats.checkinHoy?.map((r: any) => (
                     <p key={r.id} className="truncate text-sm font-medium text-slate-100">
-                      {r.guestName} · {r.guests} pax
+                      {safeGuestName(r)} · {safeNumber(r.guests)} pax
                     </p>
                   ))}
                 </div>
@@ -124,7 +218,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           )}
 
-          {stats.checkoutHoy?.length > 0 && (
+          {(stats.checkoutHoy?.length ?? 0) > 0 && (
             <div className="rounded-3xl border border-amber-500/20 bg-[#08111f] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
               <div className="flex items-start gap-3">
                 <div className="shrink-0 rounded-xl bg-amber-500/10 p-2.5">
@@ -134,9 +228,9 @@ export const DashboardPage: React.FC = () => {
                   <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-300">
                     Check-out hoy
                   </p>
-                  {stats.checkoutHoy.map((r: any) => (
+                  {stats.checkoutHoy?.map((r: any) => (
                     <p key={r.id} className="truncate text-sm font-medium text-slate-100">
-                      {r.guestName} · {r.guests} pax
+                      {safeGuestName(r)} · {safeNumber(r.guests)} pax
                     </p>
                   ))}
                 </div>
@@ -146,29 +240,29 @@ export const DashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* ── Stats grid ─────────────────────────────────────────────────────── */}
+      {/* Stats grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Reservas este mes"
-          value={stats.monthlyReservations ?? 0}
-          sub={`${stats.cancellations ?? 0} cancelada${stats.cancellations !== 1 ? 's' : ''}`}
+          label={`Reservas ${format(selectedMonth, 'MMMM', { locale: es })}`}
+          value={safeNumber(stats.monthlyReservations)}
+          sub={`${safeNumber(stats.cancellations)} cancelada${safeNumber(stats.cancellations) !== 1 ? 's' : ''}`}
           icon={<Calendar className="text-sky-300" size={18} />}
           accent="blue"
         />
         <StatCard
-          label="Ingresos del mes"
-          value={`${(stats.monthlyRevenue ?? 0).toLocaleString('es-ES')} €`}
-          sub={`${(stats.yearlyRevenue ?? 0).toLocaleString('es-ES')} € este año`}
+          label={`Ingresos ${format(selectedMonth, 'MMMM', { locale: es })}`}
+          value={formatEuros(stats.monthlyRevenue)}
+          sub={`${formatEuros(stats.yearlyRevenue)} este año`}
           icon={<TrendingUp className="text-emerald-300" size={18} />}
           accent="emerald"
         />
         <StatCard
-          label="Ocupación del mes"
-          value={`${stats.ocupacionMes ?? 0}%`}
+          label={`Ocupación ${format(selectedMonth, 'MMMM', { locale: es })}`}
+          value={`${safeNumber(stats.ocupacionMes)}%`}
           sub={
-            stats.ocupacionMes >= 80
+            safeNumber(stats.ocupacionMes) >= 80
               ? 'Alta demanda'
-              : stats.ocupacionMes >= 50
+              : safeNumber(stats.ocupacionMes) >= 50
                 ? 'Buena ocupación'
                 : 'Disponible'
           }
@@ -177,16 +271,16 @@ export const DashboardPage: React.FC = () => {
         />
         <StatCard
           label="Requieren atención"
-          value={(stats.pendingPayments ?? 0) + (stats.consultasNuevas ?? 0)}
-          sub={`${stats.pendingPayments ?? 0} pagos · ${stats.consultasNuevas ?? 0} consultas`}
+          value={safeNumber(stats.pendingPayments) + safeNumber(stats.consultasNuevas)}
+          sub={`${safeNumber(stats.pendingPayments)} pagos · ${safeNumber(stats.consultasNuevas)} consultas`}
           icon={<AlertCircle className="text-amber-300" size={18} />}
           accent="amber"
-          urgent={(stats.pendingPayments ?? 0) + (stats.consultasNuevas ?? 0) > 0}
+          urgent={safeNumber(stats.pendingPayments) + safeNumber(stats.consultasNuevas) > 0}
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* ── Próximas llegadas ───────────────────────────────────────────── */}
+        {/* Próximas llegadas */}
         <div className="space-y-3 lg:col-span-2">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -207,7 +301,7 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="overflow-hidden rounded-3xl border border-slate-700 bg-[#08111f] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
-            {stats.upcomingCheckins?.length > 0 ? (
+            {(stats.upcomingCheckins?.length ?? 0) > 0 ? (
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-700 bg-[#0b1728]">
                   <tr>
@@ -226,7 +320,7 @@ export const DashboardPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {stats.upcomingCheckins.map((res: any) => (
+                  {stats.upcomingCheckins?.map((res: any) => (
                     <ArrivalRow key={res.id} res={res} />
                   ))}
                 </tbody>
@@ -240,7 +334,7 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* ── Actividad reciente ──────────────────────────────────────────── */}
+        {/* Actividad reciente */}
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -252,20 +346,20 @@ export const DashboardPage: React.FC = () => {
               </p>
             </div>
 
-            {stats.consultasNuevas > 0 && (
+            {safeNumber(stats.consultasNuevas) > 0 && (
               <Link
                 to="/admin/clientes"
                 className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold text-amber-300 transition-colors hover:bg-amber-500/15"
               >
                 <MessageSquare size={9} />
-                {stats.consultasNuevas} nueva{stats.consultasNuevas !== 1 ? 's' : ''}
+                {safeNumber(stats.consultasNuevas)} nueva{safeNumber(stats.consultasNuevas) !== 1 ? 's' : ''}
               </Link>
             )}
           </div>
 
           <div className="divide-y divide-slate-800 rounded-3xl border border-slate-700 bg-[#08111f] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
-            {stats.actividadReciente?.length > 0 ? (
-              stats.actividadReciente.map((r: any) => <RecentItem key={r.id} r={r} />)
+            {(stats.actividadReciente?.length ?? 0) > 0 ? (
+              stats.actividadReciente?.map((r: any) => <RecentItem key={r.id} r={r} />)
             ) : (
               <div className="py-12 text-center">
                 <Clock className="mx-auto mb-3 text-slate-600" size={28} />
@@ -279,7 +373,27 @@ export const DashboardPage: React.FC = () => {
   )
 }
 
-// ─── Stat Card ─────────────────────────────────────────────────────────────────
+// Helpers
+function safeNumber(value: unknown): number {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatEuros(value: unknown): string {
+  return `${safeNumber(value).toLocaleString('es-ES')} €`
+}
+
+function safeGuestName(r: any): string {
+  return (
+    r?.guestName ||
+    r?.nombre_cliente ||
+    r?.nombre ||
+    r?.email_cliente?.split?.('@')?.[0] ||
+    'Cliente sin nombre'
+  )
+}
+
+// Stat Card
 const ACCENT_BG: Record<string, string> = {
   blue: 'bg-sky-500/10',
   emerald: 'bg-emerald-500/10',
@@ -328,7 +442,7 @@ const StatCard = ({
   </motion.div>
 )
 
-// ─── Fila próxima llegada ──────────────────────────────────────────────────────
+// Fila próxima llegada
 const ORIGEN_SHORT: Record<string, string> = {
   DIRECT_WEB: 'Web',
   BOOKING_ICAL: 'BK',
@@ -344,7 +458,7 @@ const ArrivalRow = ({ res }: { res: any }) => {
   return (
     <tr className="transition-colors hover:bg-[#0b1728]">
       <td className="px-5 py-3.5">
-        <p className="text-sm font-semibold text-slate-50">{res.guestName}</p>
+        <p className="text-sm font-semibold text-slate-50">{safeGuestName(res)}</p>
         {res.origen && (
           <span className="text-[10px] font-medium text-slate-400">
             {ORIGEN_SHORT[res.origen] ?? res.origen}
@@ -364,7 +478,7 @@ const ArrivalRow = ({ res }: { res: any }) => {
       <td className="px-5 py-3.5 text-sm text-slate-300">
         <div className="flex items-center gap-1">
           <Users size={12} className="text-slate-500" />
-          {res.guests}
+          {safeNumber(res.guests)}
         </div>
       </td>
 
@@ -383,7 +497,7 @@ const ArrivalRow = ({ res }: { res: any }) => {
   )
 }
 
-// ─── Ítem actividad reciente ───────────────────────────────────────────────────
+// Ítem actividad reciente
 const ESTADO_ICON: Record<string, React.ReactNode> = {
   CONFIRMED: <CheckCircle2 size={14} className="text-emerald-400" />,
   PENDING_PAYMENT: <AlertCircle size={14} className="text-amber-400" />,
@@ -406,9 +520,9 @@ const RecentItem = ({ r }: { r: any }) => (
 
     <div className="min-w-0 flex-1">
       <div className="flex items-start justify-between gap-2">
-        <p className="truncate text-sm font-semibold text-slate-50">{r.guestName}</p>
+        <p className="truncate text-sm font-semibold text-slate-50">{safeGuestName(r)}</p>
         <span className="shrink-0 text-xs font-bold text-slate-100">
-          {Number(r.total).toLocaleString('es-ES')} €
+          {formatEuros(r.total)}
         </span>
       </div>
 

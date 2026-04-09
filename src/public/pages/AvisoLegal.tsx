@@ -1,16 +1,32 @@
 // src/public/pages/AvisoLegal.tsx
 import React, { useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { usePublicProperty } from '../../shared/hooks/usePublicProperty'
 
 export function AvisoLegal() {
   useEffect(() => { window.scrollTo(0, 0) }, [])
+
+  const { property } = usePublicProperty()
+
+  const propNombre   = property?.nombre ?? ''
+  const titular      = property?.legal_business_name ?? propNombre
+  const nif          = property?.legal_tax_id ? property.legal_tax_id : 'Disponible bajo solicitud justificada'
+  const domicilio    = property?.legal_address
+    ?? [property?.direccion, property?.localidad, property?.provincia, property?.pais].filter(Boolean).join(', ')
+  const emailContacto = property?.legal_email ?? property?.email ?? ''
+  const telefono      = property?.legal_phone ?? property?.telefono ?? ''
+  const web           = property?.web ?? ''
+  const checkinTime   = property?.checkin_time  ? `A partir de las ${property.checkin_time} h`  : 'A partir de las 16:00 h'
+  const checkoutTime  = property?.checkout_time ? `Antes de las ${property.checkout_time} h`    : 'Antes de las 12:00 h'
+  const mascotas      = property?.mascotas_permitidas ? 'Permitidas (consultar condiciones)' : 'NO SE ADMITEN en el alojamiento'
+  const fumar         = property?.fumar_permitido     ? 'Permitido en zonas habilitadas'     : 'Prohibido fumar en el interior del alojamiento'
 
   return (
     <>
       <GlobalStyles />
       <div style={s.page}>
         <div style={s.hero}>
-          <p style={s.heroLabel}>La Rasilla · Casa Rural</p>
+          <p style={s.heroLabel}>{propNombre} · Casa Rural</p>
           <h1 style={s.heroTitle}>Aviso Legal</h1>
           <p style={s.heroSub}>Condiciones de uso, reservas y política de cancelación</p>
         </div>
@@ -20,12 +36,13 @@ export function AvisoLegal() {
           <Section id="titular" title="1. Titular del sitio web">
             <p>En cumplimiento del artículo 10 de la Ley 34/2002, de 11 de julio, de Servicios de la Sociedad de la Información y de Comercio Electrónico (LSSI-CE), se informa de los siguientes datos identificativos:</p>
             <InfoTable rows={[
-              ['Titular', 'Fernando Carbonell de la Rasilla'],
-              ['NIF', 'Disponible bajo solicitud justificada'],
-              ['Domicilio', 'Castillo Pedroso, Cantabria, España'],
-              ['Email de contacto', 'contacto@casarurallarasilla.com'],
-              ['Teléfono', '+34 690 288 707'],
-              ['Actividad', 'Alojamiento rural — alquiler íntegro de casa rural'],
+              ['Titular',           titular],
+              ['NIF',               nif],
+              ['Domicilio',         domicilio],
+              ['Email de contacto', emailContacto],
+              ['Teléfono',          telefono],
+              ['Actividad',         `Alojamiento rural — alquiler íntegro de casa rural`],
+              ...(web ? [['Web', web] as [string, string]] : []),
             ]} />
           </Section>
 
@@ -35,7 +52,7 @@ export function AvisoLegal() {
           </Section>
 
           <Section id="alojamiento" title="3. Descripción del alojamiento y condiciones de uso">
-            <p><strong>La Rasilla</strong> es una casa rural de alquiler íntegro situada en Castillo Pedroso, en el Valle de Toranzo (Valles Pasiegos), Cantabria. El alojamiento se arrienda en su totalidad —no por habitaciones individuales— y dispone de las siguientes características:</p>
+            <p><strong>{propNombre || 'El alojamiento'}</strong> es una casa rural de alquiler íntegro{domicilio ? ` situada en ${domicilio}` : ''}. El alojamiento se arrienda en su totalidad —no por habitaciones individuales— y dispone de las siguientes características:</p>
             <ul>
               <li>5 habitaciones dobles (una de ellas con posibilidad de tercera cama)</li>
               <li>Capacidad estándar: <strong>10 huéspedes incluidos en el precio</strong></li>
@@ -122,7 +139,7 @@ export function AvisoLegal() {
             </ul>
 
             <h3 style={s.subTitle}>6.3 Modificaciones de reserva</h3>
-            <p>El cliente <strong>no puede modificar las fechas de su reserva</strong> a través del sistema online. Cualquier solicitud de modificación debe dirigirse por escrito a <a href="mailto:contacto@casarurallarasilla.com" style={s.link}>contacto@casarurallarasilla.com</a> y quedará sujeta a disponibilidad y a criterio del titular del alojamiento. La aceptación de una modificación no implica obligación de aceptar futuras solicitudes.</p>
+            <p>El cliente <strong>no puede modificar las fechas de su reserva</strong> a través del sistema online. Cualquier solicitud de modificación debe dirigirse por escrito a{emailContacto ? <> <a href={`mailto:${emailContacto}`} style={s.link}>{emailContacto}</a></> : ' el email de contacto'} y quedará sujeta a disponibilidad y a criterio del titular del alojamiento. La aceptación de una modificación no implica obligación de aceptar futuras solicitudes.</p>
 
             <h3 style={s.subTitle}>6.4 Cancelación por parte del alojamiento</h3>
             <p>En el supuesto excepcional de que el alojamiento deba cancelar una reserva confirmada por causas imputables al mismo (incendio, inundación, causas estructurales graves u otras circunstancias de fuerza mayor debidamente acreditadas), el cliente recibirá el <strong>reembolso íntegro del importe abonado</strong>, sin derecho a reclamación adicional por daños, lucro cesante u otros conceptos.</p>
@@ -130,12 +147,12 @@ export function AvisoLegal() {
 
           <Section id="horarios" title="7. Horarios y normas de uso">
             <InfoTable rows={[
-              ['Check-in (entrada)', 'A partir de las 16:00 h'],
-              ['Check-out (salida)', 'Antes de las 12:00 h'],
-              ['Estancia mínima', 'Variable según temporada (se indica en el proceso de reserva)'],
-              ['Mascotas', 'NO SE ADMITEN en el alojamiento'],
-              ['Fumadores', 'Prohibido fumar en el interior del alojamiento'],
-              ['Eventos', 'No se permiten celebraciones, fiestas o eventos sin autorización previa'],
+              ['Check-in (entrada)', checkinTime],
+              ['Check-out (salida)',  checkoutTime],
+              ['Estancia mínima',    'Variable según temporada (se indica en el proceso de reserva)'],
+              ['Mascotas',           mascotas],
+              ['Fumadores',          fumar],
+              ['Eventos',            'No se permiten celebraciones, fiestas o eventos sin autorización previa'],
             ]} />
             <p>El incumplimiento de las normas del alojamiento podrá dar lugar a la rescisión inmediata del contrato de arrendamiento sin derecho a reembolso.</p>
           </Section>

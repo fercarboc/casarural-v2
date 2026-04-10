@@ -35,8 +35,6 @@ interface Props {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function toISO(d: string) { return d } // ya viene en YYYY-MM-DD
-
 function calcNoches(entrada: string, salida: string): number {
   if (!entrada || !salida) return 0
   const ms = new Date(salida + 'T00:00:00Z').getTime() - new Date(entrada + 'T00:00:00Z').getTime()
@@ -64,7 +62,7 @@ export function PreReservaModal({ onClose, onSent }: Props) {
 
   // Unidades
   const [unidades,       setUnidades]       = useState<Unidad[]>([])
-  const [unidadSel,      setUnidadSel]      = useState<string>('__todas__')
+  const [unidadSel,      setUnidadSel]      = useState<string>('')
   const [loadingUnits,   setLoadingUnits]   = useState(false)
   const [propertyId,     setPropertyId]     = useState<string | null>(null)
 
@@ -104,7 +102,9 @@ export function PreReservaModal({ onClose, onSent }: Props) {
           .eq('activa', true)
           .order('nombre')
 
-        setUnidades(data ?? [])
+        const lista = data ?? []
+        setUnidades(lista)
+        if (lista.length > 0) setUnidadSel(lista[0].id)
       } catch (e) {
         console.error('PreReservaModal loadUnits:', e)
       } finally {
@@ -127,11 +127,9 @@ export function PreReservaModal({ onClose, onSent }: Props) {
       return
     }
 
-    const unidadesParam = unidadSel === '__todas__'
-      ? unidades.map(u => ({ unidad_id: u.id }))
-      : [{ unidad_id: unidadSel }]
+    if (!unidadSel) return
 
-    if (unidadesParam.length === 0) return
+    const unidadesParam = [{ unidad_id: unidadSel }]
 
     setCalculando(true)
     setPrecioError('')
@@ -178,9 +176,7 @@ export function PreReservaModal({ onClose, onSent }: Props) {
   const precioFinal     = Math.max(0, precioCalculado - descuento)
   const noches          = calcNoches(fechaEntrada, fechaSalida)
 
-  const unidadNombres = unidadSel === '__todas__'
-    ? unidades.map(u => u.nombre).join(' + ')
-    : (unidades.find(u => u.id === unidadSel)?.nombre ?? '')
+  const unidadNombres = unidades.find(u => u.id === unidadSel)?.nombre ?? ''
 
   // ── Validación ─────────────────────────────────────────────────────────────
   const emailOk    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -190,6 +186,7 @@ export function PreReservaModal({ onClose, onSent }: Props) {
     fechaEntrada &&
     fechaSalida &&
     noches > 0 &&
+    unidadSel &&
     precioResult !== null &&
     !calculando &&
     !sending
@@ -391,7 +388,9 @@ export function PreReservaModal({ onClose, onSent }: Props) {
                         disabled={sending || sent || unidades.length === 0}
                         className={inputCls + ' appearance-none pr-8'}
                       >
-                        <option value="__todas__">Casa completa (todas)</option>
+                        {unidades.length === 0 && (
+                          <option value="">Sin unidades</option>
+                        )}
                         {unidades.map(u => (
                           <option key={u.id} value={u.id}>{u.nombre}</option>
                         ))}

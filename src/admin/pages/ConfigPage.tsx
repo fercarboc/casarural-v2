@@ -8,6 +8,10 @@ import {
   Phone,
   Globe,
   MapPin,
+  Shield,
+  UserPlus,
+  Users,
+  Loader2 as UsersLoader,
   Loader2,
   ExternalLink,
   Type,
@@ -18,8 +22,12 @@ import {
   Clock3,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { format, parseISO } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { supabase } from '../../integrations/supabase/client'
 import { EmailTemplatesModal } from '../components/EmailTemplatesModal'
+import { CreateUserModal } from '../components/CreateUserModal'
+import { listPropertyUsers, type PropertyUser } from '../../services/users.service'
 
 interface CancellationRule {
   from_days: number
@@ -90,6 +98,9 @@ export function ConfigPage() {
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [showEmailTemplates, setShowEmailTemplates] = useState(false)
+  const [showCreateUser, setShowCreateUser]         = useState(false)
+  const [propertyUsers, setPropertyUsers]           = useState<PropertyUser[]>([])
+  const [loadingUsers, setLoadingUsers]             = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -166,6 +177,20 @@ export function ConfigPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  const loadUsers = useCallback(async () => {
+    setLoadingUsers(true)
+    try {
+      const users = await listPropertyUsers()
+      setPropertyUsers(users)
+    } catch {
+      // silencioso — lista vacía si falla
+    } finally {
+      setLoadingUsers(false)
+    }
+  }, [])
+
+  useEffect(() => { loadUsers() }, [loadUsers])
 
   function upd<K extends keyof Property>(key: K, value: Property[K]) {
     setProperty((prev) => (prev ? { ...prev, [key]: value } : prev))
@@ -913,6 +938,78 @@ export function ConfigPage() {
           </Link>
         </div>
       </div>
+
+      {/* ── Seguridad ── */}
+      <DarkCard title="Seguridad" icon={<Shield size={16} />}>
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-slate-400">
+            Usuarios con acceso al panel de administración de esta propiedad.
+          </p>
+          <button
+            onClick={() => setShowCreateUser(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl bg-brand-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-brand-700"
+          >
+            <UserPlus size={13} /> Crear usuario
+          </button>
+        </div>
+
+        {/* Lista de usuarios */}
+        {loadingUsers ? (
+          <div className="flex items-center gap-2 py-4 text-sm text-slate-500">
+            <UsersLoader size={15} className="animate-spin" /> Cargando usuarios…
+          </div>
+        ) : propertyUsers.length === 0 ? (
+          <div className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/50 px-4 py-3 text-sm text-slate-500">
+            <Users size={15} /> No hay usuarios registrados.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-slate-700">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700 bg-slate-900/60">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Email</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Rol</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Alta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {propertyUsers.map((u, i) => (
+                  <tr key={u.id} className={i % 2 === 0 ? 'bg-slate-900/20' : ''}>
+                    <td className="px-4 py-3 text-slate-200">{u.email}</td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-md bg-brand-600/20 px-2 py-0.5 text-xs font-semibold text-brand-400">
+                        {u.rol}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">
+                      {u.created_at
+                        ? format(parseISO(u.created_at), "d MMM yyyy", { locale: es })
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DarkCard>
+
+      {/* Modales */}
+      {showCreateUser && (
+        <CreateUserModal
+          onClose={() => setShowCreateUser(false)}
+          onCreated={(newUser) => {
+            setShowCreateUser(false)
+            setPropertyUsers(prev => [...prev, {
+              id:         newUser.id,
+              user_id:    newUser.id,
+              email:      newUser.email,
+              rol:        newUser.rol,
+              created_at: new Date().toISOString(),
+            }])
+          }}
+        />
+      )}
     </div>
   )
 }

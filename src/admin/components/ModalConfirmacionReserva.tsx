@@ -38,7 +38,7 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
   const pendiente = reserva.total - (reserva.importe_pagado ?? 0)
 
   const [tipoPago, setTipoPago]           = useState<TipoPago>('STRIPE')
-  const [titularCuenta, setTitularCuenta] = useState('La Rasilla')
+  const [titularCuenta, setTitularCuenta] = useState('')
   const [iban, setIban]                   = useState('')
   const [importeTransferencia, setImporteTransferencia] = useState(pendiente.toFixed(2))
   const [notasCliente, setNotasCliente]   = useState('')
@@ -123,7 +123,7 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
               <Mail size={18} className="text-slate-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Enviar confirmación</h2>
+              <h2 className="text-base font-bold text-slate-900">Solicitud de pago</h2>
               <p className="text-xs text-slate-400">{reserva.nombre} {reserva.apellidos} · {reserva.email}</p>
             </div>
           </div>
@@ -224,7 +224,7 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
               ? <><Check size={15} /> Enviado</>
               : loading
                 ? <><Loader2 size={15} className="animate-spin" /> Enviando...</>
-                : <><Mail size={15} /> Enviar confirmación</>}
+                : <><Mail size={15} /> Enviar solicitud</>}
           </button>
         </div>
       </div>

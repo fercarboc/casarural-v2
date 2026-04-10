@@ -169,11 +169,11 @@ export const ReservationViewPage: React.FC = () => {
       {/* VISTA: Detalle */}
       {view === 'detalle' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden shadow-sm">
-            <div className="bg-stone-900 px-6 py-4 text-white">
+          <div className="rounded-2xl border border-emerald-200 bg-white overflow-hidden shadow-sm">
+            <div className="px-6 py-4 text-white" style={{ backgroundColor: '#2D4A3E' }}>
               <p className="font-serif font-bold text-lg">{propNombre}{property?.localidad ? ` · ${property.localidad}` : ''}</p>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 bg-emerald-50/30">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-stone-400 uppercase font-bold tracking-wider mb-1">Entrada</p>
@@ -198,9 +198,9 @@ export const ReservationViewPage: React.FC = () => {
           </div>
 
           {/* Titular */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm border-l-4 border-l-emerald-500">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-stone-700 mb-4">
-              <User size={16} className="text-stone-400" /> Titular de la reserva
+              <User size={16} className="text-emerald-600" /> Titular de la reserva
             </h3>
             <div className="grid grid-cols-2 gap-y-3 text-sm">
               <span className="text-stone-500">Nombre</span>
@@ -215,9 +215,9 @@ export const ReservationViewPage: React.FC = () => {
           </div>
 
           {/* Desglose precios */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm border-l-4 border-l-stone-300">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-stone-700 mb-4">
-              <Euro size={16} className="text-stone-400" /> Desglose del importe
+              <Euro size={16} className="text-emerald-600" /> Desglose del importe
             </h3>
             <div className="space-y-2 text-sm">
               <Row label={`${reserva.noches} noches × ${Number(reserva.precio_noche).toFixed(0)}€`} value={`${Number(reserva.importe_alojamiento).toFixed(2)}€`} />
@@ -436,7 +436,7 @@ function GuestSlot({ index, guest, reserva, isOpen, onToggle, onSaved }: {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 bg-stone-900 text-white text-sm font-medium rounded-lg hover:bg-stone-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-800 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
             Guardar huésped
@@ -499,7 +499,7 @@ function ChangeRequestForm({ reserva }: { reserva: Reserva }) {
         <button
           onClick={handleSend}
           disabled={sending || !msg.trim()}
-          className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-stone-900 text-white text-sm font-medium rounded-lg hover:bg-stone-700 transition-colors disabled:opacity-50"
+          className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-emerald-800 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
         >
           {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
           Enviar solicitud

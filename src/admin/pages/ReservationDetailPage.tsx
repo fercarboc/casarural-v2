@@ -161,6 +161,8 @@ export const ReservationDetailPage: React.FC = () => {
   const [showManualPayment, setShowManualPayment] = useState(false)
   const [showSolicitudPago, setShowSolicitudPago] = useState(false)
   const [showConfirmacion, setShowConfirmacion] = useState(false)
+  const [sendingConfirmacion, setSendingConfirmacion] = useState(false)
+  const [confirmacionSent, setConfirmacionSent] = useState(false)
 
   useEffect(() => {
     configService
@@ -251,6 +253,27 @@ export const ReservationDetailPage: React.FC = () => {
     setSendingCheckin(false)
     setCheckinSent(true)
     setTimeout(() => setCheckinSent(false), 3000)
+  }
+
+  async function sendConfirmacionEmail() {
+    if (!r) return
+    setSendingConfirmacion(true)
+
+    const toEmail = s(r.email_cliente ?? r.email, '')
+    const toNombre = `${s(r.nombre_cliente ?? r.nombre, '')} ${s(r.apellidos_cliente ?? r.apellidos, '')}`.trim()
+
+    await supabase.functions.invoke('send-email', {
+      body: {
+        template_key: 'reservation_confirmed',
+        to_email: toEmail,
+        to_name: toNombre,
+        reservation_id: r.id,
+      },
+    })
+
+    setSendingConfirmacion(false)
+    setConfirmacionSent(true)
+    setTimeout(() => setConfirmacionSent(false), 3000)
   }
 
   if (loading) {
@@ -386,64 +409,52 @@ export const ReservationDetailPage: React.FC = () => {
 
           {r.estado === 'CONFIRMED' && (
             <button
+              onClick={sendConfirmacionEmail}
+              disabled={sendingConfirmacion || confirmacionSent}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-all ${
+                confirmacionSent
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50'
+              }`}
+            >
+              {confirmacionSent ? (
+                <><Check size={14} /> Enviada</>
+              ) : sendingConfirmacion ? (
+                <><Loader2 size={14} className="animate-spin" /> Enviando...</>
+              ) : (
+                <><Mail size={14} /> Enviar confirmación</>
+              )}
+            </button>
+          )}
+
+          {r.estado === 'CONFIRMED' && (
+            <button
               onClick={() => setShowConfirmacion(true)}
               className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50"
             >
-              <Mail size={14} />
-              Enviar confirmación
+              <CreditCard size={14} />
+              Enviar solicitud de pago
             </button>
           )}
 
           {r.token_cliente && r.estado === 'CONFIRMED' && (
-            <>
-              <button
-                onClick={copyLink}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-all ${
-                  copied
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {copied ? (
-                  <>
-                    <Check size={14} />
-                    Copiado
-                  </>
-                ) : (
-                  <>
-                    <Copy size={14} />
-                    Enlace check-in
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={sendCheckinEmail}
-                disabled={sendingCheckin || checkinSent}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-all ${
-                  checkinSent
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50'
-                }`}
-              >
-                {checkinSent ? (
-                  <>
-                    <Check size={14} />
-                    Email enviado
-                  </>
-                ) : sendingCheckin ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  <>
-                    <Send size={14} />
-                    Enviar check-in
-                  </>
-                )}
-              </button>
-            </>
+            <button
+              onClick={sendCheckinEmail}
+              disabled={sendingCheckin || checkinSent}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-all ${
+                checkinSent
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50'
+              }`}
+            >
+              {checkinSent ? (
+                <><Check size={14} /> Email enviado</>
+              ) : sendingCheckin ? (
+                <><Loader2 size={14} className="animate-spin" /> Enviando...</>
+              ) : (
+                <><Send size={14} /> Enviar check-in</>
+              )}
+            </button>
           )}
 
           {r.estado !== 'CANCELLED' && r.estado !== 'EXPIRED' && (

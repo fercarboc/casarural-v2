@@ -71,6 +71,7 @@ export const dashboardService = {
         { data: actividadReciente, error: actividadRecienteError },
         { data: reservasAnio, error: reservasAnioError },
         { data: bloqueosMes, error: bloqueosMesError },
+        { count: totalUnidades },
       ] = await Promise.all([
         supabase
           .from('reservas')
@@ -81,7 +82,7 @@ export const dashboardService = {
         supabase
           .from('reservas')
           .select(
-            'id, nombre_cliente, apellidos_cliente, fecha_entrada, fecha_salida, num_huespedes, estado'
+            'id, nombre_cliente, apellidos_cliente, fecha_entrada, fecha_salida, num_huespedes, estado, reserva_unidades(unidad_id, unidades(nombre))'
           )
           .eq('estado', 'CONFIRMED')
           .lte('fecha_entrada', todayStr)
@@ -135,6 +136,11 @@ export const dashboardService = {
           .select('fecha_inicio, fecha_fin')
           .lte('fecha_inicio', monthEnd)
           .gte('fecha_fin', monthStart),
+
+        supabase
+          .from('unidades')
+          .select('id', { count: 'exact', head: true })
+          .eq('activa', true),
       ])
 
       const queryErrors = [
@@ -212,13 +218,16 @@ export const dashboardService = {
         consultasNuevas: (consultasNuevas ?? []).length,
         ocupacionMes: ocupacionPct,
 
-        enCasaAhora: ((enCasaAhora ?? []) as ReservaDashboardRow[]).map((r: ReservaDashboardRow) => ({
+        totalUnidadesActivas: totalUnidades ?? 0,
+
+        enCasaAhora: ((enCasaAhora ?? []) as any[]).map((r: any) => ({
           id: r.id,
           guestName: buildGuestName(r.nombre_cliente, r.apellidos_cliente),
           checkIn: r.fecha_entrada,
           checkOut: r.fecha_salida,
           guests: safeNumber(r.num_huespedes),
           status: r.estado,
+          unidades: (r.reserva_unidades ?? []).map((ru: any) => ru.unidades?.nombre).filter(Boolean),
         })),
 
         checkinHoy: ((checkinHoy ?? []) as ReservaDashboardRow[]).map((r: ReservaDashboardRow) => ({

@@ -177,7 +177,7 @@ serve(async (req) => {
       }
 
       if (reserva) {
-        const appUrl = Deno.env.get('APP_URL') ?? 'https://www.casarurallarasilla.com'
+        const appUrl = Deno.env.get('APP_URL') ?? ''
         const total = num(reserva.importe_total)
         const senal = Math.max(num(reserva.importe_senal), 0)
         const pagado = senal
@@ -236,44 +236,70 @@ serve(async (req) => {
     }
 
     // ── Remitente y datos de la propiedad ───────────────────────────────────
-    let fromEmail = 'noreply@casarurallarasilla.com'
-    let fromName = 'La Rasilla'
+    // Fallbacks desde variables de entorno — sin hardcodeos de ninguna propiedad
+    const envFromEmail = Deno.env.get('RESEND_FROM_EMAIL') ?? ''
+    const envFromName  = Deno.env.get('RESEND_FROM_NAME')  ?? 'Alojamiento'
+
+    let fromEmail = envFromEmail
+    let fromName  = envFromName
     let propVars: Record<string, string> = {
-      property_name: 'La Rasilla',
-      property_tagline: '',
-      property_address: '',
-      property_phone: '',
-      property_email: '',
-      checkin_time: '16:00',
-      checkout_time: '11:00',
-      cancellation_policy_summary: '',
+      property_name:                envFromName,
+      property_tagline:             '',
+      property_address:             '',
+      property_phone:               '',
+      property_email:               envFromEmail,
+      checkin_time:                 '16:00',
+      checkout_time:                '11:00',
+      cancellation_policy_summary:  '',
     }
 
     if (resolvedPropertyId) {
       const { data: prop, error: propError } = await supabase
         .from('properties')
-        .select('resend_from_email, resend_from_name, email, nombre, descripcion, direccion, localidad, telefono, checkin_time, checkout_time, politica_cancelacion')
+        .select('resend_from_email, resend_from_name, email, nombre, descripcion, site_tagline, direccion, localidad, telefono, checkin_time, checkout_time, web')
         .eq('id', resolvedPropertyId)
         .single()
 
       if (propError) {
-        console.error('send-email property sender query error:', propError)
+        console.error('send-email property query error:', propError)
       }
 
       if (prop) {
-        fromEmail = prop.resend_from_email ?? prop.email ?? fromEmail
-        fromName = prop.resend_from_name ?? prop.nombre ?? fromName
+        fromEmail = str(prop.resend_from_email ?? prop.email, envFromEmail)
+        fromName  = str(prop.resend_from_name  ?? prop.nombre, envFromName)
+
         propVars = {
-          property_name: str(prop.nombre, fromName),
-          property_tagline: str(prop.descripcion),
-          property_address: [prop.direccion, prop.localidad].filter(Boolean).join(', '),
-          property_phone: str(prop.telefono),
-          property_email: str(prop.email ?? prop.resend_from_email),
-          checkin_time: str(prop.checkin_time, '16:00'),
-          checkout_time: str(prop.checkout_time, '11:00'),
-          cancellation_policy_summary: str(prop.politica_cancelacion),
+          property_name:               str(prop.nombre, fromName),
+          property_tagline:            str(prop.site_tagline ?? prop.descripcion),
+          property_address:            [prop.direccion, prop.localidad].filter(Boolean).join(', '),
+          property_phone:              str(prop.telefono),
+          property_email:              str(prop.email ?? prop.resend_from_email, envFromEmail),
+          checkin_time:                str(prop.checkin_time, '16:00'),
+          checkout_time:               str(prop.checkout_time, '11:00'),
+          cancellation_policy_summary: '',
+        }
+
+        // Recalcular booking_url usando APP_URL (env) o la web de la propiedad como fallback
+        const rawPropWeb = str(prop.web)
+        const propWebUrl = rawPropWeb
+          ? rawPropWeb.startsWith('http') ? rawPropWeb : `https://${rawPropWeb}`
+          : ''
+        const envAppUrl = Deno.env.get('APP_URL') ?? ''
+        const baseUrl = envAppUrl || propWebUrl
+        if (baseUrl && reservaVars.token_cliente) {
+          const fixedUrl = `${baseUrl}/reserva/${reservaVars.token_cliente}`
+          reservaVars.booking_url = fixedUrl
+          reservaVars.reserva_url = fixedUrl
         }
       }
+    }
+
+    if (!fromEmail) {
+      console.error('send-email: fromEmail vacío — configura RESEND_FROM_EMAIL o properties.resend_from_email')
+      return Response.json(
+        { error: 'Remitente no configurado. Define resend_from_email en la propiedad o RESEND_FROM_EMAIL en los secrets.' },
+        { status: 500, headers: corsHeaders }
+      )
     }
 
     // ── Variables finales ───────────────────────────────────────────────────
@@ -288,6 +314,10 @@ serve(async (req) => {
       rate_name: reservaVars.rate_type ?? '',
       change_request_url: bookingUrl,
       cancel_request_url: bookingUrl,
+      // Alias para plantilla checkin_link
+      checkin_url: bookingUrl,
+      // Bloque opcional de notas — vacío por defecto; se puede pasar vía extra_vars
+      bloque_notas: '',
       ...extra_vars,
     }
 

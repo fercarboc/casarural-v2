@@ -43,6 +43,7 @@ type DashboardStats = {
   checkinHoy?: any[]
   checkoutHoy?: any[]
   enCasaAhora?: any[]
+  totalUnidadesActivas?: number
 }
 
 export const DashboardPage: React.FC = () => {
@@ -184,15 +185,51 @@ export const DashboardPage: React.FC = () => {
                 <div className="shrink-0 rounded-xl bg-emerald-500/10 p-2.5">
                   <Home size={16} className="text-emerald-300" />
                 </div>
-                <div className="min-w-0">
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
-                    En casa ahora
-                  </p>
-                  {stats.enCasaAhora?.map((r: any) => (
-                    <p key={r.id} className="truncate text-sm font-medium text-slate-100">
-                      {safeGuestName(r)} · {safeNumber(r.guests)} pax
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+                      Alojamientos ocupados
                     </p>
-                  ))}
+                    <span className="shrink-0 text-xs font-bold text-emerald-300">
+                      {/* cuenta unidades ocupadas únicas */}
+                      {Array.from(
+                        new Set(
+                          stats.enCasaAhora?.flatMap((r: any) =>
+                            r.unidades?.length ? r.unidades : [null]
+                          ) ?? []
+                        )
+                      ).filter(Boolean).length}
+                      {' / '}
+                      {stats.totalUnidadesActivas ?? '—'}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {stats.enCasaAhora?.map((r: any) => (
+                      <div key={r.id} className="min-w-0">
+                        {r.unidades?.length > 0 ? (
+                          r.unidades.map((nombre: string) => (
+                            <div key={nombre} className="flex items-center justify-between gap-2">
+                              <span className="truncate text-sm font-semibold text-slate-100">
+                                {nombre}
+                              </span>
+                              <span className="shrink-0 text-xs text-slate-400">
+                                {safeGuestName(r)} · {safeNumber(r.guests)} pax
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-semibold text-slate-100">
+                              {safeGuestName(r)}
+                            </span>
+                            <span className="shrink-0 text-xs text-slate-400">
+                              {safeNumber(r.guests)} pax
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,6 +1,6 @@
 // src/admin/components/ModalConfirmacionReserva.tsx
 import { useState } from 'react'
-import { Loader2, X, Mail, Check, AlertCircle } from 'lucide-react'
+import { Loader2, X, Mail, Check, AlertCircle, ExternalLink, Copy, CreditCard } from 'lucide-react'
 import { supabase } from '../../integrations/supabase/client'
 
 interface Reserva {
@@ -11,6 +11,7 @@ interface Reserva {
   email: string
   total: number
   importe_pagado: number | null
+  estado_pago: string
   noches: number
   num_huespedes: number
   fecha_entrada: string
@@ -26,11 +27,10 @@ interface Props {
 
 type TipoPago = 'STRIPE' | 'TRANSFERENCIA' | 'EFECTIVO_BIZUM'
 
-
 const APP_URL = (import.meta as any).env.VITE_APP_URL ?? window.location.origin
 
 export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props) {
-  const pendiente = reserva.total - (reserva.importe_pagado ?? 0)
+  const pendiente = Math.max(0, reserva.total - (reserva.importe_pagado ?? 0))
 
   const [tipoPago, setTipoPago]           = useState<TipoPago>('STRIPE')
   const [titularCuenta, setTitularCuenta] = useState('')
@@ -42,7 +42,41 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
   const [error, setError]                 = useState<string | null>(null)
   const [sent, setSent]                   = useState(false)
 
+  // Stripe
+  const [stripeUrl, setStripeUrl]           = useState<string | null>(null)
+  const [generatingStripe, setGeneratingStripe] = useState(false)
+  const [stripeError, setStripeError]       = useState<string | null>(null)
+  const [copiedStripe, setCopiedStripe]     = useState(false)
+
+  async function generateStripeLink() {
+    setGeneratingStripe(true)
+    setStripeError(null)
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('create-stripe-checkout', {
+        body: { reservaId: reserva.id, appUrl: window.location.origin },
+      })
+      if (fnError) throw new Error(fnError.message)
+      if (!data?.checkout_url) throw new Error('No se recibió URL de pago')
+      setStripeUrl(data.checkout_url)
+    } catch (err: any) {
+      setStripeError(err.message ?? 'Error al generar el enlace')
+    } finally {
+      setGeneratingStripe(false)
+    }
+  }
+
+  function copyStripeUrl() {
+    if (!stripeUrl) return
+    navigator.clipboard.writeText(stripeUrl)
+    setCopiedStripe(true)
+    setTimeout(() => setCopiedStripe(false), 2000)
+  }
+
   async function handleSend() {
+    if (tipoPago === 'STRIPE' && !stripeUrl) {
+      setError('Genera primero el enlace de pago Stripe')
+      return
+    }
     setLoading(true)
     setError(null)
 
@@ -50,7 +84,19 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
       const reservaUrl = `${APP_URL}/reserva/${reserva.token_cliente}`
       const checkinUrl = reserva.token_cliente ? `${APP_URL}/reserva/${reserva.token_cliente}` : ''
 
-      // Construir bloques HTML opcionales
+      // Bloque Stripe
+      const bloqueStripe = tipoPago === 'STRIPE' && stripeUrl
+        ? `<div style="background:#EFF6F4;border:1px solid #A5C8BE;border-radius:12px;padding:20px 24px;text-align:center;margin-bottom:0;">
+            <div style="font-size:14px;font-weight:700;color:#1C2B25;margin-bottom:8px;">💳 Pago seguro con tarjeta</div>
+            <p style="margin:0 0 6px;font-size:13px;color:#666;">Importe: <strong style="color:#2D4A3E;">${pendiente.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong></p>
+            <p style="margin:0 0 14px;font-size:12px;color:#888;">El enlace caduca en 30 minutos. Si ha expirado, solicita uno nuevo.</p>
+            <a href="${stripeUrl}" style="display:inline-block;background:#2D4A3E;color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 28px;border-radius:8px;">
+              Pagar ahora →
+            </a>
+          </div>`
+        : ''
+
+      // Bloque transferencia
       const bloqueTransferencia = tipoPago === 'TRANSFERENCIA'
         ? `<div style="background:#FFF8E7;border:1px solid #F0D080;border-radius:12px;padding:20px 24px;margin-bottom:0;">
             <div style="font-size:14px;font-weight:700;color:#5D4037;margin-bottom:12px;">🏦 Datos para la transferencia bancaria</div>
@@ -78,8 +124,7 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
           </div>`
         : ''
 
-      // Combinar bloques opcionales
-      const bloqueOpcionales = [bloqueTransferencia, bloqueNotas, bloqueCheckin]
+      const bloqueOpcionales = [bloqueStripe, bloqueTransferencia, bloqueNotas, bloqueCheckin]
         .filter(Boolean)
         .map(b => `<tr><td style="padding:0 40px 24px;">${b}</td></tr>`)
         .join('\n')
@@ -93,7 +138,7 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
           extra_vars: {
             reserva_url: reservaUrl,
             bloque_transferencia: bloqueOpcionales,
-            bloque_notas: '',  // incluido en bloqueOpcionales
+            bloque_notas: '',
           },
         },
       })
@@ -135,14 +180,14 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
             </label>
             <div className="space-y-2">
               {[
-                { value: 'STRIPE',         label: '💳 Stripe',          desc: 'Incluye enlace al área de cliente' },
-                { value: 'TRANSFERENCIA',  label: '🏦 Transferencia',   desc: 'Se muestran datos bancarios en el email' },
+                { value: 'STRIPE',         label: '💳 Stripe',           desc: 'Genera un enlace de pago seguro con tarjeta' },
+                { value: 'TRANSFERENCIA',  label: '🏦 Transferencia',    desc: 'Se muestran datos bancarios en el email' },
                 { value: 'EFECTIVO_BIZUM', label: '💵 Efectivo / Bizum', desc: 'Confirmación simple sin datos de pago' },
               ].map(opt => (
                 <label key={opt.value}
                   className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${tipoPago === opt.value ? 'border-brand-600 bg-slate-50' : 'border-slate-200 hover:border-slate-300'}`}>
                   <input type="radio" checked={tipoPago === opt.value}
-                    onChange={() => setTipoPago(opt.value as TipoPago)}
+                    onChange={() => { setTipoPago(opt.value as TipoPago); setStripeUrl(null); setStripeError(null) }}
                     className="accent-slate-900" />
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{opt.label}</p>
@@ -152,6 +197,59 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
               ))}
             </div>
           </div>
+
+          {/* Sección Stripe */}
+          {tipoPago === 'STRIPE' && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+              <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Enlace de pago Stripe</p>
+
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Importe a cobrar</span>
+                <span className="font-bold text-slate-900">
+                  {pendiente.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                </span>
+              </div>
+
+              {!stripeUrl ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={generateStripeLink}
+                    disabled={generatingStripe}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                  >
+                    {generatingStripe
+                      ? <><Loader2 size={15} className="animate-spin" /> Generando...</>
+                      : <><CreditCard size={15} /> Generar enlace de pago</>}
+                  </button>
+                  {stripeError && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle size={13} /> {stripeError}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 py-2">
+                    <span className="flex-1 truncate text-xs text-slate-700 font-mono">{stripeUrl}</span>
+                    <button type="button" onClick={copyStripeUrl} className="shrink-0 text-slate-400 hover:text-slate-700" title="Copiar">
+                      {copiedStripe ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                    </button>
+                    <a href={stripeUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-slate-400 hover:text-emerald-700" title="Abrir en Stripe">
+                      <ExternalLink size={14} />
+                    </a>
+                  </div>
+                  <p className="text-xs text-emerald-700 flex items-center gap-1">
+                    <Check size={12} /> Enlace generado. Se incluirá en el email automáticamente.
+                  </p>
+                  <button type="button" onClick={() => { setStripeUrl(null); setStripeError(null) }}
+                    className="text-xs text-slate-400 hover:text-slate-600 underline">
+                    Regenerar enlace
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Datos bancarios (solo si TRANSFERENCIA) */}
           {tipoPago === 'TRANSFERENCIA' && (

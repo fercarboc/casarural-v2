@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../integrations/supabase/client'
+import { EmailTemplatesModal } from '../components/EmailTemplatesModal'
 
 interface CancellationRule {
   from_days: number
@@ -88,6 +89,7 @@ export function ConfigPage() {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [showEmailTemplates, setShowEmailTemplates] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -322,33 +324,50 @@ export function ConfigPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={status === 'saving'}
-            className={[
-              'inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition-all shadow-sm',
-              status === 'saved'
-                ? 'bg-emerald-600 text-white'
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowEmailTemplates(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-600 bg-slate-800 px-4 py-3 text-sm font-semibold text-slate-200 shadow-sm transition-all hover:bg-slate-700"
+            >
+              <Mail size={15} />
+              Plantillas email
+            </button>
+
+            <button
+              onClick={handleSave}
+              disabled={status === 'saving'}
+              className={[
+                'inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition-all shadow-sm',
+                status === 'saved'
+                  ? 'bg-emerald-600 text-white'
+                  : status === 'error'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-brand-600 text-white hover:bg-brand-700',
+                status === 'saving' ? 'opacity-80' : '',
+              ].join(' ')}
+            >
+              {status === 'saving' && <Loader2 className="animate-spin" size={16} />}
+              {status === 'saved' && <CheckCircle2 size={16} />}
+              {status === 'error' && <AlertCircle size={16} />}
+              {status === 'idle' && <Save size={16} />}
+              {status === 'saving'
+                ? 'Guardando…'
+                : status === 'saved'
+                ? 'Guardado'
                 : status === 'error'
-                ? 'bg-red-600 text-white'
-                : 'bg-brand-600 text-white hover:bg-brand-700',
-              status === 'saving' ? 'opacity-80' : '',
-            ].join(' ')}
-          >
-            {status === 'saving' && <Loader2 className="animate-spin" size={16} />}
-            {status === 'saved' && <CheckCircle2 size={16} />}
-            {status === 'error' && <AlertCircle size={16} />}
-            {status === 'idle' && <Save size={16} />}
-            {status === 'saving'
-              ? 'Guardando…'
-              : status === 'saved'
-              ? 'Guardado'
-              : status === 'error'
-              ? 'Error'
-              : 'Guardar cambios'}
-          </button>
+                ? 'Error'
+                : 'Guardar cambios'}
+            </button>
+          </div>
         </div>
       </div>
+
+      {showEmailTemplates && property && (
+        <EmailTemplatesModal
+          propertyId={property.id}
+          onClose={() => setShowEmailTemplates(false)}
+        />
+      )}
 
       {status === 'error' && errorMsg && (
         <div className="flex items-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">

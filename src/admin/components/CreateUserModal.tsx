@@ -5,7 +5,7 @@ import { createUser } from '../../services/users.service'
 
 interface Props {
   onClose: () => void
-  onCreated: (user: { id: string; email: string; rol: string }) => void
+  onCreated: () => void
 }
 
 const ROLES = [
@@ -36,7 +36,7 @@ export function CreateUserModal({ onClose, onCreated }: Props) {
     try {
       const user = await createUser({ email: email.trim().toLowerCase(), password, rol })
       setDone(true)
-      setTimeout(() => onCreated(user), 1000)
+      setTimeout(() => onCreated(), 1000)
     } catch (err: any) {
       setError(err.message ?? 'Error desconocido')
     } finally {

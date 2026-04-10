@@ -998,15 +998,9 @@ export function ConfigPage() {
       {showCreateUser && (
         <CreateUserModal
           onClose={() => setShowCreateUser(false)}
-          onCreated={(newUser) => {
+          onCreated={() => {
             setShowCreateUser(false)
-            setPropertyUsers(prev => [...prev, {
-              id:         newUser.id,
-              user_id:    newUser.id,
-              email:      newUser.email,
-              rol:        newUser.rol,
-              created_at: new Date().toISOString(),
-            }])
+            loadUsers()
           }}
         />
       )}

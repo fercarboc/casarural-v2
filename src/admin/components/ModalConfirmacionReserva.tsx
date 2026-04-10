@@ -2,8 +2,6 @@
 import { useState } from 'react'
 import { Loader2, X, Mail, Check, AlertCircle } from 'lucide-react'
 import { supabase } from '../../integrations/supabase/client'
-import { format, parseISO } from 'date-fns'
-import { es } from 'date-fns/locale'
 
 interface Reserva {
   id: string
@@ -28,9 +26,6 @@ interface Props {
 
 type TipoPago = 'STRIPE' | 'TRANSFERENCIA' | 'EFECTIVO_BIZUM'
 
-function fmtDate(d: string) {
-  return format(parseISO(d), "d 'de' MMMM yyyy", { locale: es })
-}
 
 const APP_URL = (import.meta as any).env.VITE_APP_URL ?? window.location.origin
 
@@ -165,19 +160,19 @@ export function ModalConfirmacionReserva({ reserva, onClose, onSuccess }: Props)
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Titular de la cuenta</label>
                 <input type="text" value={titularCuenta} onChange={e => setTitularCuenta(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">IBAN</label>
                 <input type="text" value={iban} onChange={e => setIban(e.target.value)}
                   placeholder="ES00 0000 0000 0000 0000 0000"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Importe a transferir (€)</label>
                 <input type="number" value={importeTransferencia} onChange={e => setImporteTransferencia(e.target.value)}
                   step="0.01" min="0"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-brand-500/20" />
               </div>
             </div>
           )}

@@ -20,6 +20,7 @@ import {
   Trash2,
   Plus,
   Send,
+  Calculator,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
@@ -27,6 +28,7 @@ import { es } from 'date-fns/locale'
 import { supabase } from '../../integrations/supabase/client'
 import { ReplyConsultaModal } from '../components/ReplyConsultaModal'
 import { CustomerCommunicationsTimeline } from '../components/CustomerCommunicationsTimeline'
+import { PreReservaModal } from '../components/PreReservaModal'
 
 // ── Tipos ─────────────────────────────────────────────────
 
@@ -137,6 +139,7 @@ export const CustomersPage: React.FC = () => {
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState<TabFiltro>('todos')
   const [selected, setSelected] = useState<Contacto | null>(null)
+  const [showPreReserva, setShowPreReserva] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -305,6 +308,14 @@ export const CustomersPage: React.FC = () => {
                 </button>
 
                 <button
+                  onClick={() => setShowPreReserva(true)}
+                  className="flex items-center gap-1.5 rounded-xl bg-amber-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-amber-700 transition-all"
+                >
+                  <Calculator size={12} />
+                  Pre-Reserva
+                </button>
+
+                <button
                   onClick={() => navigate('/admin/reservas/nueva')}
                   className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-brand-700 transition-all"
                 >
@@ -381,6 +392,13 @@ export const CustomersPage: React.FC = () => {
           contacto={selected}
           onClose={() => setSelected(null)}
           onRefresh={loadData}
+        />
+      )}
+
+      {showPreReserva && (
+        <PreReservaModal
+          onClose={() => setShowPreReserva(false)}
+          onSent={loadData}
         />
       )}
     </div>

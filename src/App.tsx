@@ -65,11 +65,23 @@ import {
   getLogoAlt,
 } from './shared/utils/publicProperty.utils';
 
+const PORTAL_HOSTNAMES = ['clientes.staynexapp.com']
+
 function InviteRedirect() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (window.location.hash.includes('type=invite')) {
+    const hostname = window.location.hostname
+    const hash = window.location.hash
+
+    // Invite link → siempre al admin
+    if (hash.includes('type=invite')) {
+      navigate('/admin', { replace: true })
+      return
+    }
+
+    // Portal universal sin ruta específica → redirigir al admin
+    if (PORTAL_HOSTNAMES.includes(hostname) && window.location.pathname === '/') {
       navigate('/admin', { replace: true })
     }
   }, [navigate])

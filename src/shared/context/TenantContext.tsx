@@ -109,6 +109,25 @@ function TenantSplash() {
   )
 }
 
+// ─── Portal tenant (clientes.staynexapp.com) ──────────────────────────────────
+// Este dominio es el portal universal: no identifica un tenant por hostname.
+// El tenant se resuelve por sesión Auth en AdminTenantContext.
+// Las rutas públicas no aplican aquí — la app redirige directo a /admin.
+
+const PORTAL_HOSTNAMES = ['clientes.staynexapp.com']
+
+const PORTAL_TENANT: TenantConfig = {
+  property_id:  '',
+  slug:         '',
+  nombre:       'StayNexApp',
+  estado:       'active',
+  branding:     { logo_url: '', logo_alt: 'StayNexApp', primary_color: null, favicon_url: null, og_image_url: null },
+  seo:          { site_title: 'StayNexApp', meta_description: '', lang: 'es', robots_index: false },
+  features:     { booking: false, gallery: false, activities: false, services: false, contact: false },
+  contacto:     { email: '', telefono: '', localidad: '', provincia: '' },
+  operacion:    { checkin_time: '16:00', checkout_time: '12:00' },
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 interface TenantProviderProps {
@@ -116,6 +135,21 @@ interface TenantProviderProps {
 }
 
 export function TenantProvider({ children }: TenantProviderProps) {
+  const hostname = window.location.hostname
+
+  // Portal universal: saltar resolución de tenant, admin resuelve por sesión
+  if (PORTAL_HOSTNAMES.includes(hostname)) {
+    return (
+      <TenantContext.Provider value={PORTAL_TENANT}>
+        {children}
+      </TenantContext.Provider>
+    )
+  }
+
+  return <TenantProviderResolved>{children}</TenantProviderResolved>
+}
+
+function TenantProviderResolved({ children }: TenantProviderProps) {
   const [tenant, setTenant]   = useState<TenantConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<TenantErrorCode | null>(null)
@@ -135,8 +169,8 @@ export function TenantProvider({ children }: TenantProviderProps) {
   }, [])
 
   if (loading) return <TenantSplash />
-  if (error === 'NOT_FOUND')    return <TenantNotFound />
-  if (error === 'INACTIVE')     return <TenantInactive />
+  if (error === 'NOT_FOUND')     return <TenantNotFound />
+  if (error === 'INACTIVE')      return <TenantInactive />
   if (error === 'NETWORK_ERROR') return <TenantNotFound networkError />
 
   return (

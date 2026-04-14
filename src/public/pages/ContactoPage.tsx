@@ -21,9 +21,7 @@ import {
 } from '../../shared/utils/publicProperty.utils';
 import { fetchPublicUnits } from '../services/publicUnits.service';
 import { createPublicContact } from '../services/publicContact.service';
-
-const PROPERTY_SLUG =
-  (import.meta as any).env?.VITE_PROPERTY_SLUG || 'la-rasilla';
+import { useTenant } from '../../shared/context/TenantContext';
 
 interface UnitOption {
   id: string;
@@ -48,6 +46,7 @@ export const ContactoPage: React.FC = () => {
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [unitOptions, setUnitOptions] = useState<UnitOption[]>([]);
 
+  const { property_id } = useTenant();
   const { property } = usePublicProperty();
 
   const siteName = getSiteName(property);
@@ -81,7 +80,7 @@ export const ContactoPage: React.FC = () => {
   useEffect(() => {
     const loadUnits = async () => {
       try {
-        const result = await fetchPublicUnits({ slug: PROPERTY_SLUG });
+        const result = await fetchPublicUnits({ property_id });
         const rows: UnitOption[] = (result.units ?? []).map((u) => ({
           id: u.id,
           nombre: u.nombre,

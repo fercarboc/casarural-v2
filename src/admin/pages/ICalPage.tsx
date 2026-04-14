@@ -8,6 +8,7 @@ import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { icalService, ICalFeed, SyncLog } from '../../services/ical.service'
 import { configService, Unidad } from '../../services/config.service'
+import { useAdminTenant } from '../context/AdminTenantContext'
 
 type Plataforma = 'BOOKING' | 'AIRBNB' | 'ESCAPADARURAL' | 'OTRO'
 
@@ -21,6 +22,7 @@ const PLATAFORMAS: { value: Plataforma; label: string; color: string; hint: stri
 // ── Página ────────────────────────────────────────────────
 
 export const ICalPage: React.FC = () => {
+  const { property_id } = useAdminTenant()
   const [feeds, setFeeds] = useState<ICalFeed[]>([])
   const [logs, setLogs] = useState<SyncLog[]>([])
   const [unidades, setUnidades] = useState<Unidad[]>([])
@@ -38,7 +40,7 @@ export const ICalPage: React.FC = () => {
       const [f, l, cfg] = await Promise.all([
         icalService.getFeeds(),
         icalService.getLogs(),
-        configService.getConfig().catch(() => null),
+        configService.getConfig(property_id).catch(() => null),
       ])
       setFeeds(f)
       setLogs(l)

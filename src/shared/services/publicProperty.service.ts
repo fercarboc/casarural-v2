@@ -1,9 +1,6 @@
 import type { PublicProperty } from '../types/publicProperty';
 
-const PROPERTY_SLUG =
-  (import.meta as any).env?.VITE_PROPERTY_SLUG || 'la-rasilla';
-
-export async function fetchPublicProperty(): Promise<PublicProperty | null> {
+export async function fetchPublicProperty(property_id: string): Promise<PublicProperty | null> {
   try {
     const res = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/public_property_context`,
@@ -13,7 +10,7 @@ export async function fetchPublicProperty(): Promise<PublicProperty | null> {
           'Content-Type': 'application/json',
           apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ slug: PROPERTY_SLUG }),
+        body: JSON.stringify({ property_id }),
       },
     );
 

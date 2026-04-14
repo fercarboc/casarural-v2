@@ -19,20 +19,19 @@ import { FeatureGrid } from '../components/FeatureGrid';
 import { CTASection } from '../components/CTASection';
 import { MetaTags } from '../components/MetaTags';
 import { fetchPublicUnits, type PublicUnit } from '../services/publicUnits.service';
-
-const PROPERTY_SLUG =
-  (import.meta as any).env?.VITE_PROPERTY_SLUG || 'la-rasilla';
+import { useTenant } from '../../shared/context/TenantContext';
 
 const HERO_FALLBACK = '/images/casa3.jpg';
 
 export const AlojamientosPage: React.FC = () => {
+  const { property_id } = useTenant();
   const [units, setUnits] = useState<PublicUnit[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadUnits = async () => {
       try {
-        const result = await fetchPublicUnits({ slug: PROPERTY_SLUG });
+        const result = await fetchPublicUnits({ property_id });
         setUnits(result.units ?? []);
       } catch (err) {
         console.error('Error loading units:', err);

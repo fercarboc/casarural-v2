@@ -5,13 +5,7 @@ import { LogIn, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
 function normalizeLogin(input: string) {
-  const value = input.trim().toLowerCase();
-
-  if (value === 'admin') {
-    return 'admin@staynexapp.com';
-  }
-
-  return value;
+  return input.trim().toLowerCase();
 }
 
 export const LoginPage: React.FC = () => {
@@ -85,7 +79,7 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <h2 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">
-            StayNexApp Admin RuralHouse
+            Panel de administración
           </h2>
 
           <p className="mt-2 text-sm text-slate-500">

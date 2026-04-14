@@ -36,6 +36,7 @@ import {
 import { Link } from 'react-router-dom'
 import { supabase } from '../../integrations/supabase/client'
 import { configService } from '../../services/config.service'
+import { useAdminTenant } from '../context/AdminTenantContext'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface Reserva {
@@ -309,6 +310,7 @@ function getGlobalEventsForDay(
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export const CalendarPage: React.FC = () => {
+  const { property_id } = useAdminTenant()
   const [month, setMonth] = useState(new Date())
   const [selected, setSelected] = useState<Date | null>(null)
   const [reservas, setReservas] = useState<Reserva[]>([])
@@ -338,7 +340,7 @@ export const CalendarPage: React.FC = () => {
     setLoading(true)
 
     try {
-      const cfg = await configService.getConfig()
+      const cfg = await configService.getConfig(property_id)
       setPropertyId(cfg.property.id)
 
       const mappedUnidades = (cfg.unidades ?? []).map((u: any) => ({

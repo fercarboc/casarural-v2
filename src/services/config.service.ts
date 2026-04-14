@@ -3,7 +3,6 @@
 
 import { isMockMode } from '../integrations/supabase/client';
 
-const PROPERTY_SLUG = (import.meta as any).env.VITE_PROPERTY_SLUG ?? 'la-rasilla';
 
 // ── Interfaces v2 ─────────────────────────────────────────
 
@@ -147,7 +146,7 @@ export function getPricingForDate(
 // ── Servicio ──────────────────────────────────────────────
 
 export const configService = {
-  async getConfig(): Promise<AppConfig> {
+  async getConfig(property_id: string): Promise<AppConfig> {
     if (isMockMode) {
       throw new Error(
         'Variables de entorno no configuradas (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY). ' +
@@ -159,7 +158,7 @@ export const configService = {
     const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
     const supabaseKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
     const res = await fetch(
-      `${supabaseUrl}/functions/v1/get-config?property_slug=${encodeURIComponent(PROPERTY_SLUG)}`,
+      `${supabaseUrl}/functions/v1/get-config?property_id=${encodeURIComponent(property_id)}`,
       { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
     );
     const data = await res.json();

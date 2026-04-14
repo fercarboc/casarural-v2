@@ -28,6 +28,11 @@ import { supabase } from '../../integrations/supabase/client'
 import { EmailTemplatesModal } from '../components/EmailTemplatesModal'
 import { CreateUserModal } from '../components/CreateUserModal'
 import { listPropertyUsers, type PropertyUser } from '../../services/users.service'
+import { useAdminTenant } from '../context/AdminTenantContext'
+
+import { KeyRound } from 'lucide-react'
+import { ChangePasswordModal } from '../components/ChangePasswordModal'
+
 
 interface CancellationRule {
   from_days: number
@@ -83,8 +88,6 @@ interface Property {
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
-const PROPERTY_SLUG = 'la-rasilla'
-
 const DEFAULT_CANCELLATION_RULES: CancellationRule[] = [
   { from_days: 60, to_days: 9999, refund_pct: 100 },
   { from_days: 45, to_days: 59, refund_pct: 50 },
@@ -93,6 +96,8 @@ const DEFAULT_CANCELLATION_RULES: CancellationRule[] = [
 ]
 
 export function ConfigPage() {
+  const { property_id } = useAdminTenant()
+
   const [property, setProperty] = useState<Property | null>(null)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<SaveStatus>('idle')
@@ -101,6 +106,8 @@ export function ConfigPage() {
   const [showCreateUser, setShowCreateUser]         = useState(false)
   const [propertyUsers, setPropertyUsers]           = useState<PropertyUser[]>([])
   const [loadingUsers, setLoadingUsers]             = useState(false)
+
+const [showChangePassword, setShowChangePassword] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -149,7 +156,7 @@ export function ConfigPage() {
         flexible_deposit_pct,
         cancellation_policy_json
       `)
-      .eq('slug', PROPERTY_SLUG)
+      .eq('id', property_id)
       .single()
 
     if (error) {
@@ -172,7 +179,7 @@ export function ConfigPage() {
     })
 
     setLoading(false)
-  }, [])
+  }, [property_id])
 
   useEffect(() => {
     loadData()
@@ -181,14 +188,14 @@ export function ConfigPage() {
   const loadUsers = useCallback(async () => {
     setLoadingUsers(true)
     try {
-      const users = await listPropertyUsers()
+      const users = await listPropertyUsers(property_id)
       setPropertyUsers(users)
     } catch {
       // silencioso — lista vacía si falla
     } finally {
       setLoadingUsers(false)
     }
-  }, [])
+  }, [property_id])
 
   useEffect(() => { loadUsers() }, [loadUsers])
 
@@ -941,17 +948,29 @@ export function ConfigPage() {
 
       {/* ── Seguridad ── */}
       <DarkCard title="Seguridad" icon={<Shield size={16} />}>
+        
         <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-400">
-            Usuarios con acceso al panel de administración de esta propiedad.
-          </p>
-          <button
-            onClick={() => setShowCreateUser(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl bg-brand-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-brand-700"
-          >
-            <UserPlus size={13} /> Crear usuario
-          </button>
-        </div>
+  <p className="text-sm text-slate-400">
+    Usuarios con acceso al panel de administración de esta propiedad.
+  </p>
+
+  <div className="flex items-center gap-2">
+    <button
+      onClick={() => setShowChangePassword(true)}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-slate-700"
+    >
+      <KeyRound size={13} />
+      Cambiar mi contraseña
+    </button>
+
+    <button
+      onClick={() => setShowCreateUser(true)}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl bg-brand-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-brand-700"
+    >
+      <UserPlus size={13} /> Crear usuario
+    </button>
+  </div>
+</div>
 
         {/* Lista de usuarios */}
         {loadingUsers ? (
@@ -1003,7 +1022,13 @@ export function ConfigPage() {
             loadUsers()
           }}
         />
+        
       )}
+      {showChangePassword && (
+  <ChangePasswordModal
+    onClose={() => setShowChangePassword(false)}
+  />
+)}
     </div>
   )
 }

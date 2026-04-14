@@ -1,5 +1,7 @@
 // supabase/functions/admin-list-users/index.ts
-// POST/GET — devuelve los usuarios de la propiedad del admin llamante.
+// POST/GET — devuelve los usuarios de la propiedad indicada.
+// ADMIN: solo puede listar su propia property.
+// SUPER_ADMIN: puede listar cualquier property, idealmente pasando property_id.
 
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -49,7 +51,16 @@ serve(async (req) => {
       return json({ ok: false, error: 'Empty bearer token' }, 401)
     }
 
-    // 1) Validar identidad del usuario llamante con JWT real
+    const body = req.method === 'POST'
+      ? await req.json().catch(() => ({}))
+      : {}
+
+    const requestedPropertyId =
+      typeof body.property_id === 'string' && body.property_id.trim()
+        ? body.property_id.trim()
+        : null
+
+    // 1) Validar identidad del llamante
     const callerClient = createClient(supabaseUrl, anonKey)
     const {
       data: { user: caller },
@@ -61,32 +72,67 @@ serve(async (req) => {
       return json({ ok: false, error: 'Unauthorized' }, 401)
     }
 
-    // 2) Cliente admin para consultas privilegiadas
+    // 2) Cliente admin
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
 
-    // 3) Obtener property_id y rol del llamante
-    const { data: membership, error: membershipError } = await adminClient
+    // 3) Obtener memberships del llamante
+    const { data: memberships, error: membershipsError } = await adminClient
       .from('property_users')
       .select('property_id, rol')
       .eq('user_id', caller.id)
-      .single()
 
-    if (membershipError || !membership) {
-      console.error('admin-list-users: membership error', membershipError)
+    if (membershipsError) {
+      console.error('admin-list-users: memberships error', membershipsError)
+      return json({ ok: false, error: 'Error al validar permisos' }, 500)
+    }
+
+    if (!memberships || memberships.length === 0) {
+      console.error('admin-list-users: user has no memberships', caller.id)
       return json({ ok: false, error: 'No perteneces a ninguna propiedad' }, 403)
     }
 
-    if ((membership.rol ?? '').toUpperCase() !== 'ADMIN') {
-      console.error('admin-list-users: access denied for role', membership.rol)
+    const roles = memberships.map((m) => (m.rol ?? '').toUpperCase())
+    const isSuperAdmin = roles.includes('SUPER_ADMIN')
+    const isAdmin = roles.includes('ADMIN')
+
+    if (!isSuperAdmin && !isAdmin) {
+      console.error('admin-list-users: access denied for roles', roles)
       return json({ ok: false, error: 'Acceso denegado' }, 403)
     }
 
-    const propertyId = membership.property_id
+    let propertyId: string | null = null
 
-    // 4) Obtener usuarios de la propiedad
+    if (requestedPropertyId) {
+      if (isSuperAdmin) {
+        propertyId = requestedPropertyId
+      } else {
+        const hasAccessToRequested = memberships.some(
+          (m) => m.property_id === requestedPropertyId
+        )
+
+        if (!hasAccessToRequested) {
+          console.error('admin-list-users: admin tried to access another property', {
+            callerId: caller.id,
+            requestedPropertyId,
+          })
+          return json({ ok: false, error: 'Acceso denegado' }, 403)
+        }
+
+        propertyId = requestedPropertyId
+      }
+    } else {
+      // fallback si no llega property_id
+      propertyId = memberships[0]?.property_id ?? null
+    }
+
+    if (!propertyId) {
+      return json({ ok: false, error: 'Property no resuelta' }, 400)
+    }
+
+    // 4) Obtener usuarios de la property
     const { data: propertyUsers, error: puError } = await adminClient
       .from('property_users')
-      .select('id, user_id, rol, created_at')
+      .select('id, user_id, rol, created_at, property_id')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true })
 
@@ -98,7 +144,8 @@ serve(async (req) => {
     // 5) Enriquecer con email desde Auth
     const users = await Promise.all(
       (propertyUsers ?? []).map(async (pu) => {
-        const { data: authUser, error: authUserError } = await adminClient.auth.admin.getUserById(pu.user_id)
+        const { data: authUser, error: authUserError } =
+          await adminClient.auth.admin.getUserById(pu.user_id)
 
         if (authUserError) {
           console.error('admin-list-users: getUserById error', pu.user_id, authUserError)
@@ -107,6 +154,7 @@ serve(async (req) => {
         return {
           id: pu.id,
           user_id: pu.user_id,
+          property_id: pu.property_id,
           email: authUser?.user?.email ?? '—',
           rol: pu.rol,
           created_at: pu.created_at,

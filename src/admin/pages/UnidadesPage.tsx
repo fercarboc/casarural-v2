@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../integrations/supabase/client'
 import { configService, Unidad, PeriodoEspecial } from '../../services/config.service'
+import { useAdminTenant } from '../context/AdminTenantContext'
 import UnitPhotoManager from '../components/UnitPhotoManager'
 import UnitDescriptionForm from '../components/UnitDescriptionForm'
 
@@ -113,6 +114,7 @@ function toSlug(s: string) {
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export const UnidadesPage: React.FC = () => {
+  const { property_id } = useAdminTenant()
   const [unidades, setUnidades] = useState<UnidadDetalle[]>([])
   const [periodos, setPeriodos] = useState<PeriodoEspecial[]>([])
   const [propertyId, setPropertyId] = useState<string | null>(null)
@@ -149,7 +151,7 @@ export const UnidadesPage: React.FC = () => {
       } = await supabase.auth.getSession()
       setAccessToken(session?.access_token ?? '')
 
-      const cfg = await configService.getConfig()
+      const cfg = await configService.getConfig(property_id)
       const pid = cfg.property.id
       setPropertyId(pid)
 

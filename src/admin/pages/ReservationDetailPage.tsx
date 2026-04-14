@@ -11,6 +11,7 @@ import { es } from 'date-fns/locale'
 import { supabase } from '../../integrations/supabase/client'
 import { bookingService } from '../../services/booking.service'
 import { configService, PricingConfig, getPricingForDate } from '../../services/config.service'
+import { useAdminTenant } from '../context/AdminTenantContext'
 import { PriceBreakdown } from '../../shared/types/booking'
 import { ManualPaymentModal } from '../components/ManualPaymentModal'
 import { ModalSolicitudPago } from '../components/ModalSolicitudPago'
@@ -144,6 +145,7 @@ function fallbackCodigo(id: string, codigo: string | null | undefined) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export const ReservationDetailPage: React.FC = () => {
+  const { property_id } = useAdminTenant()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -166,7 +168,7 @@ export const ReservationDetailPage: React.FC = () => {
 
   useEffect(() => {
     configService
-      .getConfig()
+      .getConfig(property_id)
       .then((cfg) => setPricingConfig(getPricingForDate(new Date(), cfg)))
       .catch(() => {})
   }, [])

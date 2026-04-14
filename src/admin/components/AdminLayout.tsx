@@ -13,10 +13,12 @@ import {
   Menu,
   X,
   Home,
+  Building2,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useAdminTenant } from '../context/AdminTenantContext'
 
-const NAV_GROUPS = [
+const NAV_GROUPS_BASE = [
   {
     label: 'Operativo',
     items: [
@@ -38,9 +40,21 @@ const NAV_GROUPS = [
   },
 ]
 
+const NAV_GROUP_SUPER = {
+  label: 'Super Admin',
+  items: [
+    { to: '/admin/propiedades', icon: <Building2 size={16} />, label: 'Propiedades' },
+  ],
+}
+
 export const AdminLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false)
   const { signOut, user } = useAuth()
+  const { nombre, rol } = useAdminTenant()
+
+  const navGroups = rol === 'SUPER_ADMIN'
+    ? [...NAV_GROUPS_BASE, NAV_GROUP_SUPER]
+    : NAV_GROUPS_BASE
   const navigate = useNavigate()
 
   const handleSignOut = async () => {
@@ -87,14 +101,14 @@ export const AdminLayout: React.FC = () => {
             <Home size={16} className="text-white" />
           </div>
           <div>
-            <p className="text-base font-bold leading-tight text-white">Admin Rural Hosue</p>
-            <p className="text-[11px] leading-tight text-slate-500">StayNexAppn</p>
+            <p className="text-base font-bold leading-tight text-white">{nombre}</p>
+            <p className="text-[11px] leading-tight text-slate-500">Panel de administración</p>
           </div>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-          {NAV_GROUPS.map((group) => (
+          {navGroups.map((group) => (
             <div key={group.label}>
               <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
                 {group.label}

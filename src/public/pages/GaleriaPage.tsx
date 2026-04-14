@@ -11,9 +11,7 @@ import {
 } from '../../shared/utils/publicProperty.utils';
 import { fetchPublicGalleryUnits } from '../services/publicGallery.service';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
-
-const PROPERTY_SLUG =
-  (import.meta as any).env?.VITE_PROPERTY_SLUG || 'la-rasilla';
+import { useTenant } from '../../shared/context/TenantContext';
 
 interface GalleryItem {
   id: string;
@@ -51,13 +49,14 @@ export const GaleriaPage: React.FC = () => {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchEndX, setTouchEndX] = useState<number | null>(null);
 
+  const { property_id } = useTenant();
   const { property } = usePublicProperty();
   const siteName = getSiteName(property);
 
   useEffect(() => {
     const loadGalleryData = async () => {
       try {
-        const result = await fetchPublicGalleryUnits({ slug: PROPERTY_SLUG });
+        const result = await fetchPublicGalleryUnits({ property_id });
 
         const mapped: UnitWithGallery[] = (result.units ?? []).map((unit) => {
           const gallery: GalleryItem[] = unit.fotos.map((foto, index) => ({

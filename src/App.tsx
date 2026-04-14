@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'motion/react';
 
 import { HomePage } from './public/pages/HomePage';
@@ -33,8 +33,9 @@ import { BookingFlowProvider } from './public/booking/BookingFlowContext';
 
 
 import { AuthProvider } from './admin/context/AuthContext';
+import { AdminTenantProvider } from './admin/context/AdminTenantContext';
 import { ProtectedRoute } from './admin/components/ProtectedRoute';
-import { AdminLayout } from './admin/components/AdminLayout';
+import { AdminGate } from './admin/components/AdminGate';
 import { LoginPage } from './admin/pages/LoginPage';
 import { DashboardPage } from './admin/pages/DashboardPage';
 import { CalendarPage } from './admin/pages/CalendarPage';
@@ -47,6 +48,7 @@ import { InvoicesPage } from './admin/pages/InvoicesPage';
 import { ConfigPage } from './admin/pages/ConfigPage';
 import { ICalPage } from './admin/pages/ICalPage';
 import { UnidadesPage } from './admin/pages/UnidadesPage';
+import { SuperAdminPage } from './admin/pages/SuperAdminPage';
 
 import { ReservationViewPage } from './public/pages/ReservationViewPage';
 import ReservaConfirmada from './public/pages/ReservaConfirmada';
@@ -62,6 +64,18 @@ import {
   getSiteName,
   getLogoAlt,
 } from './shared/utils/publicProperty.utils';
+
+function InviteRedirect() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (window.location.hash.includes('type=invite')) {
+      navigate('/admin', { replace: true })
+    }
+  }, [navigate])
+
+  return null
+}
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -215,6 +229,7 @@ export default function App() {
   return (
     <CookieConsentContext.Provider value={cookieConsent}>
       <AuthProvider>
+        <InviteRedirect />
         <ScrollToTop />
         <AnimatePresence mode="wait">
           <Routes>
@@ -271,7 +286,9 @@ export default function App() {
               path="/admin"
               element={
                 <ProtectedRoute>
-                  <AdminLayout />
+                  <AdminTenantProvider>
+                    <AdminGate />
+                  </AdminTenantProvider>
                 </ProtectedRoute>
               }
             >
@@ -287,6 +304,7 @@ export default function App() {
               <Route path="configuracion" element={<ConfigPage />} />
               <Route path="unidades" element={<UnidadesPage />} />
               <Route path="ical" element={<ICalPage />} />
+              <Route path="propiedades" element={<SuperAdminPage />} />
             </Route>
           </Routes>
         </AnimatePresence>

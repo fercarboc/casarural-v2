@@ -251,9 +251,9 @@ const STEPS = 3
 
 export function OnboardingPage() {
   const { property_id, nombre, refreshTenant } = useAdminTenant()
-  const { signOut } = useAuth()
+  const { signOut, user } = useAuth()
   const [step,    setStep]    = useState(0)
-  const [data,    setData]    = useState<WizardData>({ ...EMPTY, nombre })
+  const [data,    setData]    = useState<WizardData>({ ...EMPTY, nombre, email: user?.email ?? '' })
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
 

@@ -33,6 +33,7 @@ import { BookingFlowProvider } from './public/booking/BookingFlowContext';
 
 
 import { AuthProvider } from './admin/context/AuthContext';
+import { AcceptInvitePage } from './admin/pages/AcceptInvitePage';
 import { AdminTenantProvider } from './admin/context/AdminTenantContext';
 import { ProtectedRoute } from './admin/components/ProtectedRoute';
 import { AdminGate } from './admin/components/AdminGate';
@@ -69,22 +70,17 @@ const PORTAL_HOSTNAMES = ['clientes.staynexapp.com']
 
 function InviteRedirect() {
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
-    const hostname = window.location.hostname
-    const hash = window.location.hash
-
-    // Invite link → siempre al admin
-    if (hash.includes('type=invite')) {
-      navigate('/admin', { replace: true })
-      return
-    }
+    // No interferir con la página dedicada de aceptación de invitación
+    if (location.pathname.startsWith('/auth/')) return
 
     // Portal universal sin ruta específica → redirigir al admin
-    if (PORTAL_HOSTNAMES.includes(hostname) && window.location.pathname === '/') {
+    if (PORTAL_HOSTNAMES.includes(window.location.hostname) && location.pathname === '/') {
       navigate('/admin', { replace: true })
     }
-  }, [navigate])
+  }, [navigate, location.pathname])
 
   return null
 }
@@ -254,7 +250,6 @@ export default function App() {
             <Route path="/actividades" element={<PublicLayout><ActividadesPage /></PublicLayout>} />
             <Route path="/donde-estamos" element={<PublicLayout><DondeEstamosPage /></PublicLayout>} />
             <Route path="/contacto" element={<PublicLayout><ContactoPage /></PublicLayout>} />
-
             {/* Booking Wizard */}
             <Route
               path="/reservar"
@@ -289,6 +284,9 @@ export default function App() {
               element={<PublicLayout><PoliticaCancelaciones /></PublicLayout>}
             />
             <Route path="/soporte" element={<PublicLayout><SoportePage /></PublicLayout>} />
+
+            {/* Auth — Primer acceso / Aceptar invitación */}
+            <Route path="/auth/acepta-invitacion" element={<AcceptInvitePage />} />
 
             {/* Admin Auth */}
             <Route path="/admin/login" element={<LoginPage />} />

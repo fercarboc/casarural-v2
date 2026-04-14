@@ -9,11 +9,13 @@ import { AvailabilityCalendar } from '../components/AvailabilityCalendar'
 import { supabase, isMockMode } from '../../integrations/supabase/client'
 import { useBookingFlow } from '../booking/BookingFlowContext'
 import { dateToISO, isoToDate, nightsBetween } from '../booking/bookingFlow.utils'
+import { useTenant } from '../../shared/context/TenantContext'
 
 const TEST_MODE = (import.meta as any).env.VITE_BOOKING_TEST_MODE === 'true'
 
 export default function BookingSearchStepPage() {
   const navigate = useNavigate()
+  const tenant   = useTenant()
 
   const {
     property,
@@ -60,21 +62,16 @@ export default function BookingSearchStepPage() {
       setLoadingInit(true)
 
       try {
-        const { data: propertyData, error: propertyError } = await supabase
-          .from('properties')
-          .select('id, nombre')
-          .limit(1)
-          .single()
-
-        if (propertyError) throw propertyError
-        setProperty(propertyData)
+        // Usamos el tenant ya resuelto — evita consulta anon a properties (RLS)
+        const tenantProperty = { id: tenant.property_id, nombre: tenant.nombre }
+        setProperty(tenantProperty)
 
         // Siempre recargamos unidades desde la BD para evitar datos obsoletos
         // (capacidades desactualizadas si se añaden/modifican unidades)
         const { data: unitsData, error: unitsError } = await supabase
           .from('unidades')
           .select('id, nombre, slug, capacidad_base, capacidad_maxima, orden, activa')
-          .eq('property_id', propertyData.id)
+          .eq('property_id', tenant.property_id)
           .eq('activa', true)
           .order('orden', { ascending: true })
 

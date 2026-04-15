@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import {
   Building2, Globe, Phone, Mail, MapPin, Check,
-  ArrowRight, ArrowLeft, Loader2, LogOut,
+  ArrowRight, ArrowLeft, Loader2, LogOut, KeyRound, Eye, EyeOff,
 } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import { useAdminTenant } from '../context/AdminTenantContext'
@@ -48,6 +48,103 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+// ─── Paso 0 — Establecer contraseña ──────────────────────────────────────────
+
+function Step0Password({
+  password, confirm, onChange, userEmail,
+}: {
+  password: string
+  confirm: string
+  onChange: (p: string, c: string) => void
+  userEmail: string
+}) {
+  const [showPwd, setShowPwd] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+
+  const strength = password.length >= 8 && /[A-Z]/.test(password) && /[0-9]/.test(password)
+    ? 'fuerte'
+    : password.length >= 8
+    ? 'aceptable'
+    : 'corta'
+
+  const match = confirm.length > 0 && password === confirm
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-bold text-white">Establece tu contraseña</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Por seguridad, establece una contraseña personalizada antes de continuar.
+          Tu email de acceso es <span className="font-mono text-brand-400">{userEmail}</span>.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
+            Nueva contraseña *
+          </label>
+          <div className="relative">
+            <KeyRound size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              autoFocus
+              type={showPwd ? 'text' : 'password'}
+              value={password}
+              onChange={e => onChange(e.target.value, confirm)}
+              placeholder="Mínimo 8 caracteres"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 py-3 pl-10 pr-11 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPwd(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+          {password.length > 0 && (
+            <p className={`mt-1 text-xs ${strength === 'fuerte' ? 'text-emerald-400' : strength === 'aceptable' ? 'text-amber-400' : 'text-red-400'}`}>
+              Contraseña {strength}{strength === 'fuerte' ? ' ✓' : strength === 'aceptable' ? ' — añade mayúsculas y números para hacerla más segura' : ' — mínimo 8 caracteres'}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-400">
+            Repetir contraseña *
+          </label>
+          <div className="relative">
+            <KeyRound size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type={showConfirm ? 'text' : 'password'}
+              value={confirm}
+              onChange={e => onChange(password, e.target.value)}
+              placeholder="Repite la contraseña"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950/70 py-3 pl-10 pr-11 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
+          {confirm.length > 0 && (
+            <p className={`mt-1 text-xs ${match ? 'text-emerald-400' : 'text-red-400'}`}>
+              {match ? 'Las contraseñas coinciden ✓' : 'Las contraseñas no coinciden'}
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-xs text-slate-500">
+          Podrás cambiar tu contraseña en cualquier momento desde <strong className="text-slate-400">Panel → Seguridad</strong>.
+        </div>
+      </div>
     </div>
   )
 }
@@ -247,22 +344,42 @@ function Step3({ data }: { data: WizardData }) {
 
 // ─── Wizard principal ──────────────────────────────────────────────────────────
 
-const STEPS = 3
+const STEPS = 4
 
 export function OnboardingPage() {
   const { property_id, nombre, refreshTenant } = useAdminTenant()
   const { signOut, user } = useAuth()
-  const [step,    setStep]    = useState(0)
-  const [data,    setData]    = useState<WizardData>({ ...EMPTY, nombre, email: user?.email ?? '' })
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState('')
+  const [step,        setStep]        = useState(0)
+  const [data,        setData]        = useState<WizardData>({ ...EMPTY, nombre, email: user?.email ?? '' })
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPwd,  setConfirmPwd]  = useState('')
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState('')
 
   const update = (partial: Partial<WizardData>) => setData(d => ({ ...d, ...partial }))
 
   const canNext = () => {
-    if (step === 0) return data.nombre.trim() !== '' && data.email.trim() !== ''
-    if (step === 1) return !data.domain || /^([a-z0-9-]+\.)+[a-z]{2,}$/.test(data.domain)
+    if (step === 0) {
+      return newPassword.length >= 8 && newPassword === confirmPwd
+    }
+    if (step === 1) return data.nombre.trim() !== '' && data.email.trim() !== ''
+    if (step === 2) return !data.domain || /^([a-z0-9-]+\.)+[a-z]{2,}$/.test(data.domain)
     return true
+  }
+
+  // Al avanzar desde el paso 0 guardamos la contraseña inmediatamente
+  const handleNext = async () => {
+    if (step === 0) {
+      setSaving(true)
+      setError('')
+      const { error: pwdErr } = await supabase.auth.updateUser({ password: newPassword })
+      setSaving(false)
+      if (pwdErr) {
+        setError(`No se pudo guardar la contraseña: ${pwdErr.message}`)
+        return
+      }
+    }
+    setStep(s => s + 1)
   }
 
   async function handleFinish() {
@@ -329,9 +446,17 @@ export function OnboardingPage() {
 
         {/* Tarjeta del paso */}
         <div className="rounded-2xl border border-sidebar-border bg-sidebar-bg p-6 shadow-xl">
-          {step === 0 && <Step1 data={data} onChange={update} />}
-          {step === 1 && <Step2 data={data} onChange={update} />}
-          {step === 2 && <Step3 data={data} />}
+          {step === 0 && (
+            <Step0Password
+              password={newPassword}
+              confirm={confirmPwd}
+              onChange={(p, c) => { setNewPassword(p); setConfirmPwd(c) }}
+              userEmail={user?.email ?? ''}
+            />
+          )}
+          {step === 1 && <Step1 data={data} onChange={update} />}
+          {step === 2 && <Step2 data={data} onChange={update} />}
+          {step === 3 && <Step3 data={data} />}
 
           {error && (
             <p className="mt-4 text-sm text-red-400">{error}</p>
@@ -351,11 +476,14 @@ export function OnboardingPage() {
 
             {step < STEPS - 1 ? (
               <button
-                onClick={() => setStep(s => s + 1)}
-                disabled={!canNext()}
+                onClick={handleNext}
+                disabled={!canNext() || saving}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-40 transition-colors"
               >
-                Siguiente <ArrowRight size={15} />
+                {saving
+                  ? <><Loader2 size={15} className="animate-spin" /> Guardando…</>
+                  : <>Siguiente <ArrowRight size={15} /></>
+                }
               </button>
             ) : (
               <button

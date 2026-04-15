@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Users, Home, Trees, ShieldCheck, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MetaTags, defaultSchema } from '../components/MetaTags';
 import { supabase } from '../../integrations/supabase/client';
+import { useTenant } from '../../shared/context/TenantContext';
 
 interface Unidad {
   id: string;
@@ -26,6 +27,9 @@ interface HeroUnit extends Unidad {
 const HERO_FALLBACK_IMAGE = '/images/casa2.jpg';
 
 export const HomePage: React.FC = () => {
+  const tenant = useTenant();
+  const location = tenant.contacto?.localidad || tenant.contacto?.provincia || 'España';
+
   const [units, setUnits] = useState<Unidad[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(true);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -107,8 +111,8 @@ export const HomePage: React.FC = () => {
   };
 
   const heroTitle = isSingleUnit
-    ? singleUnit?.nombre || 'Alojamiento rural en Cantabria'
-    : 'Alojamientos rurales con encanto en Cantabria';
+    ? singleUnit?.nombre || `Alojamiento rural en ${location}`
+    : `Alojamientos rurales con encanto en ${location}`;
 
   const heroSubtitle = isSingleUnit
     ? 'Tu refugio rural'
@@ -116,7 +120,7 @@ export const HomePage: React.FC = () => {
 
   const heroDescription = isSingleUnit
     ? singleUnit?.descripcion_corta ||
-      `Reserva ${singleUnit?.nombre || 'tu alojamiento'} con todas las comodidades para disfrutar de una escapada rural auténtica en Cantabria.`
+      `Reserva ${singleUnit?.nombre || 'tu alojamiento'} con todas las comodidades para disfrutar de una escapada rural auténtica en ${location}.`
     : currentHero?.descripcion_corta ||
       'Descubre nuestros alojamientos rurales para familias, grupos y escapadas en plena naturaleza, con reserva directa y mejor precio en nuestra web.';
 
@@ -135,13 +139,13 @@ export const HomePage: React.FC = () => {
   const roomCount = isSingleUnit ? singleUnit?.num_habitaciones : null;
 
   const metaTitle = isSingleUnit && singleUnit?.nombre
-    ? `${singleUnit.nombre} | Cantabria | Reserva directa`
-    : 'Alojamientos rurales en Cantabria | Reserva directa';
+    ? `${singleUnit.nombre} | ${location} | Reserva directa`
+    : `Alojamientos rurales en ${location} | Reserva directa`;
 
   const metaDescription = isSingleUnit
     ? singleUnit?.descripcion_corta ||
-      'Reserva tu alojamiento rural en Cantabria con mejor precio directo, entorno natural y experiencia premium.'
-    : 'Descubre nuestros alojamientos rurales en Cantabria. Reserva directa, mejor precio y escapadas para familias y grupos.';
+      `Reserva tu alojamiento rural en ${location} con mejor precio directo, entorno natural y experiencia premium.`
+    : `Descubre nuestros alojamientos rurales en ${location}. Reserva directa, mejor precio y escapadas para familias y grupos.`;
 
   return (
     <div className="relative">
@@ -158,7 +162,7 @@ export const HomePage: React.FC = () => {
           <div className="absolute inset-0">
             <img
               src={HERO_FALLBACK_IMAGE}
-              alt="Alojamiento rural en Cantabria"
+              alt={`Alojamiento rural en ${location}`}
               className="h-full w-full object-cover"
             />
             <div className="absolute inset-0 bg-black/45" />
@@ -169,7 +173,7 @@ export const HomePage: React.FC = () => {
               <div className="absolute inset-0">
                 <img
                   src={singleUnit?.heroImage || HERO_FALLBACK_IMAGE}
-                  alt={singleUnit?.nombre || 'Alojamiento rural en Cantabria'}
+                  alt={singleUnit?.nombre || `Alojamiento rural en ${location}`}
                   className="h-full w-full object-cover"
                 />
                 <div className="absolute inset-0 bg-black/45" />
@@ -238,7 +242,7 @@ export const HomePage: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               className="mb-4 text-sm font-bold uppercase tracking-[0.28em] text-emerald-300"
             >
-              {isSingleUnit ? 'Alojamiento rural · Cantabria' : 'Alojamientos rurales · Cantabria'}
+              {isSingleUnit ? `Alojamiento rural · ${location}` : `Alojamientos rurales · ${location}`}
             </motion.p>
 
             <motion.h1
@@ -332,8 +336,8 @@ export const HomePage: React.FC = () => {
           <div className="space-y-8">
             <h2 className="text-4xl font-serif font-bold leading-tight text-stone-800">
               {isSingleUnit
-                ? 'Una experiencia rural premium en Cantabria'
-                : 'Alojamientos rurales pensados para disfrutar Cantabria'}
+                ? `Una experiencia rural premium en ${location}`
+                : `Alojamientos rurales pensados para disfrutar ${location}`}
             </h2>
 
             <p className="text-lg leading-relaxed text-stone-600">
@@ -388,7 +392,7 @@ export const HomePage: React.FC = () => {
                 <div>
                   <h3 className="font-bold text-stone-800">Entorno Natural</h3>
                   <p className="text-sm text-stone-500">
-                    Naturaleza, tranquilidad y el encanto de Cantabria a tu alcance.
+                    Naturaleza, tranquilidad y el encanto de {location} a tu alcance.
                   </p>
                 </div>
               </div>
@@ -470,13 +474,13 @@ export const HomePage: React.FC = () => {
         <div className="mx-auto max-w-4xl px-6 text-center">
           <h2 className="mb-8 text-3xl font-serif font-bold text-stone-800">
             {isSingleUnit
-              ? 'Descubre el turismo rural en Cantabria'
-              : 'Descubre nuestros alojamientos rurales en Cantabria'}
+              ? `Descubre el turismo rural en ${location}`
+              : `Descubre nuestros alojamientos rurales en ${location}`}
           </h2>
 
           <div className="prose prose-stone mx-auto space-y-6 text-lg leading-relaxed text-stone-600">
             <p>
-              Cantabria destaca por su combinación de naturaleza, tranquilidad y pueblos con encanto.
+              {location} destaca por su combinación de naturaleza, tranquilidad y pueblos con encanto.
               {isSingleUnit ? (
                 <>
                   {' '}Si buscas una estancia auténtica, {singleUnit?.nombre || 'nuestro alojamiento'} te ofrece un
@@ -531,7 +535,7 @@ export const HomePage: React.FC = () => {
 
             <div>
               <p className="text-4xl font-serif font-bold text-emerald-700">
-                {isSingleUnit ? '100%' : 'Cantabria'}
+                {isSingleUnit ? '100%' : location}
               </p>
               <p className="mt-2 text-sm uppercase tracking-widest text-stone-500">
                 {isSingleUnit ? 'Alojamiento Completo' : 'Entorno Natural'}

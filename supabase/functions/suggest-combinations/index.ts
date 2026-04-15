@@ -127,41 +127,55 @@ serve(async (req) => {
     console.log("[7] Temporadas especiales:", temporadas?.length ?? 0);
 
     // Generar combinaciones y calcular
+    // Se ejecuta en dos pasadas:
+    //   1ª pasada (estricta): aplica filtro MAX_EXCESO para preferir combos ajustadas
+    //   2ª pasada (fallback): sin filtro de exceso, para casos donde la única unidad
+    //      disponible tiene más capacidad de la buscada (p.ej. casa de 11 plazas para 7)
     const n = disponibles.length;
     const resultados = [];
     const debugRechazadas = [];
 
-    for (let mask = 1; mask < (1 << n); mask++) {
-      const subset = [];
-      for (let i = 0; i < n; i++) if (mask & (1 << i)) subset.push(disponibles[i]);
+    function evaluarCombinaciones(aplicarFiltroExceso: boolean) {
+      for (let mask = 1; mask < (1 << n); mask++) {
+        const subset = [];
+        for (let i = 0; i < n; i++) if (mask & (1 << i)) subset.push(disponibles[i]);
 
-      const nombres = subset.map(u => u.nombre).join("+");
-      const sumaBase = subset.reduce((s, u) => s + u.capacidad_base, 0);
-      const sumaMax  = subset.reduce((s, u) => s + u.capacidad_maxima, 0);
-      const exceso   = sumaBase - num_huespedes;
-      const extrasTotal = Math.max(0, num_huespedes - sumaBase);
+        const nombres = subset.map(u => u.nombre).join("+");
+        const sumaBase = subset.reduce((s, u) => s + u.capacidad_base, 0);
+        const sumaMax  = subset.reduce((s, u) => s + u.capacidad_maxima, 0);
+        const exceso   = sumaBase - num_huespedes;
+        const extrasTotal = Math.max(0, num_huespedes - sumaBase);
 
-      // Log de cada combinación evaluada
-      console.log(`[combo] ${nombres} | sumaBase:${sumaBase} sumaMax:${sumaMax} exceso:${exceso} extras:${extrasTotal}`);
+        // Log de cada combinación evaluada
+        console.log(`[combo${aplicarFiltroExceso ? "" : "-fallback"}] ${nombres} | sumaBase:${sumaBase} sumaMax:${sumaMax} exceso:${exceso} extras:${extrasTotal}`);
 
-      // Verificar que no supera el máximo
-      if (num_huespedes > sumaMax) {
-        debugRechazadas.push({ combo: nombres, razon: `num_huespedes(${num_huespedes}) > sumaMax(${sumaMax})` });
-        continue;
-      }
+        // Verificar que no supera el máximo
+        if (num_huespedes > sumaMax) {
+          if (aplicarFiltroExceso) debugRechazadas.push({ combo: nombres, razon: `num_huespedes(${num_huespedes}) > sumaMax(${sumaMax})` });
+          continue;
+        }
 
-      // Filtro de exceso
-      if (exceso > MAX_EXCESO && num_huespedes <= sumaBase) {
-        debugRechazadas.push({ combo: nombres, razon: `exceso(${exceso}) > MAX_EXCESO(${MAX_EXCESO})` });
-        continue;
-      }
+        // Filtro de exceso (solo en pasada estricta)
+        if (aplicarFiltroExceso && exceso > MAX_EXCESO && num_huespedes <= sumaBase) {
+          debugRechazadas.push({ combo: nombres, razon: `exceso(${exceso}) > MAX_EXCESO(${MAX_EXCESO})` });
+          continue;
+        }
 
-      // Verificar que los extras caben
-      const maxExtrasPos = subset.reduce((s, u) => s + (u.capacidad_maxima - u.capacidad_base), 0);
-      if (extrasTotal > maxExtrasPos) {
-        debugRechazadas.push({ combo: nombres, razon: `extrasTotal(${extrasTotal}) > maxExtrasPos(${maxExtrasPos})` });
-        continue;
-      }
+        // En pasada fallback, evitar duplicar combos ya incluidas
+        if (!aplicarFiltroExceso) {
+          const yaIncluida = resultados.some(r =>
+            r.unidades.map((u: any) => u.unidad_id).sort().join(",") ===
+            subset.map(u => u.id).sort().join(",")
+          );
+          if (yaIncluida) continue;
+        }
+
+        // Verificar que los extras caben
+        const maxExtrasPos = subset.reduce((s, u) => s + (u.capacidad_maxima - u.capacidad_base), 0);
+        if (extrasTotal > maxExtrasPos) {
+          if (aplicarFiltroExceso) debugRechazadas.push({ combo: nombres, razon: `extrasTotal(${extrasTotal}) > maxExtrasPos(${maxExtrasPos})` });
+          continue;
+        }
 
       // Calcular precios
       let aloj = 0, extras = 0, limp = 0;
@@ -230,7 +244,7 @@ serve(async (req) => {
       const total = neto + totalLimp;
       const senal = tarifa === "NO_REEMBOLSABLE" ? total : Math.round(total * (porcSenal / 100) * 100) / 100;
 
-      console.log(`  [OK] ${nombres} total=${total}`);
+      console.log(`  [OK${aplicarFiltroExceso ? "" : "-fallback"}] ${nombres} total=${total}`);
 
       resultados.push({
         unidades: subset.map(u => ({
@@ -261,8 +275,20 @@ serve(async (req) => {
         es_sin_extras:            extrasTotal === 0,
         es_capacidad_exacta:      num_huespedes === sumaBase,
         noches,
-        warnings: [],
+        warnings: !aplicarFiltroExceso && exceso > MAX_EXCESO
+          ? [`La capacidad del alojamiento (${sumaBase}) es mayor que tu grupo (${num_huespedes})`]
+          : [],
       });
+      } // fin del bucle for (mask)
+    } // fin de evaluarCombinaciones
+
+    // Pasada estricta (con filtro de exceso)
+    evaluarCombinaciones(true);
+    // Si no hay resultados, pasada fallback (sin filtro de exceso)
+    // Esto cubre casas únicas de gran capacidad (ej: casa de 11 plazas con 7 huéspedes)
+    if (resultados.length === 0) {
+      console.log("[7b] Sin resultados en pasada estricta — ejecutando fallback sin filtro de exceso");
+      evaluarCombinaciones(false);
     }
 
     // ── Ordenar ─────────────────────────────────────────────────────────────

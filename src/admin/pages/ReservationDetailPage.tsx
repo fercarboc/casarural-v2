@@ -399,16 +399,6 @@ export const ReservationDetailPage: React.FC = () => {
             <RefreshCw size={14} />
           </button>
 
-          {r.estado === 'CONFIRMED' && r.estado_pago !== 'PAID' && (
-            <button
-              onClick={() => setShowSolicitudPago(true)}
-              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50"
-            >
-              <CreditCard size={14} />
-              Solicitud de pago
-            </button>
-          )}
-
           {r.estado === 'CONFIRMED' && (
             <button
               onClick={sendConfirmacionEmail}
@@ -429,17 +419,7 @@ export const ReservationDetailPage: React.FC = () => {
             </button>
           )}
 
-          {r.estado === 'CONFIRMED' && r.estado_pago !== 'PAID' && (
-            <button
-              onClick={() => setShowConfirmacion(true)}
-              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50"
-            >
-              <CreditCard size={14} />
-              Enviar solicitud de pago
-            </button>
-          )}
-
-          {r.token_cliente && r.estado === 'CONFIRMED' && (
+          {r.estado === 'CONFIRMED' && (
             <button
               onClick={sendCheckinEmail}
               disabled={sendingCheckin || checkinSent}
@@ -456,6 +436,17 @@ export const ReservationDetailPage: React.FC = () => {
               ) : (
                 <><Send size={14} /> Enviar check-in</>
               )}
+            </button>
+          )}
+
+          {r.estado === 'CONFIRMED' && (
+            <button
+              onClick={() => setShowConfirmacion(true)}
+              disabled={r.estado_pago === 'PAID'}
+              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <CreditCard size={14} />
+              {r.estado_pago === 'PAID' ? 'Reserva pagada' : 'Enviar solicitud de pago'}
             </button>
           )}
 

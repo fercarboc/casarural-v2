@@ -429,7 +429,7 @@ export const ReservationDetailPage: React.FC = () => {
             </button>
           )}
 
-          {r.estado === 'CONFIRMED' && (
+          {r.estado === 'CONFIRMED' && r.estado_pago !== 'PAID' && (
             <button
               onClick={() => setShowConfirmacion(true)}
               className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition-all hover:bg-slate-50"

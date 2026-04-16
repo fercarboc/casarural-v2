@@ -103,13 +103,15 @@ serve(async (req) => {
       return jsonResponse({ error: 'Importe de pago inválido' }, 400);
     }
 
-    // Obtener nombre de la propiedad para las líneas de Stripe
+    // Obtener datos de la propiedad (nombre + cuenta Stripe Connect)
     const { data: property } = await supabase
       .from('properties')
-      .select('nombre')
+      .select('nombre, stripe_account_id, stripe_charges_enabled')
       .eq('id', reserva.property_id)
       .single();
-    const propNombre = property?.nombre ?? 'Casa Rural';
+    const propNombre         = property?.nombre ?? 'Casa Rural';
+    // Usar cuenta Connect solo si ya tiene cobros habilitados
+    const connectedAccountId = property?.stripe_charges_enabled ? (property?.stripe_account_id ?? null) : null;
 
     let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
 
@@ -176,6 +178,12 @@ serve(async (req) => {
       ];
     }
 
+    // Si la property tiene Stripe Connect activo, los pagos van directamente
+    // a su cuenta (cargo directo). En caso contrario se usa la cuenta de plataforma.
+    const sessionOptions = connectedAccountId
+      ? { stripeAccount: connectedAccountId }
+      : undefined;
+
     const session = await stripe.checkout.sessions.create({
       mode:           'payment',
       customer_email: reserva.email_cliente,
@@ -191,7 +199,7 @@ serve(async (req) => {
       payment_intent_data: {
         metadata: { reserva_id: String(reserva.id) },
       },
-    });
+    }, sessionOptions);
 
     await supabase
       .from('reservas')

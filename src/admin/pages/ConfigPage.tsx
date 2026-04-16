@@ -20,6 +20,10 @@ import {
   Plus,
   Trash2,
   Clock3,
+  CreditCard,
+  RefreshCw,
+  BadgeCheck,
+  BadgeAlert,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
@@ -58,6 +62,10 @@ interface Property {
   activa: boolean | null
   stripe_account_id: string | null
   stripe_webhook_secret: string | null
+  stripe_onboarding_complete: boolean | null
+  stripe_charges_enabled: boolean | null
+  stripe_payouts_enabled: boolean | null
+  stripe_account_email: string | null
   resend_from_email: string | null
   resend_from_name: string | null
   site_title: string | null
@@ -107,7 +115,74 @@ export function ConfigPage() {
   const [propertyUsers, setPropertyUsers]           = useState<PropertyUser[]>([])
   const [loadingUsers, setLoadingUsers]             = useState(false)
 
-const [showChangePassword, setShowChangePassword] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
+
+  // ── Stripe Connect ─────────────────────────────────────────────────────────
+  const [connectLoading,     setConnectLoading]     = useState(false)
+  const [connectError,       setConnectError]       = useState('')
+  const [connectRefreshing,  setConnectRefreshing]  = useState(false)
+
+  const handleStripeConnect = async () => {
+    if (!property) return
+    setConnectLoading(true)
+    setConnectError('')
+    try {
+      const origin = window.location.origin
+      const returnUrl  = `${origin}/admin/configuracion?stripe_return=1`
+      const refreshUrl = `${origin}/admin/configuracion?stripe_refresh=1`
+
+      const res = await supabase.functions.invoke('stripe-connect-onboarding', {
+        body: { property_id: property.id, return_url: returnUrl, refresh_url: refreshUrl },
+      })
+      if (res.error) throw new Error(res.error.message)
+      if (!res.data?.ok) throw new Error(res.data?.error ?? 'Error desconocido')
+
+      // Guardar account_id localmente si se acaba de crear
+      if (res.data.account_id && !property.stripe_account_id) {
+        setProperty(p => p ? { ...p, stripe_account_id: res.data.account_id } : p)
+      }
+      window.location.href = res.data.url
+    } catch (err: any) {
+      setConnectError(err.message ?? 'Error iniciando onboarding')
+      setConnectLoading(false)
+    }
+  }
+
+  const handleStripeRefresh = async () => {
+    if (!property?.id) return
+    setConnectRefreshing(true)
+    setConnectError('')
+    try {
+      const res = await supabase.functions.invoke('stripe-connect-refresh', {
+        body: { property_id: property.id },
+      })
+      if (res.error) throw new Error(res.error.message)
+      if (!res.data?.ok) throw new Error(res.data?.error ?? 'Error desconocido')
+
+      setProperty(p => p ? {
+        ...p,
+        stripe_charges_enabled:     res.data.charges_enabled,
+        stripe_payouts_enabled:     res.data.payouts_enabled,
+        stripe_onboarding_complete: res.data.onboarding_complete,
+        stripe_account_email:       res.data.email ?? p.stripe_account_email,
+      } : p)
+    } catch (err: any) {
+      setConnectError(err.message ?? 'Error actualizando estado')
+    } finally {
+      setConnectRefreshing(false)
+    }
+  }
+
+  // Al volver del onboarding de Stripe, refrescamos el estado automáticamente
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('stripe_return') === '1' || params.get('stripe_refresh') === '1') {
+      window.history.replaceState({}, '', window.location.pathname)
+      // Esperar a que loadData haya cargado la property
+      const timer = setTimeout(() => handleStripeRefresh(), 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -133,6 +208,10 @@ const [showChangePassword, setShowChangePassword] = useState(false)
         activa,
         stripe_account_id,
         stripe_webhook_secret,
+        stripe_onboarding_complete,
+        stripe_charges_enabled,
+        stripe_payouts_enabled,
+        stripe_account_email,
         resend_from_email,
         resend_from_name,
         site_title,
@@ -945,6 +1024,119 @@ const [showChangePassword, setShowChangePassword] = useState(false)
           </Link>
         </div>
       </div>
+
+      {/* ── Cobros y pagos (Stripe Connect) ── */}
+      <DarkCard title="Cobros y pagos" icon={<CreditCard size={16} />}>
+        <p className="text-sm text-slate-400">
+          Conecta tu cuenta de Stripe para cobrar las reservas directamente en tu banco.
+          Cada propiedad tiene su propia cuenta; los pagos llegan sin pasar por NexCore.
+        </p>
+
+        {/* Estado actual */}
+        <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
+          {!property?.stripe_account_id ? (
+            /* ── Sin cuenta ── */
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-800">
+                <BadgeAlert size={18} className="text-slate-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">Sin cuenta de cobros</p>
+                <p className="text-xs text-slate-500">Conecta Stripe para activar los pagos online.</p>
+              </div>
+            </div>
+          ) : property.stripe_onboarding_complete && property.stripe_charges_enabled ? (
+            /* ── Activa ── */
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10">
+                  <BadgeCheck size={18} className="text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white">Cuenta conectada y activa</p>
+                  {property.stripe_account_email && (
+                    <p className="text-xs text-slate-500 truncate">{property.stripe_account_email}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                  property.stripe_charges_enabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                }`}>
+                  <BadgeCheck size={11} />
+                  {property.stripe_charges_enabled ? 'Cobros activos' : 'Cobros pendientes'}
+                </span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                  property.stripe_payouts_enabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                }`}>
+                  <BadgeCheck size={11} />
+                  {property.stripe_payouts_enabled ? 'Pagos a banco activos' : 'Pagos a banco pendientes'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 font-mono">ID: {property.stripe_account_id}</p>
+            </div>
+          ) : (
+            /* ── Pendiente de completar onboarding ── */
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/10">
+                <BadgeAlert size={18} className="text-amber-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">Configuración pendiente</p>
+                <p className="text-xs text-slate-500">
+                  La cuenta Stripe está creada pero el proceso de verificación no está completo.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Error */}
+        {connectError && (
+          <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            <AlertCircle size={15} className="mt-0.5 shrink-0" />
+            {connectError}
+          </div>
+        )}
+
+        {/* Botones */}
+        <div className="flex flex-wrap gap-3">
+          {/* Botón principal: conectar o continuar configuración */}
+          {(!property?.stripe_onboarding_complete || !property?.stripe_charges_enabled) && (
+            <button
+              onClick={handleStripeConnect}
+              disabled={connectLoading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#635BFF] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#5851e0] disabled:opacity-50"
+            >
+              {connectLoading ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <CreditCard size={15} />
+              )}
+              {!property?.stripe_account_id
+                ? 'Conectar cuenta Stripe'
+                : 'Continuar configuración en Stripe'}
+            </button>
+          )}
+
+          {/* Verificar estado (siempre visible si hay cuenta) */}
+          {property?.stripe_account_id && (
+            <button
+              onClick={handleStripeRefresh}
+              disabled={connectRefreshing}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={connectRefreshing ? 'animate-spin' : ''} />
+              Verificar estado
+            </button>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-600">
+          Al conectar, serás redirigido a Stripe para crear o vincular tu cuenta.
+          El proceso tarda unos minutos y puede requerir documentación bancaria.
+        </p>
+      </DarkCard>
 
       {/* ── Seguridad ── */}
       <DarkCard title="Seguridad" icon={<Shield size={16} />}>

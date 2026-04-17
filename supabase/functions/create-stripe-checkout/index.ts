@@ -178,12 +178,9 @@ serve(async (req) => {
       ];
     }
 
-    // Si la property tiene Stripe Connect activo, los pagos van directamente
-    // a su cuenta (cargo directo). En caso contrario se usa la cuenta de plataforma.
-    const sessionOptions = connectedAccountId
-      ? { stripeAccount: connectedAccountId }
-      : undefined;
-
+    // Destination Charge: la sesión se crea en la cuenta plataforma y los fondos
+    // se transfieren a la cuenta conectada. Así el webhook de plataforma recibe
+    // checkout.session.completed y puede confirmar la reserva correctamente.
     const session = await stripe.checkout.sessions.create({
       mode:           'payment',
       customer_email: reserva.email_cliente,
@@ -198,8 +195,9 @@ serve(async (req) => {
       expires_at: Math.floor(Date.now() / 1000) + 60 * 30,
       payment_intent_data: {
         metadata: { reserva_id: String(reserva.id) },
+        ...(connectedAccountId ? { transfer_data: { destination: connectedAccountId } } : {}),
       },
-    }, sessionOptions);
+    });
 
     await supabase
       .from('reservas')

@@ -638,6 +638,7 @@ function EditReservaModal({
     total: reserva.importe_total,
     importe_senal: reserva.importe_senal ?? 0,
     notas_admin: reserva.notas_admin ?? '',
+    confirmar_pago: false,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -661,6 +662,11 @@ function EditReservaModal({
     setSaving(true)
     setError(null)
 
+    const extraPago =
+      form.confirmar_pago && reserva.estado === 'PENDING_PAYMENT'
+        ? { estado: 'CONFIRMED', estado_pago: 'PAID', confirmed_at: new Date().toISOString() }
+        : {}
+
     const { data, error: err } = await supabase
       .from('reservas')
       .update({
@@ -673,6 +679,7 @@ function EditReservaModal({
         importe_senal: form.importe_senal > 0 ? form.importe_senal : null,
         notas_admin: form.notas_admin.trim() || null,
         updated_at: new Date().toISOString(),
+        ...extraPago,
       })
       .eq('id', reserva.id)
       .select(
@@ -790,6 +797,20 @@ function EditReservaModal({
             className={inputCls}
           />
         </Field>
+
+        {reserva.estado === 'PENDING_PAYMENT' && (
+          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={form.confirmar_pago}
+              onChange={(e) => set('confirmar_pago', e.target.checked)}
+              className="h-4 w-4 rounded accent-amber-400"
+            />
+            <span className="text-sm font-medium text-amber-300">
+              Marcar como pagada y confirmar reserva
+            </span>
+          </label>
+        )}
 
         <Field label="Notas internas (opcionales)">
           <textarea

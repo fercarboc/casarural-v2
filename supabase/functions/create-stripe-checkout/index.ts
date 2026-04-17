@@ -268,17 +268,25 @@ serve(async (req) => {
       return jsonResponse({ error: 'No se pudieron generar líneas de pago válidas' }, 400);
     }
 
-    // IMPORTANTE:
-    // La sesión se crea EN LA CUENTA CONECTADA del cliente.
-    // No usamos transfer_data.destination.
-    // Así el cobro pertenece al cliente y la plataforma no toca ese dinero.
-    const session = await stripe.checkout.sessions.create(
-      {
-        mode: 'payment',
-        customer_email: reserva.email_cliente,
-        line_items: lineItems,
-        success_url: `${appUrl}/reserva/confirmada?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appUrl}/reserva/cancelada`,
+    // Destination Charge: la sesión se crea en la plataforma con on_behalf_of
+    // y transfer_data para que los fondos vayan a la cuenta conectada.
+    // El webhook de plataforma recibe checkout.session.completed correctamente.
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: reserva.email_cliente,
+      line_items: lineItems,
+      success_url: `${appUrl}/reserva/confirmada?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/reserva/cancelada`,
+      metadata: {
+        reserva_id: String(reserva.id),
+        property_id: String(reserva.property_id),
+        tarifa: String(reserva.tarifa ?? ''),
+        es_senal: esSenal ? 'true' : 'false',
+        es_resto: esResto ? 'true' : 'false',
+      },
+      payment_intent_data: {
+        on_behalf_of: connectedAccountId,
+        transfer_data: { destination: connectedAccountId },
         metadata: {
           reserva_id: String(reserva.id),
           property_id: String(reserva.property_id),
@@ -286,21 +294,9 @@ serve(async (req) => {
           es_senal: esSenal ? 'true' : 'false',
           es_resto: esResto ? 'true' : 'false',
         },
-        payment_intent_data: {
-          metadata: {
-            reserva_id: String(reserva.id),
-            property_id: String(reserva.property_id),
-            tarifa: String(reserva.tarifa ?? ''),
-            es_senal: esSenal ? 'true' : 'false',
-            es_resto: esResto ? 'true' : 'false',
-          },
-        },
-        expires_at: Math.floor(Date.now() / 1000) + 60 * 30,
       },
-      {
-        stripeAccount: connectedAccountId,
-      },
-    );
+      expires_at: Math.floor(Date.now() / 1000) + 60 * 30,
+    });
 
     const { error: updateError } = await supabase
       .from('reservas')

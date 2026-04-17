@@ -33,3 +33,11 @@ export async function removeDomain(property_id: string, domain_id: string): Prom
   if (error) throw new Error(error.message)
   if (!data?.ok) throw new Error(data?.error ?? 'Error al eliminar dominio')
 }
+
+export async function setDomainActive(property_id: string, domain_id: string, active: boolean): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('admin-manage-domains', {
+    body: { action: 'set_active', property_id, domain_id, active },
+  })
+  if (error) throw new Error(error.message)
+  if (!data?.ok) throw new Error(data?.error ?? 'Error al actualizar dominio')
+}

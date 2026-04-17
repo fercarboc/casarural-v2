@@ -215,15 +215,26 @@ export const ReservationDetailPage: React.FC = () => {
     if (!r || !window.confirm('¿Confirmas la cancelación de esta reserva?')) return
     setCancelling(true)
 
-    await supabase
-      .from('reservas')
-      .update({
-        estado: 'CANCELLED',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', r.id)
+    const { data, error: err } = await supabase.functions.invoke('cancel-reservation', {
+      body: {
+        reservaId:   r.id,
+        cancelledBy: 'admin',
+        reason:      'Cancelado desde el panel de administración',
+        importeReembolsoOverride: 0,
+      },
+    })
 
     setCancelling(false)
+
+    if (err) {
+      alert(`Error al cancelar: ${err.message}`)
+      return
+    }
+
+    if (data?.stripe_refund_error) {
+      alert(data.message ?? 'Reserva cancelada. El reembolso en Stripe debe gestionarse manualmente.')
+    }
+
     setR((prev) => (prev ? { ...prev, estado: 'CANCELLED' } : prev))
   }
 
@@ -303,6 +314,7 @@ export const ReservationDetailPage: React.FC = () => {
   }
 
   const isFlexible = r.tarifa === 'FLEXIBLE'
+  const isActive = r.estado === 'CONFIRMED' || (r.estado === 'PENDING_PAYMENT' && r.estado_pago !== 'UNPAID')
 
   const nombre = s(r.nombre_cliente ?? r.nombre, '')
   const apellidos = s(r.apellidos_cliente ?? r.apellidos, '')
@@ -399,7 +411,7 @@ export const ReservationDetailPage: React.FC = () => {
             <RefreshCw size={14} />
           </button>
 
-          {r.estado === 'CONFIRMED' && (
+          {isActive && (
             <button
               onClick={sendConfirmacionEmail}
               disabled={sendingConfirmacion || confirmacionSent}
@@ -419,7 +431,7 @@ export const ReservationDetailPage: React.FC = () => {
             </button>
           )}
 
-          {r.estado === 'CONFIRMED' && (
+          {isActive && (
             <button
               onClick={sendCheckinEmail}
               disabled={sendingCheckin || checkinSent}
@@ -439,7 +451,7 @@ export const ReservationDetailPage: React.FC = () => {
             </button>
           )}
 
-          {r.estado === 'CONFIRMED' && (
+          {isActive && (
             <button
               onClick={() => setShowConfirmacion(true)}
               disabled={r.estado_pago === 'PAID'}

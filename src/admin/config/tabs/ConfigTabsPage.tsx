@@ -8,6 +8,7 @@ import { LegalTab } from './LegalTab'
 import { DomainEmailTab } from './DomainEmailTab'
 import { PaymentsTab } from './PaymentsTab'
 import { SecurityTab } from './SecurityTab'
+import { EmailTab } from './EmailTab'
 
 const TABS = [
   { id: 'general',  label: 'General' },
@@ -15,6 +16,7 @@ const TABS = [
   { id: 'rules',    label: 'Normas' },
   { id: 'legal',    label: 'Legal' },
   { id: 'domain',   label: 'Dominio y Email' },
+  { id: 'email',    label: 'Plantillas Email' },
   { id: 'payments', label: 'Pagos' },
   { id: 'security', label: 'Seguridad' },
 ] as const
@@ -50,7 +52,7 @@ export function ConfigTabsPage({ property, upd, handleSave, status, errorMsg, st
             </div>
           </div>
 
-          {activeTab !== 'security' && activeTab !== 'payments' && (
+          {activeTab !== 'security' && activeTab !== 'payments' && activeTab !== 'email' && (
             <button
               onClick={handleSave}
               disabled={status === 'saving'}
@@ -113,6 +115,7 @@ export function ConfigTabsPage({ property, upd, handleSave, status, errorMsg, st
       {activeTab === 'rules'    && <RulesTab {...tabProps} />}
       {activeTab === 'legal'    && <LegalTab {...tabProps} />}
       {activeTab === 'domain'   && <DomainEmailTab {...tabProps} />}
+      {activeTab === 'email'    && <EmailTab />}
       {activeTab === 'payments' && <PaymentsTab property={property} stripeProps={stripeProps} />}
       {activeTab === 'security' && <SecurityTab />}
     </div>

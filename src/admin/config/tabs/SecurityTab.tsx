@@ -1,11 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react'
-import { Shield, UserPlus, Users, Loader2, KeyRound, Mail } from 'lucide-react'
+import { Shield, UserPlus, Users, Loader2, KeyRound } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { DarkCard } from '../shared'
 import { useAdminTenant } from '../../context/AdminTenantContext'
 import { listPropertyUsers, type PropertyUser } from '../../../services/users.service'
-import { EmailTemplatesModal } from '../../components/EmailTemplatesModal'
 import { CreateUserModal } from '../../components/CreateUserModal'
 import { ChangePasswordModal } from '../../components/ChangePasswordModal'
 
@@ -16,7 +15,6 @@ export function SecurityTab() {
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
-  const [showEmailTemplates, setShowEmailTemplates] = useState(false)
 
   const loadUsers = useCallback(async () => {
     setLoadingUsers(true)
@@ -41,13 +39,6 @@ export function SecurityTab() {
               Usuarios con acceso al panel de administración de esta propiedad.
             </p>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowEmailTemplates(true)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-slate-700"
-              >
-                <Mail size={13} />
-                Plantillas email
-              </button>
               <button
                 onClick={() => setShowChangePassword(true)}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-slate-700"
@@ -111,12 +102,6 @@ export function SecurityTab() {
         </DarkCard>
       </div>
 
-      {showEmailTemplates && (
-        <EmailTemplatesModal
-          propertyId={property_id}
-          onClose={() => setShowEmailTemplates(false)}
-        />
-      )}
       {showCreateUser && (
         <CreateUserModal
           onClose={() => setShowCreateUser(false)}

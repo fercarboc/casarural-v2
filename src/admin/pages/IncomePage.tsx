@@ -60,6 +60,14 @@ const PAGO_STYLE: Record<string, string> = {
 
 const today = new Date()
 
+// Comisión Stripe: 1.5% + 0.25€ por transacción (reservas DIRECT_WEB pagadas)
+const STRIPE_PCT = 0.015
+const STRIPE_FIXED = 0.25
+
+function stripeComision(importe: number): number {
+  return Math.round((importe * STRIPE_PCT + STRIPE_FIXED) * 100) / 100
+}
+
 function fmt(n: number) {
   return (
     n.toLocaleString('es-ES', {
@@ -145,6 +153,13 @@ export const IncomePage: React.FC = () => {
 
   const totalNoches = reservas.reduce((s, r) => s + r.noches, 0)
   const precioMedioNoche = totalNoches > 0 ? totalFacturado / totalNoches : 0
+
+  // Comisiones Stripe solo sobre reservas web directas pagadas
+  const totalComisionStripe = reservas
+    .filter((r) => r.estado_pago === 'PAID' && r.origen === 'DIRECT_WEB')
+    .reduce((s, r) => s + stripeComision(r.importe_total), 0)
+
+  const totalLiquidoNeto = Math.round((totalCobrado - totalComisionStripe) * 100) / 100
 
   const monthlyGroups = useMemo(() => {
     if (applied.periodo !== 'anio') return null
@@ -403,7 +418,7 @@ export const IncomePage: React.FC = () => {
           </div>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               <StatCard
                 label="BRUTO FACTURADO"
                 value={fmt(totalFacturado)}
@@ -434,11 +449,18 @@ export const IncomePage: React.FC = () => {
                 }
               />
               <StatCard
-                label="PRECIO MEDIO / NOCHE"
-                value={fmt(precioMedioNoche)}
+                label="CARGOS STRIPE"
+                value={fmt(totalComisionStripe)}
+                icon={<CreditCard size={16} />}
+                color="rose"
+                sub="1,5% + 0,25 € / transacción"
+              />
+              <StatCard
+                label="LÍQUIDO NETO"
+                value={fmt(totalLiquidoNeto)}
                 icon={<Users size={16} />}
                 color="blue"
-                sub={`${totalNoches} noches en total`}
+                sub={`Precio medio ${fmt(precioMedioNoche)}/noche`}
               />
             </div>
 
@@ -558,6 +580,12 @@ export const IncomePage: React.FC = () => {
                         <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Total
                         </th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Com. Stripe
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Líquido
+                        </th>
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Estado pago
                         </th>
@@ -565,7 +593,14 @@ export const IncomePage: React.FC = () => {
                     </thead>
 
                     <tbody className="divide-y divide-sidebar-border">
-                      {reservas.map((r) => (
+                      {reservas.map((r) => {
+                        const comision = r.origen === 'DIRECT_WEB' && r.estado_pago === 'PAID'
+                          ? stripeComision(r.importe_total)
+                          : null
+                        const neto = comision !== null
+                          ? Math.round((r.importe_total - comision) * 100) / 100
+                          : null
+                        return (
                         <tr
                           key={r.id}
                           className="transition-colors hover:bg-sidebar-hover/60"
@@ -599,6 +634,12 @@ export const IncomePage: React.FC = () => {
                           <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-white">
                             {fmt(r.importe_total)}
                           </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-rose-300">
+                            {comision !== null ? `−${fmt(comision)}` : '—'}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-emerald-300">
+                            {neto !== null ? fmt(neto) : '—'}
+                          </td>
                           <td className="px-4 py-3">
                             <span
                               className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -610,7 +651,8 @@ export const IncomePage: React.FC = () => {
                             </span>
                           </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
 
                     <tfoot>
@@ -623,6 +665,12 @@ export const IncomePage: React.FC = () => {
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-white">
                           {fmt(totalFacturado)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-rose-300">
+                          {totalComisionStripe > 0 ? `−${fmt(totalComisionStripe)}` : '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-emerald-300">
+                          {fmt(totalLiquidoNeto)}
                         </td>
                         <td></td>
                       </tr>
@@ -644,6 +692,7 @@ const COLOR_MAP: Record<string, string> = {
   amber: 'bg-amber-500/10 text-amber-300',
   blue: 'bg-blue-500/10 text-blue-300',
   violet: 'bg-violet-500/10 text-violet-300',
+  rose: 'bg-rose-500/10 text-rose-300',
 }
 
 function StatCard({

@@ -1,5 +1,6 @@
-// supabase/functions/create-stripe-checkout/index.ts  [v2]
-// POST { reservaId }
+// supabase/functions/create-stripe-checkout/index.ts
+// v3 — cobro directo en la cuenta conectada del cliente
+// POST { reservaId, appUrl? }
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -28,186 +29,307 @@ function getRequiredEnv(name: string): string {
  * Resuelve la URL base para success_url y cancel_url de Stripe.
  *
  * Orden de precedencia:
- *  1. appUrl enviado por el frontend en el body (permite que local devuelva a localhost)
- *  2. Variable de entorno APP_URL configurada en los Secrets de Supabase
- *
- * Env vars necesarias en Supabase → Project Settings → Secrets:
- *  APP_URL = https://casarural-v2.vercel.app   (URL pública de producción, sin barra final)
- *
- * Para desarrollo local, el frontend pasa window.location.origin automáticamente.
+ *  1. appUrl enviado por el frontend en el body
+ *  2. APP_URL en Secrets de Supabase
  */
 function resolveAppUrl(appUrlFromBody?: string): string {
   const raw = (appUrlFromBody || getRequiredEnv('APP_URL')).trim().replace(/\/$/, '');
   let parsed: URL;
-  try { parsed = new URL(raw); }
-  catch { throw new Error(`Invalid app URL: ${raw}`); }
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`Invalid app URL: ${raw}`);
+  }
 
   const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
   if (parsed.protocol !== 'https:' && !isLocalhost) {
     throw new Error(`APP_URL must use https in non-local environments: ${raw}`);
   }
+
   return parsed.origin;
 }
 
+function toAmount(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-  if (req.method !== 'POST')   return jsonResponse({ error: 'Method not allowed' }, 405);
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
 
   try {
-    const supabaseUrl        = getRequiredEnv('SUPABASE_URL');
+    const supabaseUrl = getRequiredEnv('SUPABASE_URL');
     const supabaseServiceKey = getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY');
-    const stripeSecretKey    = getRequiredEnv('STRIPE_SECRET_KEY');
+    const stripeSecretKey = getRequiredEnv('STRIPE_SECRET_KEY');
 
     let payload: { reservaId?: string; appUrl?: string };
-    try { payload = await req.json(); }
-    catch { return jsonResponse({ error: 'Invalid JSON body' }, 400); }
+    try {
+      payload = await req.json();
+    } catch {
+      return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
 
     const { reservaId, appUrl: appUrlFromBody } = payload;
-    if (!reservaId) return jsonResponse({ error: 'Missing reservaId' }, 400);
+
+    if (!reservaId) {
+      return jsonResponse({ error: 'Missing reservaId' }, 400);
+    }
 
     const appUrl = resolveAppUrl(appUrlFromBody);
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const stripe   = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2024-06-20',
+    });
 
-    // Usar columnas v2
-    const { data: reserva, error } = await supabase
+    const { data: reserva, error: reservaError } = await supabase
       .from('reservas')
-      .select('id, tarifa, estado, estado_pago, importe_total, importe_senal, importe_alojamiento, importe_extras, importe_limpieza, descuento_aplicado, noches, num_huespedes, fecha_entrada, fecha_salida, email_cliente, nombre_cliente, apellidos_cliente, token_cliente, property_id')
+      .select(`
+        id,
+        tarifa,
+        estado,
+        estado_pago,
+        importe_total,
+        importe_senal,
+        importe_alojamiento,
+        importe_extras,
+        importe_limpieza,
+        descuento_aplicado,
+        noches,
+        num_huespedes,
+        fecha_entrada,
+        fecha_salida,
+        email_cliente,
+        nombre_cliente,
+        apellidos_cliente,
+        token_cliente,
+        property_id
+      `)
       .eq('id', reservaId)
       .single();
 
-    if (error || !reserva) return jsonResponse({ error: 'Reserva no encontrada' }, 404);
-
-    if (!['PENDING_PAYMENT', 'CONFIRMED'].includes(reserva.estado)) {
-      return jsonResponse({ error: 'La reserva no acepta pagos en su estado actual' }, 400);
+    if (reservaError || !reserva) {
+      return jsonResponse({ error: 'Reserva no encontrada' }, 404);
     }
 
-    // CONFIRMED + UNPAID = resto pendiente (reserva creada por admin)
-    const isFlexibleResto = reserva.estado === 'CONFIRMED' && reserva.estado_pago === 'PARTIAL';
-    const isFlexibleSenal = reserva.tarifa === 'FLEXIBLE'  && reserva.estado === 'PENDING_PAYMENT';
+    if (!['PENDING_PAYMENT', 'CONFIRMED'].includes(reserva.estado)) {
+      return jsonResponse(
+        { error: 'La reserva no acepta pagos en su estado actual' },
+        400,
+      );
+    }
 
-    let importePago: number;
+    const { data: property, error: propertyError } = await supabase
+      .from('properties')
+      .select('id, nombre, stripe_account_id, stripe_charges_enabled')
+      .eq('id', reserva.property_id)
+      .single();
+
+    if (propertyError || !property) {
+      return jsonResponse({ error: 'Propiedad no encontrada' }, 404);
+    }
+
+    if (!property.stripe_account_id) {
+      return jsonResponse(
+        { error: 'La propiedad no tiene cuenta Stripe conectada' },
+        400,
+      );
+    }
+
+    if (!property.stripe_charges_enabled) {
+      return jsonResponse(
+        { error: 'La cuenta Stripe del cliente aún no tiene cobros habilitados' },
+        400,
+      );
+    }
+
+    const connectedAccountId = property.stripe_account_id;
+    const propNombre = property.nombre ?? 'Casa Rural';
+
+    const isFlexibleSenal =
+      reserva.tarifa === 'FLEXIBLE' && reserva.estado === 'PENDING_PAYMENT';
+
+    const isFlexibleResto =
+      reserva.estado === 'CONFIRMED' && reserva.estado_pago === 'PARTIAL';
+
+    let importePago = 0;
     let esSenal = false;
+    let esResto = false;
 
     if (isFlexibleSenal) {
-      importePago = Number(reserva.importe_senal);
-      esSenal     = true;
+      importePago = toAmount(reserva.importe_senal);
+      esSenal = true;
     } else if (isFlexibleResto) {
-      importePago = Number(reserva.importe_total) - Number(reserva.importe_senal ?? 0);
+      importePago = toAmount(reserva.importe_total) - toAmount(reserva.importe_senal);
+      esResto = true;
     } else {
-      importePago = Number(reserva.importe_total);
+      importePago = toAmount(reserva.importe_total);
     }
 
     if (!Number.isFinite(importePago) || importePago <= 0) {
       return jsonResponse({ error: 'Importe de pago inválido' }, 400);
     }
 
-    // Obtener datos de la propiedad (nombre + cuenta Stripe Connect)
-    const { data: property } = await supabase
-      .from('properties')
-      .select('nombre, stripe_account_id, stripe_charges_enabled')
-      .eq('id', reserva.property_id)
-      .single();
-    const propNombre         = property?.nombre ?? 'Casa Rural';
-    // Usar cuenta Connect solo si ya tiene cobros habilitados
-    const connectedAccountId = property?.stripe_charges_enabled ? (property?.stripe_account_id ?? null) : null;
+    const noches = Number(reserva.noches ?? 0);
+    const numHuespedes = Number(reserva.num_huespedes ?? 0);
 
-    let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
+    let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
     if (esSenal) {
-      lineItems = [{
-        price_data: {
-          currency: 'eur',
-          product_data: {
-            name: `Señal — ${propNombre} (${reserva.noches} noche${reserva.noches > 1 ? 's' : ''})`,
-            description: `Estancia ${reserva.fecha_entrada} → ${reserva.fecha_salida} · ${reserva.num_huespedes} huéspedes. Resto: ${(Number(reserva.importe_total) - importePago).toFixed(2)} € a abonar antes de la llegada.`,
-          },
-          unit_amount: Math.round(importePago * 100),
-        },
-        quantity: 1,
-      }];
-    } else if (isFlexibleResto) {
-      lineItems = [{
-        price_data: {
-          currency: 'eur',
-          product_data: {
-            name: `Resto — ${propNombre} (${reserva.noches} noche${reserva.noches > 1 ? 's' : ''})`,
-            description: `Pago final estancia ${reserva.fecha_entrada} → ${reserva.fecha_salida}`,
-          },
-          unit_amount: Math.round(importePago * 100),
-        },
-        quantity: 1,
-      }];
-    } else {
-      // Pago total NO_REEMBOLSABLE con desglose
-      const descuento      = Number(reserva.descuento_aplicado ?? 0);
-      const alojamiento    = Number(reserva.importe_alojamiento ?? 0);
-      const extras         = Number(reserva.importe_extras ?? 0);
-      const limpieza       = Number(reserva.importe_limpieza ?? 0);
-      const alojNetoDscto  = alojamiento - descuento;
-
       lineItems = [
         {
           price_data: {
             currency: 'eur',
             product_data: {
-              name: `${propNombre} — ${reserva.noches} noche${reserva.noches > 1 ? 's' : ''}`,
-              description: descuento > 0 ? `Alojamiento (−10% no reembolsable: −${descuento.toFixed(2)} €)` : 'Alojamiento',
+              name: `Señal — ${propNombre} (${noches} noche${noches > 1 ? 's' : ''})`,
+              description:
+                `Estancia ${reserva.fecha_entrada} → ${reserva.fecha_salida} · ` +
+                `${numHuespedes} huésped${numHuespedes !== 1 ? 'es' : ''}. ` +
+                `Resto: ${(toAmount(reserva.importe_total) - importePago).toFixed(2)} €`,
             },
-            unit_amount: Math.round(alojNetoDscto * 100),
-          },
-          quantity: 1,
-        },
-        ...(extras > 0 ? [{
-          price_data: {
-            currency: 'eur',
-            product_data: { name: `Suplemento huésped extra` },
-            unit_amount: Math.round(extras * 100),
-          },
-          quantity: 1,
-        } as Stripe.Checkout.SessionCreateParams.LineItem] : []),
-        {
-          price_data: {
-            currency: 'eur',
-            product_data: { name: 'Tarifa de limpieza' },
-            unit_amount: Math.round(limpieza * 100),
+            unit_amount: Math.round(importePago * 100),
           },
           quantity: 1,
         },
       ];
+    } else if (esResto) {
+      lineItems = [
+        {
+          price_data: {
+            currency: 'eur',
+            product_data: {
+              name: `Resto — ${propNombre} (${noches} noche${noches > 1 ? 's' : ''})`,
+              description:
+                `Pago final estancia ${reserva.fecha_entrada} → ${reserva.fecha_salida}`,
+            },
+            unit_amount: Math.round(importePago * 100),
+          },
+          quantity: 1,
+        },
+      ];
+    } else {
+      const descuento = toAmount(reserva.descuento_aplicado);
+      const alojamiento = toAmount(reserva.importe_alojamiento);
+      const extras = toAmount(reserva.importe_extras);
+      const limpieza = toAmount(reserva.importe_limpieza);
+      const alojamientoNeto = alojamiento - descuento;
+
+      if (alojamientoNeto > 0) {
+        lineItems.push({
+          price_data: {
+            currency: 'eur',
+            product_data: {
+              name: `${propNombre} — ${noches} noche${noches > 1 ? 's' : ''}`,
+              description:
+                descuento > 0
+                  ? `Alojamiento (descuento no reembolsable: -${descuento.toFixed(2)} €)`
+                  : 'Alojamiento',
+            },
+            unit_amount: Math.round(alojamientoNeto * 100),
+          },
+          quantity: 1,
+        });
+      }
+
+      if (extras > 0) {
+        lineItems.push({
+          price_data: {
+            currency: 'eur',
+            product_data: {
+              name: 'Suplemento huésped extra',
+            },
+            unit_amount: Math.round(extras * 100),
+          },
+          quantity: 1,
+        });
+      }
+
+      if (limpieza > 0) {
+        lineItems.push({
+          price_data: {
+            currency: 'eur',
+            product_data: {
+              name: 'Tarifa de limpieza',
+            },
+            unit_amount: Math.round(limpieza * 100),
+          },
+          quantity: 1,
+        });
+      }
     }
 
-    // Destination Charge: la sesión se crea en la cuenta plataforma y los fondos
-    // se transfieren a la cuenta conectada. Así el webhook de plataforma recibe
-    // checkout.session.completed y puede confirmar la reserva correctamente.
-    const session = await stripe.checkout.sessions.create({
-      mode:           'payment',
-      customer_email: reserva.email_cliente,
-      line_items:     lineItems,
-      success_url:    `${appUrl}/reserva/confirmada?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:     `${appUrl}/reserva/cancelada`,
-      metadata: {
-        reserva_id: String(reserva.id),
-        tarifa:     String(reserva.tarifa ?? ''),
-        es_senal:   esSenal ? 'true' : 'false',
-      },
-      expires_at: Math.floor(Date.now() / 1000) + 60 * 30,
-      payment_intent_data: {
-        metadata: { reserva_id: String(reserva.id) },
-        ...(connectedAccountId ? { transfer_data: { destination: connectedAccountId } } : {}),
-      },
-    });
+    if (!lineItems.length) {
+      return jsonResponse({ error: 'No se pudieron generar líneas de pago válidas' }, 400);
+    }
 
-    await supabase
+    // IMPORTANTE:
+    // La sesión se crea EN LA CUENTA CONECTADA del cliente.
+    // No usamos transfer_data.destination.
+    // Así el cobro pertenece al cliente y la plataforma no toca ese dinero.
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        customer_email: reserva.email_cliente,
+        line_items: lineItems,
+        success_url: `${appUrl}/reserva/confirmada?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appUrl}/reserva/cancelada`,
+        metadata: {
+          reserva_id: String(reserva.id),
+          property_id: String(reserva.property_id),
+          tarifa: String(reserva.tarifa ?? ''),
+          es_senal: esSenal ? 'true' : 'false',
+          es_resto: esResto ? 'true' : 'false',
+        },
+        payment_intent_data: {
+          metadata: {
+            reserva_id: String(reserva.id),
+            property_id: String(reserva.property_id),
+            tarifa: String(reserva.tarifa ?? ''),
+            es_senal: esSenal ? 'true' : 'false',
+            es_resto: esResto ? 'true' : 'false',
+          },
+        },
+        expires_at: Math.floor(Date.now() / 1000) + 60 * 30,
+      },
+      {
+        stripeAccount: connectedAccountId,
+      },
+    );
+
+    const { error: updateError } = await supabase
       .from('reservas')
-      .update({ stripe_session_id: session.id })
+      .update({
+        stripe_session_id: session.id,
+      })
       .eq('id', reservaId);
 
-    return jsonResponse({ checkout_url: session.url, session_id: session.id });
+    if (updateError) {
+      console.error('Error guardando stripe_session_id en reserva:', updateError);
+      return jsonResponse(
+        { error: 'Checkout creado pero no se pudo actualizar la reserva' },
+        500,
+      );
+    }
 
+    return jsonResponse({
+      checkout_url: session.url,
+      session_id: session.id,
+      stripe_account_id: connectedAccountId,
+    });
   } catch (err) {
     console.error('create-stripe-checkout error:', err);
-    return jsonResponse({ error: 'Internal server error', detail: err instanceof Error ? err.message : String(err) }, 500);
+    return jsonResponse(
+      {
+        error: 'Internal server error',
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      500,
+    );
   }
 });

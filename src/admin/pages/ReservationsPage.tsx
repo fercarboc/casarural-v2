@@ -880,22 +880,26 @@ function CancelReservaModal({
     setSaving(true)
     setError(null)
 
-    const nota = `CANCELACIÓN: ${motivo.trim()}${devolver ? ` | Devolución: ${importe} €` : ''}`
-
-    const { error: err } = await supabase
-      .from('reservas')
-      .update({
-        estado: 'CANCELLED',
-        estado_pago: devolver && importe > 0 ? 'REFUNDED' : reserva.estado_pago,
-        notas_admin: reserva.notas_admin ? `${reserva.notas_admin}\n${nota}` : nota,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', reserva.id)
+    const { data, error: err } = await supabase.functions.invoke('cancel-reservation', {
+      body: {
+        reservaId:                reserva.id,
+        cancelledBy:              'admin',
+        reason:                   motivo.trim(),
+        importeReembolsoOverride: devolver && importe > 0 ? importe : 0,
+      },
+    })
 
     setSaving(false)
 
     if (err) {
       setError(err.message)
+      return
+    }
+
+    if (data?.stripe_refund_error) {
+      setError(data.message ?? 'El reembolso en Stripe no pudo procesarse. Gestiónalo desde el panel de Stripe.')
+      // Aun así la reserva quedó cancelada
+      onCancelled(reserva.id)
       return
     }
 
@@ -989,7 +993,7 @@ function CancelReservaModal({
                 className={inputCls}
               />
               <p className="text-[11px] text-slate-500">
-                La devolución real en Stripe debes gestionarla desde el panel de Stripe.
+                Se enviará la devolución automáticamente a Stripe si el pago fue procesado por la plataforma.
               </p>
             </div>
           )}

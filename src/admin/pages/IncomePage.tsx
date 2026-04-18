@@ -19,7 +19,7 @@ import {
 import { es } from 'date-fns/locale'
 import { supabase } from '../../integrations/supabase/client'
 import { useAdminTenant } from '../context/AdminTenantContext'
-import { EmitirFacturaModal } from '../components/EmitirFacturaModal'
+import { EmitirFacturaModal, type ReservaParaEmitir } from '../components/EmitirFacturaModal'
 import type { FacturaDetalle } from '../../services/invoice.service'
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ function getRangeForPeriodo(
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 export const IncomePage: React.FC = () => {
-  const { property_id } = useAdminTenant()
+  useAdminTenant()
   const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
@@ -120,7 +120,7 @@ export const IncomePage: React.FC = () => {
   // Billing: map reservaId → factura (ORDINARIA, active)
   const [facturasMap, setFacturasMap] = useState<Record<string, FacturaDetalle>>({})
   const [loadingFacturas, setLoadingFacturas] = useState(false)
-  const [emitirReservaId, setEmitirReservaId] = useState<string | null>(null)
+  const [emitirReserva, setEmitirReserva] = useState<ReservaParaEmitir | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -157,7 +157,7 @@ export const IncomePage: React.FC = () => {
       .select('id, numero, estado, tipo_factura, reserva_id, bloqueada, total')
       .in('reserva_id', reservaIds)
       .eq('tipo_factura', 'ORDINARIA')
-      .not('estado', 'in', '("ANULADA","RECTIFICADA")')
+      .not('estado', 'in', '(ANULADA,RECTIFICADA)')
     const map: Record<string, FacturaDetalle> = {}
     for (const f of (data ?? [])) {
       if (f.reserva_id) map[f.reserva_id] = f as any
@@ -241,13 +241,13 @@ export const IncomePage: React.FC = () => {
 
   return (
     <>
-      {emitirReservaId && (
+      {emitirReserva && (
         <EmitirFacturaModal
-          reservaId={emitirReservaId}
-          onClose={() => setEmitirReservaId(null)}
+          reserva={emitirReserva}
+          onClose={() => setEmitirReserva(null)}
           onEmitida={(factura) => {
-            setFacturasMap(prev => ({ ...prev, [emitirReservaId]: factura }))
-            setEmitirReservaId(null)
+            setFacturasMap(prev => ({ ...prev, [emitirReserva.id]: factura }))
+            setEmitirReserva(null)
           }}
         />
       )}
@@ -708,7 +708,7 @@ export const IncomePage: React.FC = () => {
                               </span>
                             ) : canEmitir ? (
                               <button
-                                onClick={() => setEmitirReservaId(r.id)}
+                                onClick={() => setEmitirReserva({ id: r.id, nombre_cliente: r.nombre_cliente, apellidos_cliente: r.apellidos_cliente, importe_total: r.importe_total })}
                                 className="inline-flex items-center gap-1 rounded-full border border-brand-500/40 bg-brand-600/10 px-2.5 py-0.5 text-[10px] font-bold text-brand-300 transition-colors hover:bg-brand-600/20"
                               >
                                 <FileText size={10} />

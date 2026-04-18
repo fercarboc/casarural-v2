@@ -1,28 +1,23 @@
 // src/admin/components/EmitirFacturaModal.tsx
 // Modal to emit a fiscal invoice for a paid reservation from IncomePage.
+// Receives reserva data as props to avoid an extra network request.
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { X, FileText, Loader2, AlertCircle, CheckCircle2, Lock } from 'lucide-react'
-import { supabase } from '../../integrations/supabase/client'
 import { invoiceService, type FacturaDetalle } from '../../services/invoice.service'
 import { useAdminTenant } from '../context/AdminTenantContext'
 
-interface Props {
-  reservaId: string
-  onClose: () => void
-  onEmitida: (factura: FacturaDetalle) => void
-}
-
-interface ReservaData {
-  codigo: string
+export interface ReservaParaEmitir {
+  id: string
   nombre_cliente: string
   apellidos_cliente: string
-  email_cliente: string | null
-  nif_factura: string | null
-  razon_social: string | null
-  direccion_factura: string | null
   importe_total: number
-  estado_pago: string
+}
+
+interface Props {
+  reserva: ReservaParaEmitir
+  onClose: () => void
+  onEmitida: (factura: FacturaDetalle) => void
 }
 
 const inputCls =
@@ -32,12 +27,12 @@ function fmtEur(n: number) {
   return n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
 
-export function EmitirFacturaModal({ reservaId, onClose, onEmitida }: Props) {
+export function EmitirFacturaModal({ reserva, onClose, onEmitida }: Props) {
   const { property_id } = useAdminTenant()
-  const [reserva, setReserva] = useState<ReservaData | null>(null)
-  const [loadingReserva, setLoadingReserva] = useState(true)
 
-  const [nombre, setNombre] = useState('')
+  const [nombre, setNombre] = useState(
+    `${reserva.nombre_cliente} ${reserva.apellidos_cliente}`.trim()
+  )
   const [nif, setNif] = useState('')
   const [direccion, setDireccion] = useState('')
   const [emailCliente, setEmailCliente] = useState('')
@@ -46,35 +41,17 @@ export function EmitirFacturaModal({ reservaId, onClose, onEmitida }: Props) {
   const [error, setError] = useState('')
   const [done, setDone] = useState<FacturaDetalle | null>(null)
 
-  useEffect(() => {
-    supabase
-      .from('reservas')
-      .select('codigo, nombre_cliente, apellidos_cliente, email_cliente, nif_factura, razon_social, direccion_factura, importe_total, estado_pago')
-      .eq('id', reservaId)
-      .single()
-      .then(({ data, error: e }) => {
-        if (e || !data) { setError('No se pudo cargar la reserva'); return }
-        const r = data as ReservaData
-        setReserva(r)
-        setNombre(r.razon_social || `${r.nombre_cliente} ${r.apellidos_cliente}`.trim())
-        setNif(r.nif_factura ?? '')
-        setDireccion(r.direccion_factura ?? '')
-        setEmailCliente(r.email_cliente ?? '')
-      })
-      .finally(() => setLoadingReserva(false))
-  }, [reservaId])
-
   async function handleEmitir() {
     if (!nombre.trim()) { setError('El nombre es obligatorio'); return }
     setEmitting(true)
     setError('')
     try {
       const factura = await invoiceService.emitirFacturaFiscal({
-        reservaId,
-        propertyId: property_id,
-        nombre: nombre.trim(),
-        nif: nif.trim() || null,
-        direccion: direccion.trim() || null,
+        reservaId:    reserva.id,
+        propertyId:   property_id,
+        nombre:       nombre.trim(),
+        nif:          nif.trim() || null,
+        direccion:    direccion.trim() || null,
         email_cliente: emailCliente.trim() || null,
       })
       setDone(factura)
@@ -121,25 +98,17 @@ export function EmitirFacturaModal({ reservaId, onClose, onEmitida }: Props) {
               </button>
             </div>
           </div>
-        ) : loadingReserva ? (
-          <div className="flex h-40 items-center justify-center gap-2 text-slate-400">
-            <Loader2 size={18} className="animate-spin" />
-            <span className="text-sm">Cargando reserva…</span>
-          </div>
         ) : (
           <>
             <div className="space-y-4 p-6">
-              {reserva && (
-                <div className="rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Reserva</p>
-                  <p className="mt-1 font-bold text-white">{reserva.codigo}</p>
-                  <p className="text-sm text-slate-400">
-                    {reserva.nombre_cliente} {reserva.apellidos_cliente}
-                    {' · '}
-                    <span className="font-semibold text-white">{fmtEur(reserva.importe_total)}</span>
-                  </p>
-                </div>
-              )}
+              <div className="rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Reserva</p>
+                <p className="mt-1 text-sm text-slate-300">
+                  {reserva.nombre_cliente} {reserva.apellidos_cliente}
+                  {' · '}
+                  <span className="font-semibold text-white">{fmtEur(reserva.importe_total)}</span>
+                </p>
+              </div>
 
               <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-300">
                 <Lock size={13} className="mt-0.5 shrink-0" />

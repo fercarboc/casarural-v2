@@ -64,7 +64,7 @@ serve(async (req) => {
       .select('id, numero, estado')
       .eq('reserva_id', reservaId)
       .eq('tipo_factura', 'ORDINARIA')
-      .not('estado', 'in', '("ANULADA","RECTIFICADA")')
+      .not('estado', 'in', '(ANULADA,RECTIFICADA)')
       .maybeSingle();
 
     if (existing) {

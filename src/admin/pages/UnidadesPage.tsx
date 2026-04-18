@@ -42,6 +42,7 @@ interface UnidadForm {
   nombre: string
   slug: string
   tipo: 'CASA_RURAL' | 'APARTAMENTO' | 'HABITACION'
+  modo_operacion: 'SHORT' | 'LONG'
   descripcion: string
   capacidad_base: string
   capacidad_maxima: string
@@ -78,6 +79,7 @@ const EMPTY_FORM: UnidadForm = {
   nombre: '',
   slug: '',
   tipo: 'CASA_RURAL',
+  modo_operacion: 'SHORT',
   descripcion: '',
   capacidad_base: '10',
   capacidad_maxima: '11',
@@ -212,6 +214,7 @@ export const UnidadesPage: React.FC = () => {
       nombre: u.nombre,
       slug: u.slug,
       tipo: u.tipo,
+      modo_operacion: (u as any).modo_operacion ?? 'SHORT',
       descripcion: '',
       capacidad_base: String(u.capacidad_base),
       capacidad_maxima: String(u.capacidad_maxima),
@@ -266,6 +269,7 @@ export const UnidadesPage: React.FC = () => {
       nombre: form.nombre.trim(),
       slug: form.slug.trim(),
       tipo: form.tipo,
+      modo_operacion: form.modo_operacion,
       capacidad_base: parseInt(form.capacidad_base) || 1,
       capacidad_maxima: parseInt(form.capacidad_maxima) || 1,
       num_habitaciones: form.num_habitaciones ? parseInt(form.num_habitaciones) : null,
@@ -1210,6 +1214,18 @@ function UnidadFormPanel({
                     {l}
                   </option>
                 ))}
+              </select>
+            </div>
+
+            <div className="md:col-span-1">
+              <label className={lbl}>Modo</label>
+              <select
+                value={form.modo_operacion}
+                onChange={(e) => set('modo_operacion', e.target.value as any)}
+                className={input}
+              >
+                <option value="SHORT">Corta estancia</option>
+                <option value="LONG">Media / Larga estancia</option>
               </select>
             </div>
 

@@ -45,11 +45,16 @@ import { ReservationDetailPage } from './admin/pages/ReservationDetailPage';
 import { NewReservationPage } from './admin/pages/NewReservationPage';
 import { CustomersPage } from './admin/pages/CustomersPage';
 import { IncomePage } from './admin/pages/IncomePage';
-import { InvoicesPage } from './admin/pages/InvoicesPage';
+import { InvoicesPage } from './admin/pages/InvoicesPage'
+import { CleaningDashboardPage } from './modules/cleaning/pages/CleaningDashboardPage';
 import { ConfigPage } from './admin/pages/ConfigPage';
 import { ICalPage } from './admin/pages/ICalPage';
 import { UnidadesPage } from './admin/pages/UnidadesPage';
-import { SuperAdminPage } from './admin/pages/SuperAdminPage';
+import { SuperAdminPage } from './admin/pages/SuperAdminPage'
+import { RentalsPage } from './admin/pages/RentalsPage'
+import { RentalDetailPage } from './admin/pages/RentalDetailPage'
+import { SolicitudPage } from './public/pages/SolicitudPage'
+import { SolicitudConfirmadaPage } from './public/pages/SolicitudConfirmadaPage';
 
 import { ReservationViewPage } from './public/pages/ReservationViewPage';
 import ReservaConfirmada from './public/pages/ReservaConfirmada';
@@ -271,6 +276,8 @@ export default function App() {
             <Route path="/reserva/cancelar" element={<PublicLayout><CancelarReserva /></PublicLayout>} />
             <Route path="/reserva/cambio" element={<PublicLayout><CambioFechas /></PublicLayout>} />
             <Route path="/reserva/:token" element={<PublicLayout><ReservationViewPage /></PublicLayout>} />
+            <Route path="/solicitar/:unidadId" element={<PublicLayout><SolicitudPage /></PublicLayout>} />
+            <Route path="/solicitud/confirmacion" element={<PublicLayout><SolicitudConfirmadaPage /></PublicLayout>} />
 
             {/* Legal Routes */}
             <Route path="/aviso-legal" element={<PublicLayout><AvisoLegal /></PublicLayout>} />
@@ -311,10 +318,13 @@ export default function App() {
               <Route path="clientes" element={<CustomersPage />} />
               <Route path="ingresos" element={<IncomePage />} />
               <Route path="facturas" element={<InvoicesPage />} />
+              <Route path="limpieza" element={<CleaningDashboardPage />} />
               <Route path="configuracion" element={<ConfigPage />} />
               <Route path="unidades" element={<UnidadesPage />} />
               <Route path="ical" element={<ICalPage />} />
               <Route path="propiedades" element={<SuperAdminPage />} />
+              <Route path="rentals" element={<RentalsPage />} />
+              <Route path="rentals/:id" element={<RentalDetailPage />} />
             </Route>
           </Routes>
         </AnimatePresence>

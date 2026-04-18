@@ -230,7 +230,38 @@ Deno.serve(async (req) => {
         throw holdsDeleteError;
       }
 
-      // 9. Email confirmación (best-effort)
+      // 9. Auto-crear trabajos de limpieza (best-effort)
+      try {
+        const cleaningJobs = unidadIds.map((uid: string) => ({
+          property_id: reservaActual.property_id,
+          unidad_id: uid,
+          reserva_id: reservaId,
+          scheduled_date: reservaActual.fecha_salida,
+          mode: 'SHORT_STAY',
+          origin: 'AUTO_CHECKOUT',
+          status: 'PENDING',
+          priority: 'HIGH',
+        }))
+
+        // Check for existing jobs to avoid duplicates (idempotency)
+        for (const job of cleaningJobs) {
+          const { data: existing } = await supabase
+            .from('cleaning_jobs')
+            .select('id')
+            .eq('reserva_id', job.reserva_id)
+            .eq('unidad_id', job.unidad_id)
+            .maybeSingle()
+
+          if (!existing) {
+            const { error: cjErr } = await supabase.from('cleaning_jobs').insert(job)
+            if (cjErr) console.error('Error creando cleaning_job:', cjErr)
+          }
+        }
+      } catch (cleaningErr) {
+        console.error('Error auto-creando cleaning_jobs:', cleaningErr)
+      }
+
+      // 10. Email confirmación (best-effort)
       fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`, {
         method: 'POST',
         headers: {

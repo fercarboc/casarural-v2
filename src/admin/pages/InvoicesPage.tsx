@@ -15,6 +15,9 @@ import {
   CreditCard,
   Banknote,
   CheckCheck,
+  RotateCcw,
+  Building2,
+  Lock,
 } from 'lucide-react'
 import {
   invoiceService,
@@ -25,6 +28,8 @@ import {
   ReservaParaFactura,
 } from '../../services/invoice.service'
 import { descargarFacturaPDF, imprimirFactura } from '../components/FacturaPDF'
+import { EmitirRectificativaModal } from '../components/EmitirRectificativaModal'
+import { AEATModal } from '../components/AEATModal'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,15 +51,25 @@ function fmtEur(n: number) {
 // ─── status badge ─────────────────────────────────────────────────────────────
 
 const ESTADO_STYLES: Record<string, string> = {
-  EMITIDA: 'bg-blue-500/10 text-blue-300 border-blue-500/20',
-  ENVIADA: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
-  ANULADA: 'bg-red-500/10 text-red-300 border-red-500/20',
+  EMITIDA:     'bg-blue-500/10 text-blue-300 border-blue-500/20',
+  ENVIADA:     'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+  ANULADA:     'bg-red-500/10 text-red-300 border-red-500/20',
+  RECTIFICADA: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
 }
 
 const ESTADO_LABELS: Record<string, string> = {
-  EMITIDA: 'Emitida',
-  ENVIADA: 'Enviada',
-  ANULADA: 'Anulada',
+  EMITIDA:     'Emitida',
+  ENVIADA:     'Enviada',
+  ANULADA:     'Anulada',
+  RECTIFICADA: 'Rectificada',
+}
+
+const AEAT_STYLES: Record<string, string> = {
+  PENDIENTE: 'bg-slate-500/10 text-slate-400',
+  PREPARADA: 'bg-violet-500/10 text-violet-300',
+  ENVIADA:   'bg-emerald-500/10 text-emerald-300',
+  ERROR:     'bg-red-500/10 text-red-300',
+  NO_APLICA: 'bg-slate-500/5 text-slate-600',
 }
 
 function EstadoBadge({ estado }: { estado: string }) {
@@ -912,6 +927,8 @@ export const InvoicesPage: React.FC = () => {
   const [filterMes, setFilterMes] = useState<string>('')
   const [filterAño, setFilterAño] = useState<string>('')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showAEATModal, setShowAEATModal] = useState(false)
+  const [rectificativaFactura, setRectificativaFactura] = useState<FacturaDetalle | null>(null)
   const [cobrarRestoParams, setCobrarRestoParams] = useState<{
     reservaId: string
     reservaCodigo: string
@@ -1020,6 +1037,32 @@ export const InvoicesPage: React.FC = () => {
         />
       )}
 
+      {rectificativaFactura && (
+        <EmitirRectificativaModal
+          factura={rectificativaFactura}
+          onClose={() => setRectificativaFactura(null)}
+          onEmitida={(rect) => {
+            setFacturas((prev) => [
+              rect,
+              ...prev.map((f) =>
+                f.id === rectificativaFactura.id ? { ...f, estado: 'RECTIFICADA' as const } : f
+              ),
+            ])
+            setRectificativaFactura(null)
+          }}
+        />
+      )}
+
+      {showAEATModal && (
+        <AEATModal
+          onClose={() => setShowAEATModal(false)}
+          onLoteCreado={(_loteId, _num) => {
+            setShowAEATModal(false)
+            load()
+          }}
+        />
+      )}
+
       <header className="rounded-3xl border border-sidebar-border bg-sidebar-bg px-6 py-6 shadow-[0_10px_40px_rgba(0,0,0,0.20)]">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -1029,13 +1072,22 @@ export const InvoicesPage: React.FC = () => {
             </p>
           </div>
 
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-brand-700"
-          >
-            <Plus size={18} />
-            Nueva factura
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAEATModal(true)}
+              className="flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm font-bold text-violet-300 shadow-sm transition-all hover:bg-violet-500/20"
+            >
+              <Building2 size={16} />
+              AEAT / VeriFactu
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-brand-700"
+            >
+              <Plus size={18} />
+              Nueva factura
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1044,7 +1096,7 @@ export const InvoicesPage: React.FC = () => {
           { label: 'TOTAL FACTURADO', value: fmtEur(total), sub: 'sin anuladas' },
           { label: 'EMITIDAS', value: String(emitidas), sub: 'pendientes de enviar' },
           { label: 'ENVIADAS', value: String(enviadas), sub: 'al cliente' },
-        ].map((card, idx) => (
+        ].map((card) => (
           <div
             key={card.label}
             className="rounded-3xl border border-sidebar-border bg-sidebar-bg p-5 shadow-[0_10px_40px_rgba(0,0,0,0.15)]"
@@ -1100,7 +1152,7 @@ export const InvoicesPage: React.FC = () => {
         </select>
 
         <div className="flex gap-2">
-          {['TODAS', 'EMITIDA', 'ENVIADA', 'ANULADA'].map((e) => (
+          {['TODAS', 'EMITIDA', 'ENVIADA', 'RECTIFICADA', 'ANULADA'].map((e) => (
             <button
               key={e}
               onClick={() => setFilterEstado(e)}
@@ -1136,6 +1188,9 @@ export const InvoicesPage: React.FC = () => {
                   Número
                 </th>
                 <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Tipo
+                </th>
+                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Cliente
                 </th>
                 <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -1150,6 +1205,9 @@ export const InvoicesPage: React.FC = () => {
                 <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Estado
                 </th>
+                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  AEAT
+                </th>
                 <th className="px-6 py-4" />
               </tr>
             </thead>
@@ -1159,13 +1217,30 @@ export const InvoicesPage: React.FC = () => {
                 <tr
                   key={f.id}
                   className={`transition-colors ${
-                    f.estado === 'ANULADA'
+                    f.estado === 'ANULADA' || f.estado === 'RECTIFICADA'
                       ? 'bg-slate-900/30 opacity-60'
                       : 'hover:bg-sidebar-hover/60'
                   }`}
                 >
                   <td className="px-6 py-4">
-                    <p className="font-bold text-white">{f.numero}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-bold text-white">{f.numero}</p>
+                      {f.bloqueada && (
+                        <span title="Factura bloqueada (inmutable)">
+                          <Lock size={11} className="shrink-0 text-slate-500" />
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      f.tipo_factura === 'RECTIFICATIVA'
+                        ? 'bg-amber-500/10 text-amber-300'
+                        : 'bg-blue-500/10 text-blue-300'
+                    }`}>
+                      {f.tipo_factura === 'RECTIFICATIVA' ? 'Rectif.' : 'Ordinaria'}
+                    </span>
                   </td>
 
                   <td className="px-6 py-4">
@@ -1191,12 +1266,22 @@ export const InvoicesPage: React.FC = () => {
                     {fmtDate(f.fecha_emision)}
                   </td>
 
-                  <td className="px-6 py-4 font-bold text-white">
+                  <td className={`px-6 py-4 font-bold ${f.total < 0 ? 'text-red-300' : 'text-white'}`}>
                     {fmtEur(f.total)}
                   </td>
 
                   <td className="px-6 py-4">
                     <EstadoBadge estado={f.estado} />
+                  </td>
+
+                  <td className="px-6 py-4">
+                    {f.bloqueada && f.estado_aeat !== 'NO_APLICA' ? (
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${AEAT_STYLES[f.estado_aeat] ?? ''}`}>
+                        {f.estado_aeat}
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
                   </td>
 
                   <td className="px-6 py-4">
@@ -1252,7 +1337,7 @@ export const InvoicesPage: React.FC = () => {
                         <Printer size={16} />
                       </button>
 
-                      {f.estado !== 'ANULADA' && (
+                      {f.estado !== 'ANULADA' && f.estado !== 'RECTIFICADA' && (
                         <div className="relative">
                           <button
                             onClick={() =>
@@ -1269,8 +1354,8 @@ export const InvoicesPage: React.FC = () => {
                                 className="fixed inset-0 z-10"
                                 onClick={() => setActionMenu(null)}
                               />
-                              <div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-sidebar-border bg-sidebar-bg py-1 shadow-xl">
-                                {f.estado !== 'ENVIADA' && (
+                              <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-sidebar-border bg-sidebar-bg py-1 shadow-xl">
+                                {!f.bloqueada && f.estado !== 'ENVIADA' && (
                                   <button
                                     onClick={() => handleUpdateEstado(f.id, 'ENVIADA')}
                                     className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-200 hover:bg-sidebar-hover"
@@ -1280,28 +1365,35 @@ export const InvoicesPage: React.FC = () => {
                                   </button>
                                 )}
 
-                                {f.estado !== 'EMITIDA' && (
+                                {!f.bloqueada && f.estado !== 'EMITIDA' && (
                                   <button
                                     onClick={() => handleUpdateEstado(f.id, 'EMITIDA')}
                                     className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-200 hover:bg-sidebar-hover"
                                   >
-                                    <CheckCircle2
-                                      size={14}
-                                      className="text-slate-500"
-                                    />
+                                    <CheckCircle2 size={14} className="text-slate-500" />
                                     Marcar como emitida
                                   </button>
                                 )}
 
                                 <div className="my-1 border-t border-sidebar-border" />
 
-                                <button
-                                  onClick={() => handleUpdateEstado(f.id, 'ANULADA')}
-                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-300 hover:bg-red-500/10"
-                                >
-                                  <XCircle size={14} />
-                                  Anular factura
-                                </button>
+                                {f.bloqueada ? (
+                                  <button
+                                    onClick={() => { setRectificativaFactura(f); setActionMenu(null) }}
+                                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-amber-300 hover:bg-amber-500/10"
+                                  >
+                                    <RotateCcw size={14} />
+                                    Emitir rectificativa
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleUpdateEstado(f.id, 'ANULADA')}
+                                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-300 hover:bg-red-500/10"
+                                  >
+                                    <XCircle size={14} />
+                                    Anular factura
+                                  </button>
+                                )}
                               </div>
                             </>
                           )}

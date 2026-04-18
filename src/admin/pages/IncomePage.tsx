@@ -5,6 +5,8 @@ import {
   CreditCard,
   Users,
   Loader2,
+  FileText,
+  CheckCircle2,
 } from 'lucide-react'
 import {
   format,
@@ -16,6 +18,9 @@ import {
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { supabase } from '../../integrations/supabase/client'
+import { useAdminTenant } from '../context/AdminTenantContext'
+import { EmitirFacturaModal } from '../components/EmitirFacturaModal'
+import type { FacturaDetalle } from '../../services/invoice.service'
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────────
 type Periodo = 'mes' | 'anio' | 'custom'
@@ -97,6 +102,7 @@ function getRangeForPeriodo(
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 export const IncomePage: React.FC = () => {
+  const { property_id } = useAdminTenant()
   const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
@@ -111,6 +117,10 @@ export const IncomePage: React.FC = () => {
   })
   const [reservas, setReservas] = useState<ReservaIngreso[]>([])
   const [loading, setLoading] = useState(true)
+  // Billing: map reservaId → factura (ORDINARIA, active)
+  const [facturasMap, setFacturasMap] = useState<Record<string, FacturaDetalle>>({})
+  const [loadingFacturas, setLoadingFacturas] = useState(false)
+  const [emitirReservaId, setEmitirReservaId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -138,9 +148,31 @@ export const IncomePage: React.FC = () => {
     setLoading(false)
   }, [applied])
 
+  // Load facturas for the current reservas
+  const loadFacturas = useCallback(async (reservaIds: string[]) => {
+    if (reservaIds.length === 0) { setFacturasMap({}); return }
+    setLoadingFacturas(true)
+    const { data } = await supabase
+      .from('facturas')
+      .select('id, numero, estado, tipo_factura, reserva_id, bloqueada, total')
+      .in('reserva_id', reservaIds)
+      .eq('tipo_factura', 'ORDINARIA')
+      .not('estado', 'in', '("ANULADA","RECTIFICADA")')
+    const map: Record<string, FacturaDetalle> = {}
+    for (const f of (data ?? [])) {
+      if (f.reserva_id) map[f.reserva_id] = f as any
+    }
+    setFacturasMap(map)
+    setLoadingFacturas(false)
+  }, [])
+
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    loadFacturas(reservas.map(r => r.id))
+  }, [reservas, loadFacturas])
 
   const totalFacturado = reservas.reduce((s, r) => s + r.importe_total, 0)
   const totalCobrado = reservas
@@ -209,6 +241,17 @@ export const IncomePage: React.FC = () => {
 
   return (
     <>
+      {emitirReservaId && (
+        <EmitirFacturaModal
+          reservaId={emitirReservaId}
+          onClose={() => setEmitirReservaId(null)}
+          onEmitida={(factura) => {
+            setFacturasMap(prev => ({ ...prev, [emitirReservaId]: factura }))
+            setEmitirReservaId(null)
+          }}
+        />
+      )}
+
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -589,6 +632,9 @@ export const IncomePage: React.FC = () => {
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Estado pago
                         </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Factura
+                        </th>
                       </tr>
                     </thead>
 
@@ -600,6 +646,8 @@ export const IncomePage: React.FC = () => {
                         const neto = comision !== null
                           ? Math.round((r.importe_total - comision) * 100) / 100
                           : null
+                        const factura = facturasMap[r.id]
+                        const canEmitir = !factura && (r.estado_pago === 'PAID' || r.estado_pago === 'PARTIAL')
                         return (
                         <tr
                           key={r.id}
@@ -650,6 +698,24 @@ export const IncomePage: React.FC = () => {
                               {PAGO_LABEL[r.estado_pago] ?? r.estado_pago}
                             </span>
                           </td>
+                          <td className="whitespace-nowrap px-4 py-3">
+                            {loadingFacturas ? (
+                              <Loader2 size={13} className="animate-spin text-slate-600" />
+                            ) : factura ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                                <CheckCircle2 size={10} />
+                                {factura.numero}
+                              </span>
+                            ) : canEmitir ? (
+                              <button
+                                onClick={() => setEmitirReservaId(r.id)}
+                                className="inline-flex items-center gap-1 rounded-full border border-brand-500/40 bg-brand-600/10 px-2.5 py-0.5 text-[10px] font-bold text-brand-300 transition-colors hover:bg-brand-600/20"
+                              >
+                                <FileText size={10} />
+                                Emitir
+                              </button>
+                            ) : null}
+                          </td>
                         </tr>
                         )
                       })}
@@ -672,6 +738,7 @@ export const IncomePage: React.FC = () => {
                         <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-emerald-300">
                           {fmt(totalLiquidoNeto)}
                         </td>
+                        <td></td>
                         <td></td>
                       </tr>
                     </tfoot>

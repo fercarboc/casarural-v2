@@ -3,7 +3,9 @@ import { getMockInvoices } from './invoice.mock';
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────────
 
-export type EstadoFactura = 'EMITIDA' | 'ENVIADA' | 'ANULADA';
+export type EstadoFactura = 'EMITIDA' | 'ENVIADA' | 'ANULADA' | 'RECTIFICADA';
+export type TipoFactura   = 'ORDINARIA' | 'RECTIFICATIVA';
+export type EstadoAeat    = 'PENDIENTE' | 'PREPARADA' | 'ENVIADA' | 'ERROR' | 'NO_APLICA';
 
 export interface FacturaDetalle {
   id: string;
@@ -21,6 +23,16 @@ export interface FacturaDetalle {
   reserva_id: string | null;
   pdf_url: string | null;
   created_at: string;
+  // Billing module — VeriFactu fields
+  tipo_factura: TipoFactura;
+  bloqueada: boolean;
+  hash_actual: string | null;
+  hash_anterior: string | null;
+  factura_rectificada_id: string | null;
+  motivo_rectificacion: string | null;
+  estado_aeat: EstadoAeat;
+  email_cliente: string | null;
+  fecha_operacion: string | null;
   // Campos del join con reservas
   reserva_codigo?: string;
   reserva_fecha_entrada?: string;
@@ -93,6 +105,16 @@ function mapFactura(f: any): FacturaDetalle {
     reserva_id:     f.reserva_id,
     pdf_url:        f.pdf_url ?? null,
     created_at:     f.created_at,
+    // VeriFactu fields
+    tipo_factura:           f.tipo_factura    ?? 'ORDINARIA',
+    bloqueada:              f.bloqueada       ?? false,
+    hash_actual:            f.hash_actual     ?? null,
+    hash_anterior:          f.hash_anterior   ?? null,
+    factura_rectificada_id: f.factura_rectificada_id ?? null,
+    motivo_rectificacion:   f.motivo_rectificacion   ?? null,
+    estado_aeat:            f.estado_aeat     ?? 'PENDIENTE',
+    email_cliente:          f.email_cliente   ?? null,
+    fecha_operacion:        f.fecha_operacion ?? null,
     reserva_codigo:              f.reservas?.codigo,
     reserva_fecha_entrada:       f.reservas?.fecha_entrada,
     reserva_fecha_salida:        f.reservas?.fecha_salida,
@@ -215,6 +237,46 @@ export const invoiceService = {
     const { error } = await supabase.from('facturas').update({ estado }).eq('id', id);
     if (error) throw error;
   },
+
+  // ── Facturación fiscal (Edge Functions) ─────────────────────────────────────
+
+  async emitirFacturaFiscal(params: {
+    reservaId: string;
+    propertyId: string;
+    nombre?: string;
+    nif?: string | null;
+    direccion?: string | null;
+    email_cliente?: string | null;
+  }): Promise<FacturaDetalle> {
+    const { data, error } = await supabase.functions.invoke('create-invoice', { body: params });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return mapFactura(data.factura);
+  },
+
+  async emitirRectificativa(params: {
+    facturaId: string;
+    propertyId: string;
+    motivo: string;
+  }): Promise<{ rectificativa: FacturaDetalle; original_numero: string }> {
+    const { data, error } = await supabase.functions.invoke('create-rectifying-invoice', { body: params });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return { rectificativa: mapFactura(data.rectificativa), original_numero: data.original_numero };
+  },
+
+  async enviarEmailFactura(facturaId: string, propertyId: string): Promise<void> {
+    const { data, error } = await supabase.functions.invoke('send-invoice-email', { body: { facturaId, propertyId } });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+  },
+
+  async prepararLoteAeat(propertyId: string, facturaIds: string[]): Promise<{ lote_id: string; num_facturas: number }> {
+    const { data, error } = await supabase.functions.invoke('prepare-aeat-batch', { body: { propertyId, facturaIds } });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  },
 };
 
 // ─── Funciones adicionales (exportadas directamente) ──────────────────────────
@@ -335,6 +397,7 @@ export async function getFacturasFiltradas(filtros: {
   mes?: number;
   año?: number;
   estado?: EstadoFactura | 'TODAS';
+  tipo_factura?: TipoFactura | 'TODAS';
   cliente?: string;
 }): Promise<FacturaDetalle[]> {
   if (isMockMode) return getMockInvoices() as any;
@@ -357,6 +420,10 @@ export async function getFacturasFiltradas(filtros: {
 
   if (filtros.estado && filtros.estado !== 'TODAS') {
     query = query.eq('estado', filtros.estado);
+  }
+
+  if (filtros.tipo_factura && filtros.tipo_factura !== 'TODAS') {
+    query = query.eq('tipo_factura', filtros.tipo_factura);
   }
 
   if (filtros.cliente) {

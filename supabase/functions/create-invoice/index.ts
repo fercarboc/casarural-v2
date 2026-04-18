@@ -21,65 +21,122 @@ function json(body: unknown, status = 200) {
 async function sha256hex(parts: (string | number)[]): Promise<string> {
   const data = parts.map(String).join('|');
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 function calcIva10(totalConIva: number): { base: number; iva: number } {
-  const base = Math.round((totalConIva / 1.10) * 100) / 100;
-  const iva  = Math.round((totalConIva - base) * 100) / 100;
+  const base = Math.round((totalConIva / 1.1) * 100) / 100;
+  const iva = Math.round((totalConIva - base) * 100) / 100;
   return { base, iva };
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    const { reservaId, propertyId, nombre: nombreOverride, nif, direccion, email_cliente } =
-      await req.json();
+    if (!supabaseUrl || !serviceKey) {
+      return json({ error: 'Faltan variables de entorno de Supabase' }, 500);
+    }
+
+    const db = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false },
+    });
+
+    const {
+      reservaId,
+      propertyId,
+      nombre: nombreOverride,
+      nif,
+      direccion,
+      email_cliente,
+    } = await req.json();
 
     if (!reservaId || !propertyId) {
       return json({ error: 'reservaId y propertyId son obligatorios' }, 400);
     }
 
-    // 1. Cargar reserva
+    // 1) Cargar reserva
     const { data: reserva, error: rErr } = await db
       .from('reservas')
-      .select('id, codigo, nombre_cliente, apellidos_cliente, email_cliente, nif_factura, razon_social, direccion_factura, importe_total, estado_pago, property_id')
+      .select(`
+        id,
+        codigo,
+        nombre_cliente,
+        apellidos_cliente,
+        email_cliente,
+        nif_factura,
+        razon_social,
+        direccion_factura,
+        importe_total,
+        estado_pago,
+        property_id
+      `)
       .eq('id', reservaId)
       .single();
 
-    if (rErr || !reserva) return json({ error: 'Reserva no encontrada' }, 404);
-    if (reserva.property_id !== propertyId) return json({ error: 'Acceso no autorizado' }, 403);
-    if (!['PAID', 'PARTIAL'].includes(reserva.estado_pago ?? '')) {
-      return json({ error: `La reserva debe estar pagada (PAID o PARTIAL). Estado actual: ${reserva.estado_pago}` }, 422);
+    if (rErr || !reserva) {
+      return json({ error: 'Reserva no encontrada' }, 404);
     }
 
-    // 2. Verificar que no existe ya una factura ORDINARIA activa para esta reserva
-    const { data: existing } = await db
+    if (reserva.property_id !== propertyId) {
+      return json({ error: 'Acceso no autorizado' }, 403);
+    }
+
+    if (!['PAID', 'PARTIAL'].includes(reserva.estado_pago ?? '')) {
+      return json(
+        {
+          error: `La reserva debe estar pagada (PAID o PARTIAL). Estado actual: ${reserva.estado_pago}`,
+        },
+        422
+      );
+    }
+
+    // 2) Verificar que no exista ya factura ORDINARIA activa
+    const { data: existing, error: existingErr } = await db
       .from('facturas')
-      .select('id, numero, estado')
+      .select('id, numero_factura, estado')
       .eq('reserva_id', reservaId)
       .eq('tipo_factura', 'ORDINARIA')
       .not('estado', 'in', '(ANULADA,RECTIFICADA)')
       .maybeSingle();
 
-    if (existing) {
-      return json({ error: `Ya existe la factura ordinaria ${existing.numero} para esta reserva` }, 409);
+    if (existingErr) {
+      return json({ error: existingErr.message }, 500);
     }
 
-    // 3. Generar número de factura
+    if (existing) {
+      return json(
+        {
+          error: `Ya existe la factura ordinaria ${existing.numero_factura} para esta reserva`,
+        },
+        409
+      );
+    }
+
+    // 3) Generar número de factura
+    // Importante: aquí asumo que la RPC correcta acepta SOLO p_property_id.
     const { data: numero, error: numErr } = await db.rpc('generar_numero_factura', {
       p_property_id: propertyId,
-      p_serie: 'FAC',
     });
-    if (numErr || !numero) return json({ error: 'Error al generar el número de factura' }, 500);
 
-    // 4. Obtener hash de la factura anterior (para cadena VeriFactu)
-    const { data: prevFactura } = await db
+    if (numErr || !numero) {
+      return json(
+        {
+          error: numErr?.message ?? 'Error al generar el número de factura',
+        },
+        500
+      );
+    }
+
+    // 4) Obtener hash de la factura anterior
+    const { data: prevFactura, error: prevErr } = await db
       .from('facturas')
       .select('hash_actual')
       .eq('property_id', propertyId)
@@ -89,22 +146,35 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    if (prevErr) {
+      return json({ error: prevErr.message }, 500);
+    }
+
     const hashAnterior = prevFactura?.hash_actual ?? '0';
 
-    // 5. Calcular importes y nombre fiscal
-    const importeTotal = Number(reserva.importe_total);
-    const { base, iva } = calcIva10(importeTotal);
-    const fechaEmision  = new Date().toISOString().split('T')[0];
+    // 5) Calcular importes y datos fiscales finales
+    const importeTotal = Number(reserva.importe_total ?? 0);
+    if (!Number.isFinite(importeTotal) || importeTotal <= 0) {
+      return json({ error: 'La reserva no tiene un importe_total válido' }, 422);
+    }
 
-    const nombreFinal = (nombreOverride ?? '').trim() ||
+    const { base, iva } = calcIva10(importeTotal);
+    const fechaEmision = new Date().toISOString().split('T')[0];
+
+    const nombreFinal =
+      (nombreOverride ?? '').trim() ||
       reserva.razon_social ||
       `${reserva.nombre_cliente ?? ''} ${reserva.apellidos_cliente ?? ''}`.trim();
 
-    const nifFinal      = nif?.trim() || reserva.nif_factura || null;
-    const direccionFinal = direccion?.trim() || reserva.direccion_factura || null;
-    const emailFinal    = email_cliente?.trim() || reserva.email_cliente || null;
+    if (!nombreFinal) {
+      return json({ error: 'No se pudo determinar el nombre fiscal del cliente' }, 422);
+    }
 
-    // 6. Calcular hash VeriFactu
+    const nifFinal = nif?.trim() || reserva.nif_factura || null;
+    const direccionFinal = direccion?.trim() || reserva.direccion_factura || null;
+    const emailFinal = email_cliente?.trim() || reserva.email_cliente || null;
+
+    // 6) Hash VeriFactu
     const hashActual = await sha256hex([
       propertyId,
       numero,
@@ -114,49 +184,77 @@ serve(async (req) => {
       hashAnterior,
     ]);
 
-    // 7. Insertar factura bloqueada
+    // 7) Insertar factura con esquema REAL
+    const lineas = [
+      {
+        concepto: 'Hospedaje Casa Rural',
+        cantidad: 1,
+        base_imponible: base,
+        iva_porcentaje: 10,
+        cuota_iva: iva,
+        total: importeTotal,
+      },
+    ];
+
     const { data: factura, error: insertErr } = await db
       .from('facturas')
       .insert({
-        property_id:    propertyId,
-        reserva_id:     reservaId,
-        numero,
-        fecha_emision:  fechaEmision,
-        fecha_operacion: fechaEmision,
-        nombre:         nombreFinal,
-        nif:            nifFinal,
-        direccion:      direccionFinal,
-        email_cliente:  emailFinal,
-        concepto:       'Hospedaje Casa Rural',
+        property_id: propertyId,
+        reserva_id: reservaId,
+        numero_factura: numero,
+        nombre_cliente: nombreFinal,
+        nif_cliente: nifFinal,
+        direccion_cliente: direccionFinal,
         base_imponible: base,
         iva_porcentaje: 10,
-        iva_importe:    iva,
-        total:          importeTotal,
-        estado:         'EMITIDA',
-        tipo_factura:   'ORDINARIA',
-        bloqueada:      true,
-        hash_actual:    hashActual,
-        hash_anterior:  hashAnterior,
-        estado_aeat:    'PENDIENTE',
+        cuota_iva: iva,
+        total: importeTotal,
+        lineas,
+        estado: 'EMITIDA',
+        fecha_emision: fechaEmision,
+        tipo_factura: 'ORDINARIA',
+        bloqueada: true,
+        hash_actual: hashActual,
+        hash_anterior: hashAnterior,
+        estado_aeat: 'PENDIENTE',
+        email_cliente: emailFinal,
+        fecha_operacion: fechaEmision,
       })
       .select('*')
       .single();
 
     if (insertErr || !factura) {
-      return json({ error: insertErr?.message ?? 'Error al crear la factura' }, 500);
+      return json(
+        {
+          error: insertErr?.message ?? 'Error al crear la factura',
+        },
+        500
+      );
     }
 
-    // 8. Registrar evento de auditoría
-    await db.from('factura_eventos').insert({
-      factura_id:  factura.id,
+    // 8) Auditoría
+    // Solo si la tabla existe en tu proyecto.
+    const { error: auditErr } = await db.from('factura_eventos').insert({
+      factura_id: factura.id,
       property_id: propertyId,
       tipo_evento: 'FACTURA_EMITIDA',
       descripcion: `Factura ordinaria ${numero} emitida`,
-      payload: { reserva_id: reservaId, hash_actual: hashActual },
+      payload: {
+        reserva_id: reservaId,
+        hash_actual: hashActual,
+      },
     });
+
+    if (auditErr) {
+      // No rompo la factura por auditoría; solo devuelvo warning
+      return json({
+        factura,
+        warning: `Factura creada, pero no se pudo registrar auditoría: ${auditErr.message}`,
+      });
+    }
 
     return json({ factura });
   } catch (err: any) {
-    return json({ error: err.message ?? 'Error interno' }, 500);
+    return json({ error: err?.message ?? 'Error interno' }, 500);
   }
 });

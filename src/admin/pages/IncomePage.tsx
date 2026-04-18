@@ -17,28 +17,14 @@ import {
   endOfYear,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { supabase } from '../../integrations/supabase/client'
 import { useAdminTenant } from '../context/AdminTenantContext'
 import { EmitirFacturaModal, type ReservaParaEmitir } from '../components/EmitirFacturaModal'
 import type { FacturaDetalle } from '../../services/invoice.service'
-
-// ─── Tipos ─────────────────────────────────────────────────────────────────────
-type Periodo = 'mes' | 'anio' | 'custom'
-
-interface ReservaIngreso {
-  id: string
-  nombre_cliente: string
-  apellidos_cliente: string
-  fecha_entrada: string
-  fecha_salida: string
-  noches: number
-  num_huespedes: number
-  origen: string
-  tarifa: string
-  importe_total: number
-  estado: string
-  estado_pago: string
-}
+import {
+  incomeService,
+  type ReservaIngreso,
+  type PeriodoIncome as Periodo,
+} from '../../services/income.service'
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 const ORIGEN_SHORT: Record<string, string> = {
@@ -65,7 +51,6 @@ const PAGO_STYLE: Record<string, string> = {
 
 const today = new Date()
 
-// Comisión Stripe: 1.5% + 0.25€ por transacción (reservas DIRECT_WEB pagadas)
 const STRIPE_PCT = 0.015
 const STRIPE_FIXED = 0.25
 
@@ -103,6 +88,7 @@ function getRangeForPeriodo(
 // ─── Componente principal ──────────────────────────────────────────────────────
 export const IncomePage: React.FC = () => {
   useAdminTenant()
+
   const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
@@ -115,66 +101,50 @@ export const IncomePage: React.FC = () => {
     customFrom: '',
     customTo: '',
   })
+
   const [reservas, setReservas] = useState<ReservaIngreso[]>([])
-  const [loading, setLoading] = useState(true)
-  // Billing: map reservaId → factura (ORDINARIA, active)
   const [facturasMap, setFacturasMap] = useState<Record<string, FacturaDetalle>>({})
-  const [loadingFacturas, setLoadingFacturas] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [emitirReserva, setEmitirReserva] = useState<ReservaParaEmitir | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError('')
 
-    const [from, to] = getRangeForPeriodo(
-      applied.periodo,
-      applied.customFrom,
-      applied.customTo
-    )
-    const fromStr = from.toISOString().substring(0, 10)
-    const toStr = to.toISOString().substring(0, 10)
-
-    const { data } = await supabase
-      .from('reservas')
-      .select(
-        'id,nombre_cliente,apellidos_cliente,fecha_entrada,fecha_salida,noches,num_huespedes,origen,tarifa,importe_total,estado,estado_pago'
+    try {
+      const [from, to] = getRangeForPeriodo(
+        applied.periodo,
+        applied.customFrom,
+        applied.customTo
       )
-      .gte('fecha_entrada', fromStr)
-      .lte('fecha_entrada', toStr)
-      .neq('estado', 'CANCELLED')
-      .neq('estado', 'EXPIRED')
-      .order('fecha_entrada', { ascending: true })
 
-    setReservas(data ?? [])
-    setLoading(false)
-  }, [applied])
+      const fromStr = from.toISOString().substring(0, 10)
+      const toStr = to.toISOString().substring(0, 10)
 
-  // Load facturas for the current reservas
-  const loadFacturas = useCallback(async (reservaIds: string[]) => {
-    if (reservaIds.length === 0) { setFacturasMap({}); return }
-    setLoadingFacturas(true)
-    const { data } = await supabase
-      .from('facturas')
-      .select('id, numero, estado, tipo_factura, reserva_id, bloqueada, total')
-      .in('reserva_id', reservaIds)
-      .eq('tipo_factura', 'ORDINARIA')
-      .not('estado', 'in', '(ANULADA,RECTIFICADA)')
-    const map: Record<string, FacturaDetalle> = {}
-    for (const f of (data ?? [])) {
-      if (f.reserva_id) map[f.reserva_id] = f as any
+      const data = await incomeService.getIncomeData({
+        from: fromStr,
+        to: toStr,
+      })
+
+      setReservas(data.reservas)
+      setFacturasMap(data.facturasMap)
+    } catch (e: any) {
+      console.error(e)
+      setReservas([])
+      setFacturasMap({})
+      setError(e?.message ?? 'No se pudieron cargar los ingresos')
+    } finally {
+      setLoading(false)
     }
-    setFacturasMap(map)
-    setLoadingFacturas(false)
-  }, [])
+  }, [applied])
 
   useEffect(() => {
     load()
   }, [load])
 
-  useEffect(() => {
-    loadFacturas(reservas.map(r => r.id))
-  }, [reservas, loadFacturas])
-
   const totalFacturado = reservas.reduce((s, r) => s + r.importe_total, 0)
+
   const totalCobrado = reservas
     .filter((r) => r.estado_pago === 'PAID')
     .reduce((s, r) => s + r.importe_total, 0)
@@ -186,7 +156,6 @@ export const IncomePage: React.FC = () => {
   const totalNoches = reservas.reduce((s, r) => s + r.noches, 0)
   const precioMedioNoche = totalNoches > 0 ? totalFacturado / totalNoches : 0
 
-  // Comisiones Stripe solo sobre reservas web directas pagadas
   const totalComisionStripe = reservas
     .filter((r) => r.estado_pago === 'PAID' && r.origen === 'DIRECT_WEB')
     .reduce((s, r) => s + stripeComision(r.importe_total), 0)
@@ -246,7 +215,7 @@ export const IncomePage: React.FC = () => {
           reserva={emitirReserva}
           onClose={() => setEmitirReserva(null)}
           onEmitida={(factura) => {
-            setFacturasMap(prev => ({ ...prev, [emitirReserva.id]: factura }))
+            setFacturasMap((prev) => ({ ...prev, [emitirReserva.id]: factura }))
             setEmitirReserva(null)
           }}
         />
@@ -459,6 +428,10 @@ export const IncomePage: React.FC = () => {
           <div className="flex h-40 items-center justify-center rounded-3xl border border-sidebar-border bg-sidebar-bg">
             <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
           </div>
+        ) : error ? (
+          <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-6 py-6 text-sm text-red-300">
+            {error}
+          </div>
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -640,83 +613,94 @@ export const IncomePage: React.FC = () => {
 
                     <tbody className="divide-y divide-sidebar-border">
                       {reservas.map((r) => {
-                        const comision = r.origen === 'DIRECT_WEB' && r.estado_pago === 'PAID'
-                          ? stripeComision(r.importe_total)
-                          : null
-                        const neto = comision !== null
-                          ? Math.round((r.importe_total - comision) * 100) / 100
-                          : null
+                        const comision =
+                          r.origen === 'DIRECT_WEB' && r.estado_pago === 'PAID'
+                            ? stripeComision(r.importe_total)
+                            : null
+
+                        const neto =
+                          comision !== null
+                            ? Math.round((r.importe_total - comision) * 100) / 100
+                            : null
+
                         const factura = facturasMap[r.id]
-                        const canEmitir = !factura && (r.estado_pago === 'PAID' || r.estado_pago === 'PARTIAL')
+                        const canEmitir =
+                          !factura && (r.estado_pago === 'PAID' || r.estado_pago === 'PARTIAL')
+
                         return (
-                        <tr
-                          key={r.id}
-                          className="transition-colors hover:bg-sidebar-hover/60"
-                        >
-                          <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-100">
-                            {r.nombre_cliente} {r.apellidos_cliente}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-slate-400">
-                            {fmtDate(r.fecha_entrada)}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-slate-400">
-                            {fmtDate(r.fecha_salida)}
-                          </td>
-                          <td className="px-4 py-3 text-center text-slate-400">
-                            {r.noches}
-                          </td>
-                          <td className="px-4 py-3 text-slate-400">
-                            {ORIGEN_SHORT[r.origen] ?? r.origen}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`text-xs font-medium ${
-                                r.tarifa === 'FLEXIBLE'
-                                  ? 'text-emerald-300'
-                                  : 'text-amber-300'
-                              }`}
-                            >
-                              {r.tarifa === 'FLEXIBLE' ? 'Flexible' : 'No reemb.'}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-white">
-                            {fmt(r.importe_total)}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-rose-300">
-                            {comision !== null ? `−${fmt(comision)}` : '—'}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-emerald-300">
-                            {neto !== null ? fmt(neto) : '—'}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                PAGO_STYLE[r.estado_pago] ??
-                                'border border-slate-500/20 bg-slate-500/10 text-slate-300'
-                              }`}
-                            >
-                              {PAGO_LABEL[r.estado_pago] ?? r.estado_pago}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3">
-                            {loadingFacturas ? (
-                              <Loader2 size={13} className="animate-spin text-slate-600" />
-                            ) : factura ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
-                                <CheckCircle2 size={10} />
-                                {factura.numero}
-                              </span>
-                            ) : canEmitir ? (
-                              <button
-                                onClick={() => setEmitirReserva({ id: r.id, nombre_cliente: r.nombre_cliente, apellidos_cliente: r.apellidos_cliente, importe_total: r.importe_total })}
-                                className="inline-flex items-center gap-1 rounded-full border border-brand-500/40 bg-brand-600/10 px-2.5 py-0.5 text-[10px] font-bold text-brand-300 transition-colors hover:bg-brand-600/20"
+                          <tr
+                            key={r.id}
+                            className="transition-colors hover:bg-sidebar-hover/60"
+                          >
+                            <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-100">
+                              {r.nombre_cliente} {r.apellidos_cliente}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-400">
+                              {fmtDate(r.fecha_entrada)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-400">
+                              {fmtDate(r.fecha_salida)}
+                            </td>
+                            <td className="px-4 py-3 text-center text-slate-400">
+                              {r.noches}
+                            </td>
+                            <td className="px-4 py-3 text-slate-400">
+                              {ORIGEN_SHORT[r.origen] ?? r.origen}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`text-xs font-medium ${
+                                  r.tarifa === 'FLEXIBLE'
+                                    ? 'text-emerald-300'
+                                    : 'text-amber-300'
+                                }`}
                               >
-                                <FileText size={10} />
-                                Emitir
-                              </button>
-                            ) : null}
-                          </td>
-                        </tr>
+                                {r.tarifa === 'FLEXIBLE' ? 'Flexible' : 'No reemb.'}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-white">
+                              {fmt(r.importe_total)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-rose-300">
+                              {comision !== null ? `−${fmt(comision)}` : '—'}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-emerald-300">
+                              {neto !== null ? fmt(neto) : '—'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                  PAGO_STYLE[r.estado_pago] ??
+                                  'border border-slate-500/20 bg-slate-500/10 text-slate-300'
+                                }`}
+                              >
+                                {PAGO_LABEL[r.estado_pago] ?? r.estado_pago}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              {factura ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                                  <CheckCircle2 size={10} />
+                                  {factura.numero}
+                                </span>
+                              ) : canEmitir ? (
+                                <button
+                                  onClick={() =>
+                                    setEmitirReserva({
+                                      id: r.id,
+                                      nombre_cliente: r.nombre_cliente,
+                                      apellidos_cliente: r.apellidos_cliente,
+                                      importe_total: r.importe_total,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 rounded-full border border-brand-500/40 bg-brand-600/10 px-2.5 py-0.5 text-[10px] font-bold text-brand-300 transition-colors hover:bg-brand-600/20"
+                                >
+                                  <FileText size={10} />
+                                  Emitir
+                                </button>
+                              ) : null}
+                            </td>
+                          </tr>
                         )
                       })}
                     </tbody>

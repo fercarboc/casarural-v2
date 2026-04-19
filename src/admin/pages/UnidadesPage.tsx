@@ -69,6 +69,7 @@ interface PeriodoForm {
 }
 
 interface UnidadDetalle extends Unidad {
+  modo_operacion?: 'SHORT' | 'LONG'
   descripcion_corta?: string | null
   descripcion_larga?: string | null
   descripcion_extras?: string | null
@@ -142,6 +143,8 @@ export const UnidadesPage: React.FC = () => {
   const [savingPeriodo, setSavingPeriodo] = useState(false)
   const [periodoError, setPeriodoError] = useState('')
 
+  const [modoFilter, setModoFilter] = useState<'ALL' | 'SHORT' | 'LONG'>('ALL')
+
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [detailUnit, setDetailUnit] = useState<UnidadDetalle | null>(null)
 
@@ -160,7 +163,7 @@ export const UnidadesPage: React.FC = () => {
       const { data: unidadesData, error: uError } = await supabase
         .from('unidades')
         .select(`
-          id, nombre, slug, tipo,
+          id, nombre, slug, tipo, modo_operacion,
           capacidad_base, capacidad_maxima,
           num_habitaciones, num_banos, superficie_m2,
           fotos, amenities, activa, orden,
@@ -456,6 +459,13 @@ export const UnidadesPage: React.FC = () => {
 
   const activePeriodsCount = periodos.filter((p) => p.activa).length
 
+  const filteredUnidades = modoFilter === 'ALL'
+    ? unidades
+    : unidades.filter((u) => u.modo_operacion === modoFilter)
+
+  const countShort = unidades.filter((u) => u.modo_operacion === 'SHORT' || !u.modo_operacion).length
+  const countLong = unidades.filter((u) => u.modo_operacion === 'LONG').length
+
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -694,27 +704,61 @@ export const UnidadesPage: React.FC = () => {
           </section>
         )}
 
+        {/* ── Filtro modo ───────────────────────────────────────────────────── */}
+        <div className="flex gap-1 rounded-2xl border border-slate-800/80 bg-[#08111f] p-1.5 shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
+          {([
+            ['ALL', 'Todas', unidades.length],
+            ['SHORT', 'Corta estancia', countShort],
+            ['LONG', 'Media / Larga estancia', countLong],
+          ] as const).map(([val, label, count]) => (
+            <button
+              key={val}
+              onClick={() => setModoFilter(val)}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
+                modoFilter === val
+                  ? 'bg-[#101c2e] text-slate-50 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {label}
+              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                modoFilter === val ? 'bg-sky-500/20 text-sky-300' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
+
         {/* ── Lista de unidades ─────────────────────────────────────────────── */}
         <div className="space-y-4">
-          {unidades.length === 0 && !showForm && (
+          {filteredUnidades.length === 0 && !showForm && (
             <div className="space-y-3 rounded-3xl border border-dashed border-slate-700/80 bg-[#08111f] p-14 text-center shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#08111f]">
                 <Home size={22} className="text-slate-400" />
               </div>
-              <p className="font-semibold text-slate-200">Sin unidades todavía</p>
-              <p className="text-sm text-slate-400">
-                Crea la primera unidad para empezar a recibir reservas
-              </p>
-              <button
-                onClick={openCreate}
-                className="mt-2 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-[#07111f] shadow-lg shadow-emerald-500/20 hover:bg-emerald-400"
-              >
-                <Plus size={14} /> Crear unidad
-              </button>
+              {modoFilter === 'ALL' ? (
+                <>
+                  <p className="font-semibold text-slate-200">Sin unidades todavía</p>
+                  <p className="text-sm text-slate-400">
+                    Crea la primera unidad para empezar a recibir reservas
+                  </p>
+                  <button
+                    onClick={openCreate}
+                    className="mt-2 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-[#07111f] shadow-lg shadow-emerald-500/20 hover:bg-emerald-400"
+                  >
+                    <Plus size={14} /> Crear unidad
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  No hay unidades de este tipo. Cambia el filtro o crea una nueva unidad.
+                </p>
+              )}
             </div>
           )}
 
-          {unidades.map((u, idx) => {
+          {filteredUnidades.map((u, idx) => {
             const pricesOpen = editingPricesId === u.id
 
             return (
@@ -752,6 +796,9 @@ export const UnidadesPage: React.FC = () => {
                     <div className="flex flex-wrap items-center gap-3">
                       <h3 className="text-lg font-bold text-slate-50">{u.nombre}</h3>
                       <Badge variant="info">{TIPO_LABELS[u.tipo] ?? u.tipo}</Badge>
+                      {u.modo_operacion === 'LONG'
+                        ? <Badge variant="warning">Media/Larga estancia</Badge>
+                        : <Badge variant="success">Corta estancia</Badge>}
                       {!u.activa && <Badge variant="default">Inactiva</Badge>}
                     </div>
 

@@ -85,17 +85,11 @@ const RESERVAS_SELECT = `
   noches,
   num_huespedes,
   tarifa,
-  precio_noche,
-  importe_alojamiento,
-  importe_extras,
-  importe_limpieza,
-  descuento_aplicado,
   email_cliente,
   nombre_cliente,
   apellidos_cliente,
   estado_pago,
   importe_total,
-  importe_pagado,
   importe_senal
 `;
 
@@ -155,21 +149,17 @@ function mapFactura(f: any): FacturaDetalle {
     reserva_noches: f.reservas?.noches,
     reserva_num_huespedes: f.reservas?.num_huespedes,
     reserva_tarifa: f.reservas?.tarifa,
-    reserva_precio_noche: Number(f.reservas?.precio_noche ?? 0),
-    reserva_importe_alojamiento: Number(f.reservas?.importe_alojamiento ?? 0),
-    reserva_importe_extra: Number(
-      f.reservas?.importe_extras ?? f.reservas?.importe_extra ?? 0
-    ),
-    reserva_importe_limpieza: Number(f.reservas?.importe_limpieza ?? 0),
-    reserva_descuento: Number(
-      f.reservas?.descuento_aplicado ?? f.reservas?.descuento ?? 0
-    ),
+    reserva_precio_noche: 0,
+    reserva_importe_alojamiento: 0,
+    reserva_importe_extra: 0,
+    reserva_importe_limpieza: 0,
+    reserva_descuento: 0,
     reserva_email: f.reservas?.email_cliente ?? f.reservas?.email,
     reserva_nombre: f.reservas?.nombre_cliente ?? f.reservas?.nombre,
     reserva_apellidos: f.reservas?.apellidos_cliente ?? f.reservas?.apellidos,
     reserva_estado_pago: f.reservas?.estado_pago,
     reserva_total: Number(f.reservas?.importe_total ?? f.reservas?.total ?? 0),
-    reserva_importe_pagado: Number(f.reservas?.importe_pagado ?? 0),
+    reserva_importe_pagado: 0,
     reserva_importe_senal:
       f.reservas?.importe_senal != null ? Number(f.reservas.importe_senal) : undefined,
   };

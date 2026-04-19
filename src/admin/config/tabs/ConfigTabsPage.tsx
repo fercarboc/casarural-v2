@@ -9,16 +9,18 @@ import { DomainEmailTab } from './DomainEmailTab'
 import { PaymentsTab } from './PaymentsTab'
 import { SecurityTab } from './SecurityTab'
 import { EmailTab } from './EmailTab'
+import { WhatsAppTab } from './WhatsAppTab'
 
 const TABS = [
-  { id: 'general',  label: 'General' },
-  { id: 'branding', label: 'Marca' },
-  { id: 'rules',    label: 'Normas' },
-  { id: 'legal',    label: 'Legal' },
-  { id: 'domain',   label: 'Dominio y Email' },
-  { id: 'email',    label: 'Plantillas Email' },
-  { id: 'payments', label: 'Pagos' },
-  { id: 'security', label: 'Seguridad' },
+  { id: 'general',   label: 'General' },
+  { id: 'branding',  label: 'Marca' },
+  { id: 'rules',     label: 'Normas' },
+  { id: 'legal',     label: 'Legal' },
+  { id: 'domain',    label: 'Dominio y Email' },
+  { id: 'email',     label: 'Plantillas Email' },
+  { id: 'whatsapp',  label: 'WhatsApp' },
+  { id: 'payments',  label: 'Pagos' },
+  { id: 'security',  label: 'Seguridad' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -52,7 +54,7 @@ export function ConfigTabsPage({ property, upd, handleSave, status, errorMsg, st
             </div>
           </div>
 
-          {activeTab !== 'security' && activeTab !== 'payments' && activeTab !== 'email' && (
+          {activeTab !== 'security' && activeTab !== 'payments' && activeTab !== 'email' && activeTab !== 'whatsapp' && (
             <button
               onClick={handleSave}
               disabled={status === 'saving'}
@@ -116,6 +118,7 @@ export function ConfigTabsPage({ property, upd, handleSave, status, errorMsg, st
       {activeTab === 'legal'    && <LegalTab {...tabProps} />}
       {activeTab === 'domain'   && <DomainEmailTab {...tabProps} />}
       {activeTab === 'email'    && <EmailTab />}
+      {activeTab === 'whatsapp' && <WhatsAppTab property={property} upd={upd} handleSave={handleSave} status={status} />}
       {activeTab === 'payments' && <PaymentsTab property={property} stripeProps={stripeProps} />}
       {activeTab === 'security' && <SecurityTab />}
     </div>

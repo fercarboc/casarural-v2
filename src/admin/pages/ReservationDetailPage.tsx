@@ -4,7 +4,7 @@ import {
   ArrowLeft, Calendar, CalendarDays, Users, Mail, Phone, FileText,
   AlertCircle, Loader2, Copy, Check, Send, Edit2, Ban,
   CreditCard, ClipboardList, UserCheck, RefreshCw,
-  ArrowRight, TrendingUp, TrendingDown, Minus
+  ArrowRight, TrendingUp, TrendingDown, Minus, MessageCircle
 } from 'lucide-react'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -165,6 +165,9 @@ export const ReservationDetailPage: React.FC = () => {
   const [showConfirmacion, setShowConfirmacion] = useState(false)
   const [sendingConfirmacion, setSendingConfirmacion] = useState(false)
   const [confirmacionSent, setConfirmacionSent] = useState(false)
+  const [sendingWa, setSendingWa] = useState(false)
+  const [waSent, setWaSent] = useState(false)
+  const [waError, setWaError] = useState('')
 
   useEffect(() => {
     configService
@@ -266,6 +269,57 @@ export const ReservationDetailPage: React.FC = () => {
     setSendingCheckin(false)
     setCheckinSent(true)
     setTimeout(() => setCheckinSent(false), 3000)
+  }
+
+  async function sendWhatsapp() {
+    if (!r) return
+    const phone = r.telefono_cliente ?? r.telefono
+    if (!phone) { setWaError('Esta reserva no tiene teléfono del huésped'); return }
+
+    setSendingWa(true)
+    setWaError('')
+
+    const nombreCompleto = `${s(r.nombre_cliente ?? r.nombre, '')} ${s(r.apellidos_cliente ?? r.apellidos, '')}`.trim()
+    const codigoR = fallbackCodigo(r.id, r.codigo)
+    const urlReserva = r.token_cliente
+      ? `${window.location.origin}/reserva/${r.token_cliente}`
+      : `${window.location.origin}/admin/reservas/${r.id}`
+
+    const waEvent =
+      r.estado === 'CANCELLED' ? 'booking_cancelled' : 'booking_confirmed'
+
+    const { error: err } = await supabase.functions.invoke('send-whatsapp', {
+      body: {
+        event: waEvent,
+        reserva_id: r.id,
+        property_id,
+        recipient_phone: phone,
+        recipient_name: nombreCompleto,
+        data: {
+          fecha_entrada: fmtDate(r.fecha_entrada),
+          fecha_salida: fmtDate(r.fecha_salida),
+          noches: String(n(r.noches)),
+          num_huespedes: String(n(r.num_huespedes)),
+          importe_total: `${n(r.importe_total ?? r.total).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`,
+          importe_pagado: `${Math.max(n(r.importe_pagado), n(r.importe_senal)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`,
+          codigo_reserva: codigoR,
+          info_reembolso: 'Contacta con nosotros para gestionar el reembolso.',
+          url_reserva: urlReserva,
+        },
+      },
+    })
+
+    setSendingWa(false)
+
+    if (err) {
+      setWaError(err.message ?? 'Error al enviar WhatsApp')
+      setTimeout(() => setWaError(''), 5000)
+      return
+    }
+
+    setWaSent(true)
+    setTimeout(() => setWaSent(false), 4000)
+    load()
   }
 
   async function sendConfirmacionEmail() {
@@ -410,6 +464,29 @@ export const ReservationDetailPage: React.FC = () => {
           >
             <RefreshCw size={14} />
           </button>
+
+          {(isActive || r.estado === 'CANCELLED') && (r.telefono_cliente ?? r.telefono) && (
+            <button
+              onClick={sendWhatsapp}
+              disabled={sendingWa || waSent}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-all ${
+                waSent
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : waError
+                    ? 'border-red-300 bg-red-50 text-red-600'
+                    : 'border-[#25D366]/40 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10 disabled:opacity-50'
+              }`}
+              title={waError || 'Enviar WhatsApp al huésped'}
+            >
+              {waSent ? (
+                <><Check size={14} /> WA enviado</>
+              ) : sendingWa ? (
+                <><Loader2 size={14} className="animate-spin" /> Enviando...</>
+              ) : (
+                <><MessageCircle size={14} /> WhatsApp</>
+              )}
+            </button>
+          )}
 
           {isActive && (
             <button

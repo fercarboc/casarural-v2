@@ -87,7 +87,7 @@ function getRangeForPeriodo(
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 export const IncomePage: React.FC = () => {
-  useAdminTenant()
+  const { property_id } = useAdminTenant()
 
   const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [customFrom, setCustomFrom] = useState('')
@@ -125,6 +125,7 @@ export const IncomePage: React.FC = () => {
       const data = await incomeService.getIncomeData({
         from: fromStr,
         to: toStr,
+        property_id,
       })
 
       setReservas(data.reservas)

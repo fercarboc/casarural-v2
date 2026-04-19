@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CleaningDashboardPage — casarural-v2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --sidebar-w:220px;
+  --bg:#0f1117;
+  --bg2:#161b27;
+  --bg3:#1e2435;
+  --bg4:#252c3f;
+  --border:#2a3248;
+  --text:#e8eaf0;
+  --text2:#8b92a8;
+  --text3:#555d75;
+  --accent:#4f7fff;
+  --accent2:#3b6be0;
+  --green:#2ecc89;
+  --green-bg:#0d2e22;
+  --amber:#f59e0b;
+  --amber-bg:#2d1f06;
+  --red:#ef4444;
+  --red-bg:#2d0f0f;
+  --orange:#f97316;
+  --orange-bg:#2d1606;
+  --purple:#a78bfa;
+  --purple-bg:#1e1535;
+}
+html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+body{display:flex}
+
+.sidebar{width:var(--sidebar-w);min-height:100vh;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;height:100vh}
+.logo{padding:18px 16px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.logo-icon{width:30px;height:30px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:16px;height:16px;fill:white}
+.logo-text{font-size:13px;font-weight:600;color:var(--text);letter-spacing:.01em}
+.logo-sub{font-size:10px;color:var(--text2);margin-top:1px}
+
+.nav{flex:1;padding:10px 0;overflow:hidden}
+.nav-section{padding:8px 16px 4px;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.08em;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:9px;padding:7px 16px;cursor:pointer;color:var(--text2);transition:all .15s;border-left:2px solid transparent;font-size:12.5px}
+.nav-item:hover{color:var(--text);background:var(--bg3)}
+.nav-item.active{color:var(--accent);background:rgba(79,127,255,.08);border-left-color:var(--accent)}
+.nav-item svg{width:15px;height:15px;flex-shrink:0;opacity:.8}
+.nav-item.active svg{opacity:1}
+.nav-badge{margin-left:auto;background:var(--red);color:white;font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px}
+.nav-badge.amber{background:var(--amber)}
+
+.sidebar-footer{padding:12px 16px;border-top:1px solid var(--border)}
+.tenant{display:flex;align-items:center;gap:9px}
+.tenant-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
+
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.topbar{padding:14px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg2);position:sticky;top:0;z-index:10}
+.page-title{font-size:15px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px}
+.breadcrumb{font-size:11.5px;color:var(--text3);margin-top:2px}
+.topbar-actions{display:flex;gap:8px;align-items:center}
+.btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:7px;font-size:12.5px;font-weight:500;cursor:pointer;border:none;transition:all .15s}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg3);color:var(--text)}
+.btn-primary{background:var(--accent);color:white}
+.btn-primary:hover{background:var(--accent2)}
+.btn svg{width:13px;height:13px}
+
+.content{flex:1;padding:20px 24px;overflow-y:auto}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.kpi-label{font-size:11px;color:var(--text2);font-weight:500;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.kpi-label svg{width:12px;height:12px}
+.kpi-value{font-size:26px;font-weight:700;color:var(--text);letter-spacing:-.02em;line-height:1}
+.kpi-sub{font-size:11px;margin-top:6px;display:flex;align-items:center;gap:4px}
+
+.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:600;gap:4px}
+.pill.urgent{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.pill.pending{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
+.pill.done{background:var(--green-bg);color:var(--green);border:1px solid rgba(46,204,137,.2)}
+.pill.assigned{background:var(--purple-bg);color:var(--purple);border:1px solid rgba(167,139,250,.2)}
+.pill.inprogress{background:rgba(79,127,255,.12);color:var(--accent);border:1px solid rgba(79,127,255,.25)}
+.pill.short{background:rgba(79,127,255,.1);color:var(--accent);font-size:10px}
+.pill.long{background:var(--purple-bg);color:var(--purple);font-size:10px}
+.pill.auto{background:var(--bg4);color:var(--text2);font-size:10px}
+
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-title{font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px}
+.section-title svg{width:14px;height:14px;color:var(--text2)}
+
+.urgent-strip{background:var(--red-bg);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.urgent-strip-left{display:flex;align-items:center;gap:10px}
+.urgent-icon{width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.urgent-icon svg{width:16px;height:16px;color:var(--red)}
+.urgent-title{font-size:13px;font-weight:600;color:var(--red);margin-bottom:2px}
+.urgent-desc{font-size:11.5px;color:rgba(239,68,68,.7)}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.card-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:12.5px;font-weight:600;color:var(--text)}
+.card-body{padding:0}
+
+table{width:100%;border-collapse:collapse}
+th{padding:8px 14px;text-align:left;font-size:10.5px;font-weight:600;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg3)}
+td{padding:9px 14px;border-bottom:1px solid rgba(42,50,72,.6);font-size:12px;color:var(--text);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.015)}
+
+.unit-dot{display:inline-flex;width:8px;height:8px;border-radius:50%;margin-right:6px;flex-shrink:0;vertical-align:middle}
+.dot-blue{background:var(--accent)}
+.dot-purple{background:var(--purple)}
+.dot-green{background:var(--green)}
+
+.timeline-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.timeline-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(42,50,72,.5)}
+.timeline-item:last-child{border-bottom:none}
+.tl-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.tl-time{font-size:10.5px;color:var(--text3);min-width:38px;margin-top:3px}
+.tl-title{font-size:12px;color:var(--text);font-weight:500}
+.tl-sub{font-size:11px;color:var(--text2);margin-top:2px}
+
+.progress-bar{height:4px;background:var(--bg4);border-radius:2px;overflow:hidden;margin-top:6px}
+.progress-fill{height:100%;border-radius:2px}
+
+.worker-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(42,50,72,.4)}
+.worker-row:last-child{border-bottom:none}
+.worker-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.worker-name{font-size:12.5px;color:var(--text);font-weight:500}
+.worker-count{font-size:11px;color:var(--text2);margin-top:1px}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22" fill="none" stroke="white" stroke-width="1.5"/></svg>
+    </div>
+    <div>
+      <div class="logo-text">StayNex</div>
+      <div class="logo-sub">casarural-v2</div>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <div class="nav-section">Principal</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Resumen
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Reservas
+      <span class="nav-badge">4</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Calendario
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+      Unidades
+    </div>
+
+    <div class="nav-section" style="margin-top:8px">Operaciones</div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="19" cy="6" r="3" fill="currentColor" stroke="none"/></svg>
+      Limpieza
+      <span class="nav-badge amber">3</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      Contratos
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      Ingresos
+    </div>
+
+    <div class="nav-section" style="margin-top:8px">Sistema</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M2 12h2M20 12h2"/></svg>
+      Configuración
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="tenant">
+      <div class="tenant-dot"></div>
+      <div>
+        <div style="font-size:11.5px;color:var(--text);font-weight:500">Las Lastras</div>
+        <div style="font-size:10px;color:var(--text3)">Cantabria · 3 unidades</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div>
+      <div class="page-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" width="17" height="17"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="19" cy="6" r="3" fill="var(--accent)" stroke="none"/></svg>
+        Módulo de Limpieza
+      </div>
+      <div class="breadcrumb">admin / limpieza — hoy, sábado 19 abril 2026</div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+        Filtros
+      </button>
+      <button class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nueva limpieza
+      </button>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
+          Hoy
+        </div>
+        <div class="kpi-value">5</div>
+        <div class="kpi-sub"><span class="pill urgent">2 urgentes</span></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Pendientes
+        </div>
+        <div class="kpi-value">3</div>
+        <div class="kpi-sub" style="color:var(--text2)">sin asignar todavía</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          Completadas
+        </div>
+        <div class="kpi-value" style="color:var(--green)">12</div>
+        <div class="kpi-sub" style="color:var(--text2)">esta semana</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          Próximos 7 días
+        </div>
+        <div class="kpi-value">18</div>
+        <div class="kpi-sub" style="color:var(--text2)">programadas</div>
+      </div>
+    </div>
+
+    <!-- URGENT STRIP -->
+    <div class="urgent-strip">
+      <div class="urgent-strip-left">
+        <div class="urgent-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div>
+          <div class="urgent-title">2 limpiezas urgentes — mismo día entrada/salida</div>
+          <div class="urgent-desc">Casa Principal y Apt. Prado — check-in hoy a las 16:00. Requieren atención inmediata.</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost" style="border-color:rgba(239,68,68,.3);color:var(--red);font-size:12px">Ver todas</button>
+    </div>
+
+    <!-- GRID 2 COL -->
+    <div class="grid-2">
+
+      <!-- JOBS DE HOY -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Jobs de hoy</div>
+          <div style="display:flex;gap:6px">
+            <span class="pill short">SHORT</span>
+            <span class="pill long">LONG</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <table>
+            <thead>
+              <tr>
+                <th>Unidad</th>
+                <th>Hora</th>
+                <th>Asignado</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="unit-dot dot-blue"></span>Casa Principal</td>
+                <td style="color:var(--red);font-weight:600">ASAP</td>
+                <td style="color:var(--text2)">—</td>
+                <td><span class="pill urgent">Urgente</span></td>
+              </tr>
+              <tr>
+                <td><span class="unit-dot dot-purple"></span>Apt. Prado</td>
+                <td style="color:var(--red);font-weight:600">ASAP</td>
+                <td>M. López</td>
+                <td><span class="pill assigned">Asignado</span></td>
+              </tr>
+              <tr>
+                <td><span class="unit-dot dot-green"></span>Apt. Roble</td>
+                <td style="color:var(--text2)">14:00</td>
+                <td>M. López</td>
+                <td><span class="pill inprogress">En curso</span></td>
+              </tr>
+              <tr>
+                <td><span class="unit-dot dot-purple"></span>Apt. Prado</td>
+                <td style="color:var(--text2)">17:00</td>
+                <td style="color:var(--text2)">—</td>
+                <td><span class="pill pending">Pendiente</span></td>
+              </tr>
+              <tr>
+                <td><span class="unit-dot dot-blue"></span>Casa Principal</td>
+                <td style="color:var(--text2)">19:30</td>
+                <td>Limpieza SL</td>
+                <td><span class="pill pending">Pendiente</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- DERECHA: PERSONAL + TIMELINE -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Personal activo</div>
+            <span style="font-size:11px;color:var(--text2)">hoy</span>
+          </div>
+          <div class="card-body" style="padding:4px 16px">
+            <div class="worker-row">
+              <div class="worker-avatar" style="background:rgba(79,127,255,.15);color:var(--accent)">ML</div>
+              <div style="flex:1;min-width:0">
+                <div class="worker-name">M. López</div>
+                <div class="worker-count">2 jobs asignados · 1 en curso</div>
+                <div class="progress-bar"><div class="progress-fill" style="width:60%;background:var(--accent)"></div></div>
+              </div>
+              <span class="pill inprogress">Activo</span>
+            </div>
+            <div class="worker-row">
+              <div class="worker-avatar" style="background:rgba(167,139,250,.15);color:var(--purple)">LS</div>
+              <div style="flex:1;min-width:0">
+                <div class="worker-name">Limpieza SL</div>
+                <div class="worker-count">1 job asignado · externo</div>
+                <div class="progress-bar"><div class="progress-fill" style="width:30%;background:var(--purple)"></div></div>
+              </div>
+              <span class="pill auto">Externo</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="timeline-card">
+          <div class="section-header" style="margin-bottom:6px">
+            <div class="section-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Actividad reciente
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="tl-dot" style="background:var(--green)"></div>
+            <div class="tl-time">11:42</div>
+            <div>
+              <div class="tl-title">Apt. Roble — Completada</div>
+              <div class="tl-sub">M. López · check-out reserva #2841</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="tl-dot" style="background:var(--accent)"></div>
+            <div class="tl-time">10:15</div>
+            <div>
+              <div class="tl-title">Apt. Prado — Asignado a M. López</div>
+              <div class="tl-sub">Urgente — check-in hoy 16:00</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="tl-dot" style="background:var(--amber)"></div>
+            <div class="tl-time">09:00</div>
+            <div>
+              <div class="tl-title">2 jobs generados automáticamente</div>
+              <div class="tl-sub">AUTO_CHECKOUT · stripe-webhook</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="tl-dot" style="background:var(--text3)"></div>
+            <div class="tl-time">08:00</div>
+            <div>
+              <div class="tl-title">Schedule LONG ejecutado</div>
+              <div class="tl-sub">Apt. Prado · limpieza semanal programada</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- TABLA PRÓXIMOS 7 DÍAS -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Próximos 7 días</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:11px;color:var(--text2)">19 abr — 25 abr</span>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:11.5px">Ver todos</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Unidad</th>
+              <th>Tipo</th>
+              <th>Origen</th>
+              <th>Servicio</th>
+              <th>Asignado</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color:var(--red);font-weight:600">Hoy</td>
+              <td><span class="unit-dot dot-blue"></span>Casa Principal</td>
+              <td><span class="pill short">SHORT</span></td>
+              <td><span class="pill auto">Auto-checkout</span></td>
+              <td style="color:var(--text2)">Limpieza rotación</td>
+              <td style="color:var(--red)">Sin asignar</td>
+              <td><span class="pill urgent">Urgente</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:500">Hoy</td>
+              <td><span class="unit-dot dot-purple"></span>Apt. Prado</td>
+              <td><span class="pill short">SHORT</span></td>
+              <td><span class="pill auto">Auto-checkout</span></td>
+              <td style="color:var(--text2)">Limpieza rotación</td>
+              <td>M. López</td>
+              <td><span class="pill assigned">Asignado</span></td>
+            </tr>
+            <tr>
+              <td>Lun 21</td>
+              <td><span class="unit-dot dot-green"></span>Apt. Roble</td>
+              <td><span class="pill long">LONG</span></td>
+              <td><span class="pill auto">Programado</span></td>
+              <td style="color:var(--text2)">Limpieza semanal</td>
+              <td>M. López</td>
+              <td><span class="pill pending">Pendiente</span></td>
+            </tr>
+            <tr>
+              <td>Mar 22</td>
+              <td><span class="unit-dot dot-blue"></span>Casa Principal</td>
+              <td><span class="pill short">SHORT</span></td>
+              <td><span class="pill auto">Auto-checkout</span></td>
+              <td style="color:var(--text2)">Limpieza rotación</td>
+              <td>Limpieza SL</td>
+              <td><span class="pill pending">Pendiente</span></td>
+            </tr>
+            <tr>
+              <td>Jue 24</td>
+              <td><span class="unit-dot dot-purple"></span>Apt. Prado</td>
+              <td><span class="pill long">LONG</span></td>
+              <td><span class="pill auto">Programado</span></td>
+              <td style="color:var(--text2)">Limpieza quincenal</td>
+              <td style="color:var(--text2)">—</td>
+              <td><span class="pill pending">Pendiente</span></td>
+            </tr>
+            <tr>
+              <td>Vie 25</td>
+              <td><span class="unit-dot dot-green"></span>Apt. Roble</td>
+              <td><span class="pill short">SHORT</span></td>
+              <td><span class="pill auto">Auto-checkout</span></td>
+              <td style="color:var(--text2)">Limpieza rotación</td>
+              <td style="color:var(--text2)">—</td>
+              <td><span class="pill pending">Pendiente</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

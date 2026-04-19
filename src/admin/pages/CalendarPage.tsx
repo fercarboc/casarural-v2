@@ -366,7 +366,7 @@ export const CalendarPage: React.FC = () => {
       supabase
         .from('reservas')
         .select(
-          'id,unidad_id,nombre_cliente,apellidos_cliente,email_cliente,telefono_cliente,fecha_entrada,fecha_salida,num_huespedes,noches,tarifa,estado,estado_pago,importe_total,origen'
+          'id,reserva_unidades(unidad_id),nombre_cliente,apellidos_cliente,email_cliente,telefono_cliente,fecha_entrada,fecha_salida,num_huespedes,noches,tarifa,estado,estado_pago,importe_total,origen'
         )
         .in('estado', ['CONFIRMED', 'PENDING_PAYMENT']),
       supabase
@@ -374,7 +374,10 @@ export const CalendarPage: React.FC = () => {
         .select('id,unidad_id,fecha_inicio,fecha_fin,motivo,origen,uid_ical'),
     ])
 
-    const typedReservas = (r ?? []) as Reserva[]
+    const typedReservas = (r ?? []).map((res: any) => ({
+      ...res,
+      unidad_id: res.reserva_unidades?.[0]?.unidad_id ?? null,
+    })) as Reserva[]
     const typedBloqueos = (b ?? []) as Bloqueo[]
     const enrichedBloqueos = enrichBloqueosWithReservations(typedBloqueos, typedReservas)
 

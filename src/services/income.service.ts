@@ -85,15 +85,16 @@ export const incomeService = {
   async getIncomeData(params: {
     from: string;
     to: string;
+    property_id?: string;
   }): Promise<IncomeData> {
-    const { from, to } = params;
+    const { from, to, property_id } = params;
 
     if (!from || !to) {
       throw new Error('Los parámetros from y to son obligatorios');
     }
 
     // 1. Cargar reservas del período
-    const { data: reservasData, error: reservasError } = await supabase
+    let reservasQuery = supabase
       .from('reservas')
       .select(
         `
@@ -116,6 +117,12 @@ export const incomeService = {
       .neq('estado', 'CANCELLED')
       .neq('estado', 'EXPIRED')
       .order('fecha_entrada', { ascending: true });
+
+    if (property_id) {
+      reservasQuery = reservasQuery.eq('property_id', property_id);
+    }
+
+    const { data: reservasData, error: reservasError } = await reservasQuery;
 
     if (reservasError) {
       throw reservasError;

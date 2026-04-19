@@ -70,7 +70,9 @@ Deno.serve(async (req) => {
         superficie_m2,
         amenities,
         activa,
-        orden
+        orden,
+        modo_operacion,
+        precio_noche
       `)
       .eq('property_id', property.id)
       .eq('activa', true)

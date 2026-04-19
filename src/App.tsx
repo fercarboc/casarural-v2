@@ -54,7 +54,8 @@ import { SuperAdminPage } from './admin/pages/SuperAdminPage'
 import { RentalsPage } from './admin/pages/RentalsPage'
 import { RentalDetailPage } from './admin/pages/RentalDetailPage'
 import { SolicitudPage } from './public/pages/SolicitudPage'
-import { SolicitudConfirmadaPage } from './public/pages/SolicitudConfirmadaPage';
+import { SolicitudConfirmadaPage } from './public/pages/SolicitudConfirmadaPage'
+import { FichaAlquilerPage } from './public/pages/FichaAlquilerPage';
 
 import { ReservationViewPage } from './public/pages/ReservationViewPage';
 import ReservaConfirmada from './public/pages/ReservaConfirmada';
@@ -278,6 +279,7 @@ export default function App() {
             <Route path="/reserva/:token" element={<PublicLayout><ReservationViewPage /></PublicLayout>} />
             <Route path="/solicitar/:unidadId" element={<PublicLayout><SolicitudPage /></PublicLayout>} />
             <Route path="/solicitud/confirmacion" element={<PublicLayout><SolicitudConfirmadaPage /></PublicLayout>} />
+            <Route path="/alquiler/:slug" element={<PublicLayout><FichaAlquilerPage /></PublicLayout>} />
 
             {/* Legal Routes */}
             <Route path="/aviso-legal" element={<PublicLayout><AvisoLegal /></PublicLayout>} />

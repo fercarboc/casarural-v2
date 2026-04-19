@@ -24,6 +24,8 @@ export interface PublicUnit {
   amenities: string[] | null
   activa: boolean
   orden: number | null
+  modo_operacion: 'SHORT' | 'LONG'
+  precio_noche: number | null
   portada_url: string | null
   fotos: PublicUnitPhoto[]
 }

@@ -374,11 +374,18 @@ export const AlojamientosPage: React.FC = () => {
                 />
 
                 <div className="p-6">
-                  <div className="mb-3 flex items-center gap-2 text-emerald-700">
-                    <Building2 size={18} />
-                    <span className="text-sm font-semibold uppercase tracking-wider">
-                      Alojamiento
-                    </span>
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-emerald-700">
+                      <Building2 size={18} />
+                      <span className="text-sm font-semibold uppercase tracking-wider">
+                        Alojamiento
+                      </span>
+                    </div>
+                    {(unit as any).modo_operacion === 'LONG' && (
+                      <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-700">
+                        Alquiler mensual
+                      </span>
+                    )}
                   </div>
 
                   <h3 className="text-2xl font-serif font-bold text-stone-800">
@@ -422,21 +429,44 @@ export const AlojamientosPage: React.FC = () => {
                     </div>
                   ) : null}
 
-                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                    <Link
-                      to={`/reservar?unidad=${unit.slug}`}
-                      className="rounded-full bg-emerald-600 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-emerald-700"
-                    >
-                      Reservar
-                    </Link>
-
-                    <Link
-                      to={`/reservar?unidad=${unit.slug}`}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700 transition hover:border-stone-500"
-                    >
-                      Ver disponibilidad <ArrowRight size={16} />
-                    </Link>
-                  </div>
+                  {(unit as any).modo_operacion === 'LONG' ? (
+                    <div className="mt-4 text-sm text-stone-500">
+                      {(unit as any).precio_noche > 0 && (
+                        <p className="mb-3 font-semibold text-stone-700">
+                          Desde <span className="text-lg text-emerald-700">{(unit as any).precio_noche} €</span>/mes
+                        </p>
+                      )}
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <Link
+                          to={`/solicitar/${unit.id}`}
+                          className="rounded-full bg-emerald-600 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-emerald-700"
+                        >
+                          Solicitar alquiler
+                        </Link>
+                        <Link
+                          to={`/alquiler/${unit.slug}`}
+                          className="inline-flex items-center justify-center gap-2 rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700 transition hover:border-stone-500"
+                        >
+                          Más información <ArrowRight size={16} />
+                        </Link>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                      <Link
+                        to={`/reservar?unidad=${unit.slug}`}
+                        className="rounded-full bg-emerald-600 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-emerald-700"
+                      >
+                        Reservar
+                      </Link>
+                      <Link
+                        to={`/reservar?unidad=${unit.slug}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700 transition hover:border-stone-500"
+                      >
+                        Ver disponibilidad <ArrowRight size={16} />
+                      </Link>
+                    </div>
+                  )}
                 </div>
               </article>
             );

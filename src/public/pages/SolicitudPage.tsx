@@ -71,7 +71,7 @@ export const SolicitudPage: React.FC = () => {
       .eq('id', unidadId)
       .eq('activa', true)
       .single()
-      .then(({ data, error: e }) => {
+      .then(({ data, error: e }: { data: Unidad | null; error: any }) => {
         if (e || !data) navigate('/', { replace: true })
         else setUnidad(data as Unidad)
         setLoadingUnidad(false)
@@ -112,7 +112,7 @@ export const SolicitudPage: React.FC = () => {
     setSubmitting(true)
     setError('')
     try {
-      const { error: e } = await supabase.from('rentals').insert({
+      const { data: rental, error: e } = await supabase.from('rentals').insert({
         property_id: property?.id,
         unidad_id: unidadId,
         cliente_nombre: form.cliente_nombre.trim(),
@@ -131,8 +131,50 @@ export const SolicitudPage: React.FC = () => {
         num_ocupantes: parseInt(form.num_ocupantes) || 1,
         notas_solicitud: form.notas_solicitud.trim() || null,
         estado: 'SOLICITUD',
-      })
+      }).select('id').single()
       if (e) throw e
+
+      // Email confirmación al cliente
+      supabase.functions.invoke('send-email', {
+        body: {
+          template_key: 'rental_solicitud_recibida',
+          to_email: form.cliente_email.trim(),
+          to_name:  form.cliente_nombre.trim(),
+          property_id: property?.id,
+          extra_vars: {
+            guest_name:    form.cliente_nombre.trim(),
+            unit_name:     unidad?.nombre ?? '',
+            fecha_inicio:  form.fecha_inicio,
+            property_name: property?.nombre ?? '',
+            property_email: property?.email ?? '',
+            property_phone: property?.telefono ?? '',
+            property_address: property?.direccion ?? '',
+          },
+        },
+      }).catch(() => {/* no crítico */})
+
+      // Email aviso al admin
+      if (property?.email) {
+        supabase.functions.invoke('send-email', {
+          body: {
+            template_key: 'rental_nueva_solicitud',
+            to_email: property.email,
+            to_name:  property.nombre ?? '',
+            property_id: property?.id,
+            extra_vars: {
+              guest_name:    form.cliente_nombre.trim(),
+              tenant_email:  form.cliente_email.trim(),
+              tenant_phone:  form.cliente_telefono.trim(),
+              unit_name:     unidad?.nombre ?? '',
+              fecha_inicio:  form.fecha_inicio,
+              notas:         form.notas_solicitud.trim() || '—',
+              property_name: property.nombre ?? '',
+              admin_url:     `${window.location.origin}/admin/rentals/${rental?.id}`,
+            },
+          },
+        }).catch(() => {/* no crítico */})
+      }
+
       navigate('/solicitud/confirmacion', { replace: true })
     } catch (e: any) {
       setError(e.message ?? 'Error al enviar la solicitud. Inténtalo de nuevo.')

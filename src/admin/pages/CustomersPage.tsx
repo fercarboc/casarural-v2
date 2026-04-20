@@ -117,6 +117,14 @@ interface Factura {
   pdf_url?: string
 }
 
+interface RentalSolicitud {
+  id: string
+  unidad_nombre: string | null
+  fecha_inicio: string
+  estado: string
+  created_at: string
+}
+
 interface Contacto {
   property_id?: string
   email: string
@@ -124,10 +132,11 @@ interface Contacto {
   telefono?: string
   consultas: Consulta[]
   reservas: Reserva[]
+  rentals: RentalSolicitud[]
   ultimo_contacto: string
 }
 
-type TabFiltro = 'todos' | 'consultas' | 'clientes'
+type TabFiltro = 'todos' | 'consultas' | 'clientes' | 'solicitudes'
 type EstadoConsulta = 'NUEVA' | 'VISTA' | 'RESPONDIDA' | 'ARCHIVADA'
 
 // ── Página principal ───────────────────────────────────────
@@ -145,14 +154,19 @@ export const CustomersPage: React.FC = () => {
     setLoading(true)
 
     try {
-      const [{ data: consultas, error: consultasError }, { data: reservas, error: reservasError }] =
-        await Promise.all([
-          supabase.from('consultas').select('*').order('created_at', { ascending: false }),
-          supabase.from('reservas').select('*').order('created_at', { ascending: false }),
-        ])
+      const [
+        { data: consultas, error: consultasError },
+        { data: reservas,  error: reservasError  },
+        { data: rentals,   error: rentalsError   },
+      ] = await Promise.all([
+        supabase.from('consultas').select('*').order('created_at', { ascending: false }),
+        supabase.from('reservas').select('*').order('created_at', { ascending: false }),
+        supabase.from('rentals').select('id, cliente_nombre, cliente_email, cliente_telefono, property_id, fecha_inicio, estado, created_at, unidades(nombre)').order('created_at', { ascending: false }),
+      ])
 
       if (consultasError) throw consultasError
-      if (reservasError) throw reservasError
+      if (reservasError)  throw reservasError
+      if (rentalsError)   throw rentalsError
 
       const map = new Map<string, Contacto>()
 
@@ -165,6 +179,7 @@ export const CustomersPage: React.FC = () => {
             telefono: c.telefono,
             consultas: [],
             reservas: [],
+            rentals: [],
             ultimo_contacto: c.created_at,
           })
         }
@@ -194,6 +209,7 @@ export const CustomersPage: React.FC = () => {
             telefono: nr.telefono,
             consultas: [],
             reservas: [],
+            rentals: [],
             ultimo_contacto: r.created_at,
           })
         }
@@ -216,6 +232,37 @@ export const CustomersPage: React.FC = () => {
         if (r.created_at > entry.ultimo_contacto) {
           entry.ultimo_contacto = r.created_at
         }
+      }
+
+      for (const rl of rentals ?? []) {
+        const email = rl.cliente_email || ''
+        if (!email) continue
+
+        if (!map.has(email)) {
+          map.set(email, {
+            property_id:     rl.property_id,
+            email,
+            nombre:          rl.cliente_nombre ?? 'Sin nombre',
+            telefono:        rl.cliente_telefono ?? undefined,
+            consultas:       [],
+            reservas:        [],
+            rentals:         [],
+            ultimo_contacto: rl.created_at,
+          })
+        }
+
+        const entry = map.get(email)!
+        entry.rentals.push({
+          id:            rl.id,
+          unidad_nombre: (rl.unidades as any)?.nombre ?? null,
+          fecha_inicio:  rl.fecha_inicio,
+          estado:        rl.estado,
+          created_at:    rl.created_at,
+        })
+
+        if (!entry.property_id && rl.property_id) entry.property_id = rl.property_id
+        if (!entry.telefono && rl.cliente_telefono) entry.telefono = rl.cliente_telefono
+        if (rl.created_at > entry.ultimo_contacto) entry.ultimo_contacto = rl.created_at
       }
 
       const sorted = Array.from(map.values()).sort((a, b) =>
@@ -260,11 +307,10 @@ export const CustomersPage: React.FC = () => {
       (c.telefono ?? '').includes(q)
 
     const matchTab =
-      tab === 'todos'
-        ? true
-        : tab === 'consultas'
-        ? c.consultas.length > 0
-        : c.reservas.length > 0
+      tab === 'todos'        ? true
+      : tab === 'consultas'  ? c.consultas.length > 0
+      : tab === 'clientes'   ? c.reservas.length > 0
+      : /* solicitudes */      c.rentals.length > 0
 
     return matchSearch && matchTab
   })
@@ -275,6 +321,9 @@ export const CustomersPage: React.FC = () => {
       .flatMap((c) => c.consultas)
       .filter((c) => c.estado === 'NUEVA').length,
     clientes: contactos.filter((c) => c.reservas.length > 0).length,
+    solicitudes: contactos
+      .flatMap((c) => c.rentals)
+      .filter((r) => r.estado === 'SOLICITUD' || r.estado === 'EN_REVISION').length,
     ingresos: contactos
       .flatMap((c) => c.reservas)
       .filter((r) => r.estado !== 'CANCELLED' && r.estado !== 'EXPIRED')
@@ -325,10 +374,11 @@ export const CustomersPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-5 gap-3 mb-4">
               <Stat label="Total" value={stats.total} />
               <Stat label="Consultas nuevas" value={stats.consultasNuevas} color="amber" />
               <Stat label="Con reserva" value={stats.clientes} color="emerald" />
+              <Stat label="Solicitudes alquiler" value={stats.solicitudes} color="violet" />
               <Stat label="Ingresos" value={`${stats.ingresos.toFixed(0)}€`} color="blue" />
             </div>
 
@@ -347,17 +397,22 @@ export const CustomersPage: React.FC = () => {
             </div>
 
             <div className="flex gap-1 rounded-2xl border border-cyan-900/50 bg-[#132743] p-1 w-fit">
-              {(['todos', 'consultas', 'clientes'] as TabFiltro[]).map((t) => (
+              {([
+                ['todos',        'Todos'],
+                ['consultas',    'Consultas'],
+                ['clientes',     'Con reserva'],
+                ['solicitudes',  'Solicitudes alquiler'],
+              ] as [TabFiltro, string][]).map(([t, label]) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
-                  className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors capitalize ${
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                     tab === t
                       ? 'bg-brand-600 text-white'
                       : 'text-slate-400 hover:bg-[#18304f] hover:text-slate-200'
                   }`}
                 >
-                  {t === 'todos' ? 'Todos' : t === 'consultas' ? 'Consultas' : 'Con reserva'}
+                  {label}
                 </button>
               ))}
             </div>
@@ -476,6 +531,12 @@ function ContactRow({
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
               <BookOpen size={9} />
               {c.reservas.length} reserva{c.reservas.length > 1 ? 's' : ''}
+            </span>
+          )}
+          {c.rentals.length > 0 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-500/10 text-violet-300 border border-violet-500/20">
+              <FileText size={9} />
+              {c.rentals.length} solicitud{c.rentals.length > 1 ? 'es' : ''} alquiler
             </span>
           )}
         </div>
@@ -695,7 +756,7 @@ function ContactDetail({
       {(() => {
         const pendingKpi = getPendingConsultasCount(c.consultas)
         return (
-          <div className="grid grid-cols-3 gap-3 px-5 py-4 border-b border-cyan-900/40 bg-[#08182d]">
+          <div className="grid grid-cols-4 gap-3 px-5 py-4 border-b border-cyan-900/40 bg-[#08182d]">
             <div className="rounded-2xl border border-cyan-800/45 bg-[#10223d] px-4 py-3 text-center shadow-[0_8px_20px_rgba(0,0,0,0.18)] relative">
               <p className="text-xs text-slate-500 mb-1">Consultas</p>
               <p className="text-lg font-bold text-white">{c.consultas.length}</p>
@@ -706,6 +767,7 @@ function ContactDetail({
               )}
             </div>
             <KpiCard label="Reservas" value={c.reservas.length} valueClass="text-emerald-300" />
+            <KpiCard label="Alquileres" value={c.rentals.length} valueClass="text-violet-300" />
             <KpiCard label="Gastado" value={`${totalGastado.toFixed(0)}€`} valueClass="text-white" />
           </div>
         )
@@ -851,6 +913,30 @@ function InfoTab({
               </div>
             )
           })()}
+        </Section>
+      )}
+
+      {c.rentals.length > 0 && (
+        <Section title="Solicitudes de alquiler">
+          <div className="space-y-2">
+            {c.rentals.map((rl) => (
+              <div key={rl.id} className="flex items-center justify-between rounded-xl border border-cyan-900/40 bg-[#0b1c34] px-3 py-2.5">
+                <div>
+                  <p className="text-xs font-semibold text-slate-200">{rl.unidad_nombre ?? 'Unidad'}</p>
+                  <p className="text-[10px] text-slate-500">Inicio: {rl.fecha_inicio}</p>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  rl.estado === 'ACTIVO' || rl.estado === 'RENOVADO'
+                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                    : rl.estado === 'SOLICITUD' || rl.estado === 'EN_REVISION'
+                    ? 'bg-violet-500/10 text-violet-300 border-violet-500/20'
+                    : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                }`}>
+                  {rl.estado}
+                </span>
+              </div>
+            ))}
+          </div>
         </Section>
       )}
     </div>

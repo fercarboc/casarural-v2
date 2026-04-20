@@ -52,8 +52,6 @@ export interface Property {
   cancellation_policy_json: CancellationRule[] | null
   onboarding_done: boolean | null
   whatsapp_enabled: boolean | null
-  whatsapp_phone_number_id: string | null
-  whatsapp_access_token: string | null
   whatsapp_cleaning_phone: string | null
 }
 

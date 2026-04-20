@@ -9,6 +9,7 @@ import {
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { supabase } from '../../integrations/supabase/client'
+import { whatsappService } from '../../services/whatsapp.service'
 import { bookingService } from '../../services/booking.service'
 import { configService, PricingConfig, getPricingForDate } from '../../services/config.service'
 import { useAdminTenant } from '../context/AdminTenantContext'
@@ -274,45 +275,43 @@ export const ReservationDetailPage: React.FC = () => {
   async function sendWhatsapp() {
     if (!r) return
     const phone = r.telefono_cliente ?? r.telefono
-    if (!phone) { setWaError('Esta reserva no tiene teléfono del huésped'); return }
+    if (!phone) {
+      setWaError('Esta reserva no tiene teléfono del huésped')
+      setTimeout(() => setWaError(''), 5000)
+      return
+    }
 
     setSendingWa(true)
     setWaError('')
 
-    const nombreCompleto = `${s(r.nombre_cliente ?? r.nombre, '')} ${s(r.apellidos_cliente ?? r.apellidos, '')}`.trim()
-    const codigoR = fallbackCodigo(r.id, r.codigo)
-    const urlReserva = r.token_cliente
-      ? `${window.location.origin}/reserva/${r.token_cliente}`
-      : `${window.location.origin}/admin/reservas/${r.id}`
+    const guestName = `${s(r.nombre_cliente ?? r.nombre, '')} ${s(r.apellidos_cliente ?? r.apellidos, '')}`.trim()
+    const bookingCode = fallbackCodigo(r.id, r.codigo)
 
-    const waEvent =
-      r.estado === 'CANCELLED' ? 'booking_cancelled' : 'booking_confirmed'
-
-    const { error: err } = await supabase.functions.invoke('send-whatsapp', {
-      body: {
-        event: waEvent,
-        reserva_id: r.id,
-        property_id,
-        recipient_phone: phone,
-        recipient_name: nombreCompleto,
-        data: {
-          fecha_entrada: fmtDate(r.fecha_entrada),
-          fecha_salida: fmtDate(r.fecha_salida),
-          noches: String(n(r.noches)),
-          num_huespedes: String(n(r.num_huespedes)),
-          importe_total: `${n(r.importe_total ?? r.total).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`,
-          importe_pagado: `${Math.max(n(r.importe_pagado), n(r.importe_senal)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`,
-          codigo_reserva: codigoR,
-          info_reembolso: 'Contacta con nosotros para gestionar el reembolso.',
-          url_reserva: urlReserva,
-        },
-      },
-    })
+    const result = r.estado === 'CANCELLED'
+      ? await whatsappService.sendBookingCancelled({
+          to: phone,
+          guest_name: guestName,
+          property_name: s(nombre, 'Alojamiento'),
+          booking_code: bookingCode,
+          reserva_id: r.id,
+          property_id,
+        })
+      : await whatsappService.sendBookingConfirmed({
+          to: phone,
+          guest_name: guestName,
+          property_name: s(nombre, 'Alojamiento'),
+          check_in: fmtDate(r.fecha_entrada),
+          check_out: fmtDate(r.fecha_salida),
+          total: n(r.importe_total ?? r.total),
+          booking_code: bookingCode,
+          reserva_id: r.id,
+          property_id,
+        })
 
     setSendingWa(false)
 
-    if (err) {
-      setWaError(err.message ?? 'Error al enviar WhatsApp')
+    if (!result.ok) {
+      setWaError(result.error ?? 'Error al enviar WhatsApp')
       setTimeout(() => setWaError(''), 5000)
       return
     }

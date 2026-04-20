@@ -79,8 +79,6 @@ export function ConfigPage() {
         cancellation_policy_json,
         onboarding_done,
         whatsapp_enabled,
-        whatsapp_phone_number_id,
-        whatsapp_access_token,
         whatsapp_cleaning_phone
       `)
       .eq('id', property_id)
@@ -191,8 +189,6 @@ export function ConfigPage() {
             : Number(property.flexible_deposit_pct),
         cancellation_policy_json: cleanedRules,
         whatsapp_enabled: property.whatsapp_enabled ?? false,
-        whatsapp_phone_number_id: property.whatsapp_phone_number_id ?? null,
-        whatsapp_access_token: property.whatsapp_access_token ?? null,
         whatsapp_cleaning_phone: property.whatsapp_cleaning_phone ?? null,
         updated_at: new Date().toISOString(),
       })

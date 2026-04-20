@@ -1,5 +1,8 @@
 import React from 'react'
-import { MessageCircle, Phone, Key, Shield, Info, Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import {
+  MessageCircle, Phone, Shield, Info, Save,
+  Loader2, CheckCircle2, AlertCircle, Terminal,
+} from 'lucide-react'
 import { DarkCard, Field, inputCls, type Property } from '../shared'
 
 interface Props {
@@ -12,13 +15,15 @@ interface Props {
 export function WhatsAppTab({ property, upd, handleSave, status }: Props) {
   return (
     <div className="space-y-6">
+
       {/* Activar / desactivar */}
       <DarkCard title="Canal WhatsApp" icon={<MessageCircle size={16} className="text-[#25D366]" />}>
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-slate-200">Activar notificaciones WhatsApp</p>
             <p className="mt-0.5 text-xs text-slate-500">
-              Permite enviar mensajes de plantilla a los huéspedes vía Meta WhatsApp Cloud API.
+              Proveedor activo: <span className="text-slate-300 font-medium">Twilio WhatsApp Sandbox</span>.
+              Cuando se migre a Meta Cloud API solo cambia la Edge Function, no este panel.
             </p>
           </div>
           <button
@@ -38,58 +43,11 @@ export function WhatsAppTab({ property, upd, handleSave, status }: Props) {
         </div>
       </DarkCard>
 
-      {/* Credenciales Meta */}
-      <DarkCard
-        title="Credenciales Meta Cloud API"
-        icon={<Key size={16} className="text-amber-400" />}
-      >
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-xs text-sky-300">
-          <Info size={14} className="mt-0.5 shrink-0" />
-          <span>
-            Obtén estos datos en{' '}
-            <a
-              href="https://developers.facebook.com/apps"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-            >
-              Meta for Developers
-            </a>{' '}
-            → tu app → WhatsApp → Configuración de la API.
-          </span>
-        </div>
-
-        <div className="space-y-4">
-          <Field label="Phone Number ID">
-            <input
-              type="text"
-              value={property.whatsapp_phone_number_id ?? ''}
-              onChange={(e) => upd('whatsapp_phone_number_id', e.target.value || null)}
-              placeholder="123456789012345"
-              className={`${inputCls} font-mono`}
-            />
-          </Field>
-
-          <Field label="Access Token permanente">
-            <input
-              type="password"
-              value={property.whatsapp_access_token ?? ''}
-              onChange={(e) => upd('whatsapp_access_token', e.target.value || null)}
-              placeholder="EAAxxxxxxxx…"
-              className={`${inputCls} font-mono`}
-            />
-          </Field>
-        </div>
-      </DarkCard>
-
-      {/* Teléfono limpieza */}
-      <DarkCard
-        title="Teléfono de limpieza"
-        icon={<Phone size={16} className="text-purple-400" />}
-      >
+      {/* Teléfono de limpieza */}
+      <DarkCard title="Teléfono de limpieza" icon={<Phone size={16} className="text-purple-400" />}>
         <Field
           label="Número para plannings de limpieza"
-          hint="Formato internacional: +34612345678. Se usa al enviar el planning manual desde el módulo de limpieza."
+          hint="Formato E.164 obligatorio: +34612345678. Debe haber enviado 'join <palabra>' al Sandbox de Twilio."
         >
           <input
             type="text"
@@ -108,7 +66,7 @@ export function WhatsAppTab({ property, upd, handleSave, status }: Props) {
           disabled={status === 'saving'}
           className={[
             'inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold shadow-sm transition-all',
-            status === 'saved' ? 'bg-emerald-600 text-white'
+            status === 'saved'  ? 'bg-emerald-600 text-white'
               : status === 'error' ? 'bg-red-600 text-white'
               : 'bg-brand-600 text-white hover:bg-brand-700',
             status === 'saving' ? 'opacity-80' : '',
@@ -122,95 +80,92 @@ export function WhatsAppTab({ property, upd, handleSave, status }: Props) {
         </button>
       </div>
 
-      {/* Plantillas de referencia */}
+      {/* Secrets requeridos */}
       <DarkCard
-        title="Plantillas aprobadas en Meta"
-        icon={<Shield size={16} className="text-slate-400" />}
+        title="Secrets de Supabase requeridos"
+        icon={<Terminal size={16} className="text-amber-400" />}
       >
-        <p className="mb-4 text-xs text-slate-400">
-          Registra estas plantillas en Meta Business Manager con exactamente estos nombres e idioma{' '}
-          <span className="font-mono text-slate-300">es</span> antes de usar los envíos en
-          producción.
-        </p>
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-300">
+          <Info size={14} className="mt-0.5 shrink-0" />
+          <span>
+            Estas variables deben estar configuradas en{' '}
+            <strong>Supabase → Edge Functions → Manage secrets</strong> (o vía CLI).
+            No se almacenan en la base de datos.
+          </span>
+        </div>
 
-        <div className="space-y-3">
-          {TEMPLATES_INFO.map((t) => (
-            <div key={t.name} className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-mono text-sm font-semibold text-slate-100">{t.name}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{t.trigger}</p>
-                </div>
-                <span className="shrink-0 rounded-full border border-slate-700 px-2 py-0.5 font-mono text-[10px] text-slate-400">
-                  {t.vars} vars
-                </span>
-              </div>
-              <pre className="overflow-x-auto rounded-lg border border-slate-800 bg-[#07111e] px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-300 whitespace-pre-wrap">
-                {t.text}
-              </pre>
+        <div className="space-y-2">
+          {SECRETS.map((s) => (
+            <div key={s.name} className="flex items-start gap-3 rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-3">
+              <code className="w-56 shrink-0 font-mono text-xs text-amber-300">{s.name}</code>
+              <span className="text-xs text-slate-400">{s.desc}</span>
             </div>
           ))}
         </div>
       </DarkCard>
+
+      {/* Cómo unirse al Sandbox */}
+      <DarkCard
+        title="Cómo probar con Twilio WhatsApp Sandbox"
+        icon={<Shield size={16} className="text-sky-400" />}
+      >
+        <ol className="space-y-3 text-sm text-slate-300">
+          {SANDBOX_STEPS.map((step, i) => (
+            <li key={i} className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-xs font-bold text-sky-300">
+                {i + 1}
+              </span>
+              <span dangerouslySetInnerHTML={{ __html: step }} />
+            </li>
+          ))}
+        </ol>
+
+        <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Payload de prueba
+          </p>
+          <pre className="overflow-x-auto font-mono text-[11px] text-slate-300 whitespace-pre">
+{`{
+  "type": "booking_confirmed",
+  "to": "+34XXXXXXXXX",
+  "variables": {
+    "guest_name": "Fernando",
+    "property_name": "La Rasilla",
+    "check_in": "10/08/2026",
+    "check_out": "15/08/2026",
+    "total": "850,00 €",
+    "booking_code": "LR-2026-001"
+  }
+}`}
+          </pre>
+        </div>
+      </DarkCard>
+
     </div>
   )
 }
 
-// ── Referencia de texto de plantillas ─────────────────────────────────────────
+// ── Datos estáticos ────────────────────────────────────────────────────────────
 
-const TEMPLATES_INFO = [
+const SECRETS = [
   {
-    name: 'booking_confirmed',
-    trigger: 'Se envía cuando la reserva pasa a CONFIRMADA',
-    vars: 10,
-    text: `Hola {{1}}, tu reserva en {{2}} ha quedado confirmada. ✅
-
-📅 Entrada: {{3}}
-📅 Salida: {{4}}
-🌙 Noches: {{5}}
-👥 Huéspedes: {{6}}
-💶 Importe total: {{7}}
-✔️ Pagado: {{8}}
-
-Si necesitas algo, puedes contactar aquí: {{9}}
-Detalle de tu reserva: {{10}}`,
+    name: 'TWILIO_ACCOUNT_SID',
+    desc: 'Account SID de tu proyecto Twilio (empieza por AC…)',
   },
   {
-    name: 'booking_modified',
-    trigger: 'Se envía cuando cambian fechas, huéspedes o importe',
-    vars: 8,
-    text: `Hola {{1}}, tu reserva en {{2}} ha sido actualizada. 🔄
-
-📅 Entrada: {{3}}
-📅 Salida: {{4}}
-🌙 Noches: {{5}}
-👥 Huéspedes: {{6}}
-💶 Nuevo importe: {{7}}
-
-Puedes revisar el detalle aquí: {{8}}`,
+    name: 'TWILIO_AUTH_TOKEN',
+    desc: 'Auth Token de Twilio (visible en el dashboard principal)',
   },
   {
-    name: 'booking_cancelled',
-    trigger: 'Se envía cuando la reserva pasa a CANCELADA',
-    vars: 7,
-    text: `Hola {{1}}, tu reserva en {{2}} ha sido cancelada. ❌
-
-📅 Fechas: {{3}} al {{4}}
-📋 Código de reserva: {{5}}
-💶 Información sobre el pago o reembolso: {{6}}
-
-Para cualquier consulta: {{7}}`,
+    name: 'TWILIO_WHATSAPP_FROM',
+    desc: 'Número de origen del Sandbox. Formato: whatsapp:+14155238886',
   },
-  {
-    name: 'cleaning_planning',
-    trigger: 'Envío manual desde el módulo de limpieza',
-    vars: 6,
-    text: `Hola {{1}}, te envío el planning de limpiezas de {{2}}. 🧹
+]
 
-📅 Periodo: {{3}} al {{4}}
-
-{{5}}
-
-Si ves alguna incidencia, avísanos en: {{6}}`,
-  },
+const SANDBOX_STEPS = [
+  'Entra en <strong>console.twilio.com</strong> → Messaging → Try it out → Send a WhatsApp message.',
+  'Envía el mensaje de activación desde tu móvil al número del Sandbox (ej: <code class="text-sky-300">join &lt;palabra&gt;</code>). Cada número destino debe hacer esto una vez.',
+  'En Supabase → Edge Functions → Secrets, añade los tres secrets indicados arriba.',
+  'Activa el toggle de este panel y guarda.',
+  'Desde el detalle de cualquier reserva confirmada, pulsa el botón <strong>WhatsApp</strong>.',
 ]

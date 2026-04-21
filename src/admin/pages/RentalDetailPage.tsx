@@ -145,6 +145,7 @@ export const RentalDetailPage: React.FC = () => {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const [syncingCalendar, setSyncingCalendar] = useState(false)
+  const [cancelInfo, setCancelInfo] = useState<{ schedules: number; jobs: number } | null>(null)
 
   // Edit modals
   const [showEditContrato, setShowEditContrato] = useState(false)
@@ -202,11 +203,15 @@ export const RentalDetailPage: React.FC = () => {
   async function handleChangeEstado(newEstado: RentalEstado) {
     if (!rental) return
     setChangingEstado(true)
+    setCancelInfo(null)
     try {
-      await rentalService.changeEstadoViaEF(rental.id, newEstado, notasEstado || undefined, msgEstado || undefined)
+      const result = await rentalService.changeEstadoViaEF(rental.id, newEstado, notasEstado || undefined, msgEstado || undefined)
       setRental(prev => prev ? { ...prev, estado: newEstado, notas: notasEstado || prev.notas } : prev)
       setNotasEstado('')
       setMsgEstado('')
+      if (newEstado === 'CANCELADO' && ((result.schedulesCancelled ?? 0) > 0 || (result.jobsCancelled ?? 0) > 0)) {
+        setCancelInfo({ schedules: result.schedulesCancelled ?? 0, jobs: result.jobsCancelled ?? 0 })
+      }
       // Bloquear fechas en calendario al activar contrato
       if (newEstado === 'ACTIVO' && rental.fecha_inicio && rental.fecha_fin) {
         const { supabase: sb } = await import('../../integrations/supabase/client')
@@ -573,6 +578,25 @@ export const RentalDetailPage: React.FC = () => {
         <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-sm text-red-300">
           <AlertCircle size={14} className="shrink-0" /> {error}
           <button onClick={() => setError('')} className="ml-auto"><X size={14} /></button>
+        </div>
+      )}
+
+      {cancelInfo && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-400" />
+          <div className="flex-1">
+            <p className="font-semibold text-amber-300">Contrato cancelado — procesos de limpieza desactivados</p>
+            <ul className="mt-1 space-y-0.5 text-xs text-amber-300/80">
+              {cancelInfo.schedules > 0 && (
+                <li>· {cancelInfo.schedules} programación{cancelInfo.schedules !== 1 ? 'es' : ''} de limpieza desactivada{cancelInfo.schedules !== 1 ? 's' : ''}</li>
+              )}
+              {cancelInfo.jobs > 0 && (
+                <li>· {cancelInfo.jobs} job{cancelInfo.jobs !== 1 ? 's' : ''} pendiente{cancelInfo.jobs !== 1 ? 's' : ''} cancelado{cancelInfo.jobs !== 1 ? 's' : ''}</li>
+              )}
+              <li>· Bloqueo de calendario eliminado</li>
+            </ul>
+          </div>
+          <button onClick={() => setCancelInfo(null)} className="text-amber-400 hover:text-amber-200"><X size={14} /></button>
         </div>
       )}
 

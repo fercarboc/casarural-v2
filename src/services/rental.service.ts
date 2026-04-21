@@ -8,6 +8,47 @@ export type RentalEstado =
 
 export type DocEstado = 'PENDIENTE' | 'VALIDADO' | 'RECHAZADO'
 
+export type FianzaEstado = 'SIN_FIANZA' | 'ACTIVA' | 'PENDIENTE_DEVOLUCION' | 'DEVUELTA' | 'DEVUELTA_PARCIAL'
+
+export type PaymentEstado = 'PENDIENTE' | 'PAGADO' | 'VENCIDO'
+export type PaymentTipo   = 'MENSUALIDAD' | 'DEVOLUCION_FIANZA'
+
+export interface RentalPayment {
+  id: string
+  property_id: string
+  rental_id: string
+  tipo: PaymentTipo
+  concepto: string
+  importe: number
+  fecha_vencimiento: string
+  fecha_pago: string | null
+  estado: PaymentEstado
+  descuento_importe: number | null
+  descuento_concepto: string | null
+  notas: string | null
+  created_at: string
+  // Joined
+  cliente_nombre?: string
+  unidad_nombre?: string
+}
+
+export interface RentalFianza {
+  id: string
+  property_id: string
+  cliente_nombre: string
+  cliente_email: string
+  cliente_telefono: string | null
+  unidad_id: string
+  unidad_nombre?: string
+  fecha_inicio: string
+  fecha_fin: string | null
+  fianza: number
+  fianza_cobrada: boolean
+  fianza_devuelta: boolean
+  fianza_estado: FianzaEstado
+  estado: RentalEstado
+}
+
 export interface Rental {
   id: string
   property_id: string
@@ -40,6 +81,7 @@ export interface Rental {
   descripcion_solicitud: string | null
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
+  fianza_estado: FianzaEstado
   estado: RentalEstado
   notas: string | null
   created_at: string
@@ -317,12 +359,13 @@ export const rentalService = {
     newEstado: RentalEstado,
     notas?: string,
     messageTenant?: string,
-  ): Promise<void> {
+  ): Promise<{ schedulesCancelled?: number; jobsCancelled?: number }> {
     const res = await supabase.functions.invoke('update-rental-status', {
       body: { rental_id: rentalId, new_estado: newEstado, notas, message_to_tenant: messageTenant },
     })
     if (res.error) throw new Error(res.error.message)
     if (!res.data?.ok) throw new Error(res.data?.error ?? 'Error actualizando estado')
+    return res.data ?? {}
   },
 
   // ── Mensajes ──────────────────────────────────────────────────────────────────
@@ -343,6 +386,110 @@ export const rentalService = {
     })
     if (res.error) throw new Error(res.error.message)
     if (!res.data?.ok) throw new Error(res.data?.error ?? 'Error enviando mensaje')
+  },
+
+  // ── Fianzas ───────────────────────────────────────────────────────────────────
+
+  async getFianzas(propertyId: string, estados?: FianzaEstado[]): Promise<RentalFianza[]> {
+    let q = supabase
+      .from('rentals')
+      .select('id, property_id, cliente_nombre, cliente_email, cliente_telefono, unidad_id, fecha_inicio, fecha_fin, fianza, fianza_cobrada, fianza_devuelta, fianza_estado, estado, unidades(nombre)')
+      .eq('property_id', propertyId)
+      .gt('fianza', 0)
+      .order('created_at', { ascending: false })
+    if (estados && estados.length > 0) q = q.in('fianza_estado', estados)
+    const { data, error } = await q
+    if (error) throw error
+    return (data ?? []).map((r: any) => ({ ...r, unidad_nombre: r.unidades?.nombre ?? null }))
+  },
+
+  async procesarDevolucionFianza(
+    rentalId: string,
+    importeDevolver: number,
+    descuentoImporte: number,
+    descuentoConcepto: string,
+    notas: string,
+  ): Promise<void> {
+    const esTotal = descuentoImporte === 0
+    const nuevoEstado: FianzaEstado = esTotal ? 'DEVUELTA' : 'DEVUELTA_PARCIAL'
+
+    await supabase.from('rentals').update({
+      fianza_estado: nuevoEstado,
+      fianza_devuelta: true,
+    }).eq('id', rentalId)
+
+    const { data: rental } = await supabase
+      .from('rentals').select('property_id, fianza').eq('id', rentalId).single()
+
+    if (rental) {
+      await supabase.from('rental_payments').insert({
+        property_id: rental.property_id,
+        rental_id:   rentalId,
+        tipo:        'DEVOLUCION_FIANZA',
+        concepto:    descuentoImporte > 0
+          ? `Devolución fianza parcial${descuentoConcepto ? ` · Descuento: ${descuentoConcepto}` : ''}`
+          : 'Devolución fianza',
+        importe:            importeDevolver,
+        fecha_vencimiento:  new Date().toISOString().split('T')[0],
+        fecha_pago:         new Date().toISOString().split('T')[0],
+        estado:             'PAGADO',
+        descuento_importe:  descuentoImporte > 0 ? descuentoImporte : null,
+        descuento_concepto: descuentoImporte > 0 ? descuentoConcepto : null,
+        notas:              notas || null,
+      })
+    }
+  },
+
+  // ── Pagos mensuales ───────────────────────────────────────────────────────────
+
+  async getPayments(rentalId: string): Promise<RentalPayment[]> {
+    const { data, error } = await supabase
+      .from('rental_payments')
+      .select('*')
+      .eq('rental_id', rentalId)
+      .order('fecha_vencimiento', { ascending: false })
+    if (error) throw error
+    return data ?? []
+  },
+
+  async getRentalPaymentsByPeriod(propertyId: string, from: string, to: string): Promise<RentalPayment[]> {
+    const { data, error } = await supabase
+      .from('rental_payments')
+      .select('*, rentals(cliente_nombre, unidades(nombre))')
+      .eq('property_id', propertyId)
+      .gte('fecha_vencimiento', from)
+      .lte('fecha_vencimiento', to)
+      .eq('tipo', 'MENSUALIDAD')
+      .order('fecha_vencimiento', { ascending: true })
+    if (error) throw error
+    return (data ?? []).map((p: any) => ({
+      ...p,
+      cliente_nombre: p.rentals?.cliente_nombre ?? null,
+      unidad_nombre:  p.rentals?.unidades?.nombre ?? null,
+    }))
+  },
+
+  async markPaymentPaid(id: string, fechaPago: string): Promise<void> {
+    const { error } = await supabase
+      .from('rental_payments')
+      .update({ estado: 'PAGADO', fecha_pago: fechaPago })
+      .eq('id', id)
+    if (error) throw error
+  },
+
+  async createMonthlyPayment(data: {
+    property_id: string
+    rental_id: string
+    concepto: string
+    importe: number
+    fecha_vencimiento: string
+  }): Promise<RentalPayment> {
+    const { data: row, error } = await supabase
+      .from('rental_payments')
+      .insert({ ...data, tipo: 'MENSUALIDAD', estado: 'PENDIENTE' })
+      .select('*').single()
+    if (error) throw error
+    return row
   },
 
   async requestDocs(rentalId: string, docTypes: string[], message?: string): Promise<void> {

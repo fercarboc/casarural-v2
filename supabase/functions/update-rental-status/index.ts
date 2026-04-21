@@ -98,14 +98,72 @@ serve(async (req) => {
         throw new Error(`Transición no permitida: ${currentEstado} → ${new_estado}`)
       }
 
+      // Validar solapamiento de fechas al activar un contrato
+      if (new_estado === 'ACTIVO') {
+        const finCheck = rental.fecha_fin ?? '9999-12-31'
+        const { data: overlap, error: overlapErr } = await supabase
+          .from('rentals')
+          .select('id, cliente_nombre, fecha_inicio, fecha_fin')
+          .eq('unidad_id', rental.unidad_id)
+          .neq('id', rental_id)
+          .in('estado', ['ACTIVO', 'RENOVADO'])
+          .lt('fecha_inicio', finCheck)
+          .or(`fecha_fin.is.null,fecha_fin.gt.${rental.fecha_inicio}`)
+          .limit(1)
+
+        if (overlapErr) throw overlapErr
+
+        if ((overlap ?? []).length > 0) {
+          const c = overlap![0]
+          throw new Error(
+            `Conflicto de fechas: ya existe un contrato activo de ${c.cliente_nombre} ` +
+            `en esta unidad (${c.fecha_inicio} — ${c.fecha_fin ?? 'abierto'}). ` +
+            `No se pueden activar dos contratos con fechas solapadas.`
+          )
+        }
+      }
+
       const updatePayload: Record<string, any> = {
         estado:     new_estado,
         updated_at: new Date().toISOString(),
       }
       if (notas !== undefined) updatePayload.notas = notas
 
+      // Actualizar fianza_estado al cancelar
+      if (new_estado === 'CANCELADO' && rental.fianza > 0 && rental.fianza_cobrada && !rental.fianza_devuelta) {
+        updatePayload.fianza_estado = 'PENDIENTE_DEVOLUCION'
+      }
+
       const { error: uErr } = await supabase.from('rentals').update(updatePayload).eq('id', rental_id)
       if (uErr) throw uErr
+
+      // Al cancelar: desactivar schedules de limpieza y cancelar jobs pendientes
+      let schedulesCancelled = 0
+      let jobsCancelled = 0
+      if (new_estado === 'CANCELADO') {
+        const { data: schedules } = await supabase
+          .from('cleaning_schedules')
+          .update({ active: false })
+          .eq('rental_id', rental_id)
+          .eq('active', true)
+          .select('id')
+        schedulesCancelled = (schedules ?? []).length
+
+        const { data: jobs } = await supabase
+          .from('cleaning_jobs')
+          .update({ status: 'CANCELLED' })
+          .eq('rental_id', rental_id)
+          .in('status', ['PENDING', 'ASSIGNED'])
+          .select('id')
+        jobsCancelled = (jobs ?? []).length
+
+        // Eliminar bloqueo de calendario de este contrato
+        await supabase.from('bloqueos')
+          .delete()
+          .eq('unidad_id', rental.unidad_id)
+          .eq('origen', 'RENTAL')
+          .like('motivo', `RENTAL:${rental_id}%`)
+      }
 
       const templateKey = EMAIL_TEMPLATE[new_estado as RentalEstado]
       const precio_mes = Number(rental.precio_mensual ?? 0)
@@ -172,7 +230,7 @@ serve(async (req) => {
         sent_by:   'admin',
       })
 
-      return respond({ ok: true, estado: new_estado })
+      return respond({ ok: true, estado: new_estado, schedulesCancelled, jobsCancelled })
     }
 
     // ── B: SEND_MESSAGE ──────────────────────────────────────────────────────────

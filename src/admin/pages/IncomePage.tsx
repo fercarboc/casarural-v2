@@ -25,6 +25,10 @@ import {
   type ReservaIngreso,
   type PeriodoIncome as Periodo,
 } from '../../services/income.service'
+import {
+  rentalService,
+  type RentalPayment,
+} from '../../services/rental.service'
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 const ORIGEN_SHORT: Record<string, string> = {
@@ -104,9 +108,11 @@ export const IncomePage: React.FC = () => {
 
   const [reservas, setReservas] = useState<ReservaIngreso[]>([])
   const [facturasMap, setFacturasMap] = useState<Record<string, FacturaDetalle>>({})
+  const [rentalPayments, setRentalPayments] = useState<RentalPayment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [emitirReserva, setEmitirReserva] = useState<ReservaParaEmitir | null>(null)
+  const [markingPaid, setMarkingPaid] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -122,27 +128,42 @@ export const IncomePage: React.FC = () => {
       const fromStr = from.toISOString().substring(0, 10)
       const toStr = to.toISOString().substring(0, 10)
 
-      const data = await incomeService.getIncomeData({
-        from: fromStr,
-        to: toStr,
-        property_id,
-      })
+      const [data, payments] = await Promise.all([
+        incomeService.getIncomeData({ from: fromStr, to: toStr, property_id }),
+        rentalService.getRentalPaymentsByPeriod(property_id, fromStr, toStr),
+      ])
 
       setReservas(data.reservas)
       setFacturasMap(data.facturasMap)
+      setRentalPayments(payments)
     } catch (e: any) {
       console.error(e)
       setReservas([])
       setFacturasMap({})
+      setRentalPayments([])
       setError(e?.message ?? 'No se pudieron cargar los ingresos')
     } finally {
       setLoading(false)
     }
-  }, [applied])
+  }, [applied, property_id])
+
+  async function handleMarkPaid(id: string) {
+    setMarkingPaid(id)
+    try {
+      await rentalService.markPaymentPaid(id, new Date().toISOString().split('T')[0])
+      setRentalPayments(prev => prev.map(p => p.id === id ? { ...p, estado: 'PAGADO', fecha_pago: new Date().toISOString().split('T')[0] } : p))
+    } finally {
+      setMarkingPaid(null)
+    }
+  }
 
   useEffect(() => {
     load()
   }, [load])
+
+  const totalRentalFacturado = rentalPayments.reduce((s, p) => s + p.importe, 0)
+  const totalRentalCobrado   = rentalPayments.filter(p => p.estado === 'PAGADO').reduce((s, p) => s + p.importe, 0)
+  const totalRentalPendiente = rentalPayments.filter(p => p.estado !== 'PAGADO').reduce((s, p) => s + p.importe, 0)
 
   const totalFacturado = reservas.reduce((s, r) => s + r.importe_total, 0)
 
@@ -435,6 +456,35 @@ export const IncomePage: React.FC = () => {
           </div>
         ) : (
           <>
+            {/* Rental income KPI */}
+            {rentalPayments.length > 0 && (
+              <div className="rounded-3xl border border-sidebar-border bg-sidebar-bg p-5 shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-xl bg-teal-500/10 p-2 text-teal-300">
+                      <Users size={16} />
+                    </div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Alquiler larga estancia</p>
+                  </div>
+                  <span className="text-xs text-slate-500">{rentalPayments.length} mensualidades</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">Total facturado</p>
+                    <p className="mt-0.5 text-xl font-bold text-white">{fmt(totalRentalFacturado)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">Cobrado</p>
+                    <p className="mt-0.5 text-xl font-bold text-teal-300">{fmt(totalRentalCobrado)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">Pendiente</p>
+                    <p className="mt-0.5 text-xl font-bold text-amber-300">{fmt(totalRentalPendiente)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               <StatCard
                 label="BRUTO FACTURADO"
@@ -731,6 +781,66 @@ export const IncomePage: React.FC = () => {
                 </div>
               )}
             </div>
+            {/* Rental payments table */}
+            {rentalPayments.length > 0 && (
+              <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-bg shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
+                <div className="flex items-center justify-between border-b border-sidebar-border bg-admin-card/70 px-6 py-4">
+                  <h3 className="text-sm font-semibold text-white">Mensualidades de alquiler</h3>
+                  <span className="text-xs text-slate-500">{rentalPayments.length} registros · {fmt(totalRentalFacturado)}</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-sidebar-border bg-admin-card/70">
+                        {['Inquilino', 'Unidad', 'Concepto', 'Vencimiento', 'Fecha cobro', 'Importe', 'Estado', ''].map(h => (
+                          <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-sidebar-border">
+                      {rentalPayments.map(p => (
+                        <tr key={p.id} className="transition-colors hover:bg-sidebar-hover/60">
+                          <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-100">{p.cliente_nombre ?? '—'}</td>
+                          <td className="px-4 py-3 text-slate-400">{p.unidad_nombre ?? '—'}</td>
+                          <td className="px-4 py-3 text-slate-300">{p.concepto}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-slate-400">{fmtDate(p.fecha_vencimiento)}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-slate-400">{p.fecha_pago ? fmtDate(p.fecha_pago) : '—'}</td>
+                          <td className="whitespace-nowrap px-4 py-3 font-semibold text-white">{fmt(p.importe)}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                              p.estado === 'PAGADO'   ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' :
+                              p.estado === 'VENCIDO'  ? 'bg-red-500/10 text-red-300 border border-red-500/20' :
+                                                        'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                            }`}>
+                              {p.estado === 'PAGADO' ? 'Pagado' : p.estado === 'VENCIDO' ? 'Vencido' : 'Pendiente'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {p.estado !== 'PAGADO' && (
+                              <button
+                                disabled={markingPaid === p.id}
+                                onClick={() => handleMarkPaid(p.id)}
+                                className="flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40"
+                              >
+                                {markingPaid === p.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                                Marcar pagado
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-sidebar-border bg-admin-card/70">
+                        <td colSpan={5} className="px-4 py-3 text-sm font-semibold text-white">Total período</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-white">{fmt(totalRentalFacturado)}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

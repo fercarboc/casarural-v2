@@ -3,7 +3,7 @@
 // Called daily by cron. Also callable manually (POST with no body).
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -93,33 +93,33 @@ serve(async (req) => {
 
     const horizonEnd = addDays(new Date(), HORIZON_DAYS)
 
-    // Get all active schedules where the linked rental is ACTIVO or RENOVADO
-    const { data: schedules, error: sErr } = await supabase
+    // Get all active schedules
+    const { data: allSchedules, error: sErr } = await supabase
       .from('cleaning_schedules')
       .select(`
-        id,
-        property_id,
-        unit_id,
-        rental_id,
-        cleaning_service_id,
-        frequency,
-        start_date,
-        end_date,
-        days_of_week,
-        interval_weeks,
-        preferred_time,
-        duration_minutes,
-        assignment_type,
-        assigned_user_id,
-        provider_id,
-        billable,
-        price,
-        rentals!inner(estado)
+        id, property_id, unit_id, rental_id, cleaning_service_id,
+        frequency, start_date, end_date, days_of_week, interval_weeks,
+        preferred_time, duration_minutes, assignment_type,
+        assigned_user_id, provider_id, billable, price
       `)
       .eq('active', true)
-      .in('rentals.estado', ['APROBADO', 'ACTIVO', 'RENOVADO'])
 
     if (sErr) throw sErr
+    if (!allSchedules || allSchedules.length === 0) {
+      return new Response(JSON.stringify({ ok: true, created: 0, skipped: 0 }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Filtrar sólo los que tienen alquiler en estado activo (sin depender de FK en schema cache)
+    const rentalIds = [...new Set(allSchedules.map((s: any) => s.rental_id).filter(Boolean))]
+    const { data: rentalsData, error: rErr } = await supabase
+      .from('rentals').select('id, estado').in('id', rentalIds)
+      .in('estado', ['APROBADO', 'ACTIVO', 'RENOVADO'])
+    if (rErr) throw rErr
+
+    const allowedRentalIds = new Set((rentalsData ?? []).map((r: any) => r.id))
+    const schedules = allSchedules.filter((s: any) => allowedRentalIds.has(s.rental_id))
 
     let created = 0
     let skipped = 0

@@ -31,6 +31,13 @@ export interface Rental {
   frecuencia_limpieza: string | null
   num_ocupantes: number
   notas_solicitud: string | null
+  // Campos solicitud extendida
+  estado_laboral: string | null
+  motivo_estancia: string | null
+  mascotas: boolean
+  num_mascotas: number | null
+  tipo_mascotas: string | null
+  descripcion_solicitud: string | null
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
   estado: RentalEstado
@@ -40,6 +47,19 @@ export interface Rental {
   // Joined
   unidad_nombre?: string
   unidad_slug?: string
+}
+
+export interface RentalMessage {
+  id: string
+  property_id: string
+  rental_id: string
+  direction: 'OUTBOUND' | 'INBOUND'
+  channel: 'EMAIL' | 'WHATSAPP' | 'NOTA'
+  subject: string | null
+  body: string
+  sent_by: string | null
+  sent_at: string
+  created_at: string
 }
 
 export interface RentalDocument {
@@ -280,5 +300,48 @@ export const rentalService = {
       activos:            activos.count       ?? 0,
       pendientesRevision: pendientesRevision.count ?? 0,
     }
+  },
+
+  // ── Estado via EF (con email+WhatsApp+log) ────────────────────────────────────
+
+  async changeEstadoViaEF(
+    rentalId: string,
+    newEstado: RentalEstado,
+    notas?: string,
+    messageTenant?: string,
+  ): Promise<void> {
+    const res = await supabase.functions.invoke('update-rental-status', {
+      body: { rental_id: rentalId, new_estado: newEstado, notas, message_to_tenant: messageTenant },
+    })
+    if (res.error) throw new Error(res.error.message)
+    if (!res.data?.ok) throw new Error(res.data?.error ?? 'Error actualizando estado')
+  },
+
+  // ── Mensajes ──────────────────────────────────────────────────────────────────
+
+  async getMessages(rentalId: string): Promise<RentalMessage[]> {
+    const { data, error } = await supabase
+      .from('rental_messages')
+      .select('*')
+      .eq('rental_id', rentalId)
+      .order('sent_at', { ascending: false })
+    if (error) throw error
+    return data ?? []
+  },
+
+  async sendMessage(rentalId: string, subject: string, body: string, sendWhatsapp = false): Promise<void> {
+    const res = await supabase.functions.invoke('update-rental-status', {
+      body: { rental_id: rentalId, action: 'SEND_MESSAGE', subject, body, send_whatsapp: sendWhatsapp },
+    })
+    if (res.error) throw new Error(res.error.message)
+    if (!res.data?.ok) throw new Error(res.data?.error ?? 'Error enviando mensaje')
+  },
+
+  async requestDocs(rentalId: string, docTypes: string[], message?: string): Promise<void> {
+    const res = await supabase.functions.invoke('update-rental-status', {
+      body: { rental_id: rentalId, action: 'REQUEST_DOCS', doc_types: docTypes, message },
+    })
+    if (res.error) throw new Error(res.error.message)
+    if (!res.data?.ok) throw new Error(res.data?.error ?? 'Error solicitando documentación')
   },
 }

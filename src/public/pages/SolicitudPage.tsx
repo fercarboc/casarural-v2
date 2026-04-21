@@ -25,12 +25,18 @@ interface FormData {
   cliente_email: string
   cliente_telefono: string
   cliente_dni: string
-  // Paso 2 — Condiciones
+  // Paso 2 — Condiciones y perfil
   fecha_inicio: string
   duracion_meses: string
   num_ocupantes: string
   forma_pago: 'TRANSFERENCIA' | 'SEPA' | 'EFECTIVO'
-  // Paso 3 — Info adicional
+  estado_laboral: string
+  motivo_estancia: string
+  mascotas: boolean
+  num_mascotas: string
+  tipo_mascotas: string
+  descripcion_solicitud: string
+  // Paso 3 — Confirmación
   notas_solicitud: string
   acepta_terminos: boolean
 }
@@ -44,6 +50,12 @@ const EMPTY: FormData = {
   duracion_meses: '',
   num_ocupantes: '1',
   forma_pago: 'TRANSFERENCIA',
+  estado_laboral: '',
+  motivo_estancia: '',
+  mascotas: false,
+  num_mascotas: '',
+  tipo_mascotas: '',
+  descripcion_solicitud: '',
   notas_solicitud: '',
   acepta_terminos: false,
 }
@@ -130,6 +142,12 @@ export const SolicitudPage: React.FC = () => {
         incluye_limpieza: false,
         num_ocupantes: parseInt(form.num_ocupantes) || 1,
         notas_solicitud: form.notas_solicitud.trim() || null,
+        estado_laboral: form.estado_laboral || null,
+        motivo_estancia: form.motivo_estancia || null,
+        mascotas: form.mascotas,
+        num_mascotas: form.mascotas && form.num_mascotas ? parseInt(form.num_mascotas) : null,
+        tipo_mascotas: form.mascotas ? form.tipo_mascotas.trim() || null : null,
+        descripcion_solicitud: form.descripcion_solicitud.trim() || null,
         estado: 'SOLICITUD',
       }).select('id').single()
       if (e) throw e
@@ -266,15 +284,17 @@ export const SolicitudPage: React.FC = () => {
 
         {/* Step 2 */}
         {step === 2 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-stone-800">Preferencias de alquiler</h2>
+          <div className="space-y-5">
+            <h2 className="text-lg font-semibold text-stone-800">Preferencias y perfil</h2>
+
+            {/* Fechas y condiciones */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className={lbl}>Fecha de inicio deseada *</label>
                 <input type="date" value={form.fecha_inicio} onChange={e => set('fecha_inicio', e.target.value)} className={inp} />
               </div>
               <div>
-                <label className={lbl}>Duración (meses) *</label>
+                <label className={lbl}>Duración estimada (meses) *</label>
                 <input type="number" min={1} max={36} value={form.duracion_meses} onChange={e => set('duracion_meses', e.target.value)} placeholder="6" className={inp} />
               </div>
               <div>
@@ -290,13 +310,85 @@ export const SolicitudPage: React.FC = () => {
                 </select>
               </div>
             </div>
+
+            {/* Perfil del solicitante */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={lbl}>Situación laboral</label>
+                <select value={form.estado_laboral} onChange={e => set('estado_laboral', e.target.value)} className={inp}>
+                  <option value="">Seleccionar…</option>
+                  <option value="EMPLEADO">Empleado/a por cuenta ajena</option>
+                  <option value="AUTONOMO">Autónomo/a</option>
+                  <option value="FUNCIONARIO">Funcionario/a</option>
+                  <option value="JUBILADO">Jubilado/a</option>
+                  <option value="ESTUDIANTE">Estudiante</option>
+                  <option value="DESEMPLEADO">En búsqueda de empleo</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Motivo de la estancia</label>
+                <select value={form.motivo_estancia} onChange={e => set('motivo_estancia', e.target.value)} className={inp}>
+                  <option value="">Seleccionar…</option>
+                  <option value="TRABAJO">Trabajo / traslado laboral</option>
+                  <option value="ESTUDIOS">Estudios</option>
+                  <option value="RESIDENCIA_HABITUAL">Residencia habitual</option>
+                  <option value="TEMPORAL">Estancia temporal</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Mascotas */}
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-stone-800">¿Tienes mascotas?</p>
+                  <p className="text-xs text-stone-500 mt-0.5">El propietario valorará tu solicitud según su política</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.mascotas}
+                  onClick={() => set('mascotas', !form.mascotas)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${form.mascotas ? 'bg-emerald-600' : 'bg-stone-300'}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${form.mascotas ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+              {form.mascotas && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={lbl}>Número de mascotas</label>
+                    <input type="number" min={1} max={10} value={form.num_mascotas} onChange={e => set('num_mascotas', e.target.value)} placeholder="1" className={inp} />
+                  </div>
+                  <div>
+                    <label className={lbl}>Tipo / raza</label>
+                    <input value={form.tipo_mascotas} onChange={e => set('tipo_mascotas', e.target.value)} placeholder="Ej: perro mediano, gato…" className={inp} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Descripción libre */}
             <div>
-              <label className={lbl}>Información adicional</label>
+              <label className={lbl}>Preséntate brevemente</label>
               <textarea
-                rows={4}
+                rows={3}
+                value={form.descripcion_solicitud}
+                onChange={e => set('descripcion_solicitud', e.target.value)}
+                placeholder="Cuéntanos algo sobre ti, tu ocupación y por qué te interesa este alojamiento…"
+                className={`${inp} resize-none`}
+              />
+            </div>
+
+            <div>
+              <label className={lbl}>Notas o requisitos adicionales</label>
+              <textarea
+                rows={2}
                 value={form.notas_solicitud}
                 onChange={e => set('notas_solicitud', e.target.value)}
-                placeholder="Cuéntanos algo sobre ti o tu situación (ocupación, mascotas, necesidades especiales…)"
+                placeholder="Necesidades especiales, fechas flexibles, preguntas…"
                 className={`${inp} resize-none`}
               />
             </div>
@@ -316,6 +408,9 @@ export const SolicitudPage: React.FC = () => {
               <div className="flex justify-between"><span className="text-stone-500">Duración</span><span className="font-medium text-stone-800">{form.duracion_meses} meses</span></div>
               <div className="flex justify-between"><span className="text-stone-500">Ocupantes</span><span className="font-medium text-stone-800">{form.num_ocupantes}</span></div>
               <div className="flex justify-between"><span className="text-stone-500">Forma de pago</span><span className="font-medium text-stone-800">{form.forma_pago}</span></div>
+              {form.estado_laboral && <div className="flex justify-between"><span className="text-stone-500">Situación laboral</span><span className="font-medium text-stone-800">{form.estado_laboral}</span></div>}
+              {form.motivo_estancia && <div className="flex justify-between"><span className="text-stone-500">Motivo</span><span className="font-medium text-stone-800">{form.motivo_estancia}</span></div>}
+              <div className="flex justify-between"><span className="text-stone-500">Mascotas</span><span className="font-medium text-stone-800">{form.mascotas ? `Sí${form.tipo_mascotas ? ` (${form.tipo_mascotas})` : ''}` : 'No'}</span></div>
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">

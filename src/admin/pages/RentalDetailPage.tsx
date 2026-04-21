@@ -1,16 +1,14 @@
 // src/admin/pages/RentalDetailPage.tsx
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft,
   Loader2,
   AlertCircle,
-  CheckCircle2,
   ChevronRight,
   User,
   FileText,
-  CreditCard,
   AlertTriangle,
   RefreshCw,
   Check,
@@ -20,6 +18,15 @@ import {
   Sparkles,
   Power,
   Upload,
+  MessageSquare,
+  Send,
+  PaperclipIcon,
+  Mail,
+  MessageCircle,
+  StickyNote,
+  PawPrint,
+  Briefcase,
+  MapPin,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -31,6 +38,7 @@ import {
   type RentalDocument,
   type RentalIncident,
   type RentalRenewal,
+  type RentalMessage,
   RENTAL_ESTADO_LABEL,
   RENTAL_ESTADO_CLS,
   RENTAL_NEXT_STATES,
@@ -49,7 +57,7 @@ function fmtEur(n: number) {
   return n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 }
 
-type Tab = 'resumen' | 'inquilino' | 'documentos' | 'incidencias' | 'renovaciones' | 'limpieza'
+type Tab = 'resumen' | 'inquilino' | 'documentos' | 'incidencias' | 'renovaciones' | 'limpieza' | 'comunicaciones'
 
 const FREQ_LABEL: Record<CleaningSchedule['frequency'], string> = {
   WEEKLY:   'Semanal',
@@ -87,7 +95,6 @@ const inputCls = 'w-full rounded-lg border border-sidebar-border bg-admin-card p
 
 export const RentalDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const { property_id } = useAdminTenant()
 
   const [rental, setRental] = useState<Rental | null>(null)
@@ -99,9 +106,26 @@ export const RentalDetailPage: React.FC = () => {
   const [error, setError] = useState('')
   const [tab, setTab] = useState<Tab>('resumen')
 
-  // Estado change
+  // Mensajes / comunicaciones
+  const [messages, setMessages] = useState<RentalMessage[]>([])
+
+  // Estado change (ahora vía EF)
   const [changingEstado, setChangingEstado] = useState(false)
   const [notasEstado, setNotasEstado] = useState('')
+  const [msgEstado, setMsgEstado] = useState('')
+
+  // Modal: enviar mensaje libre
+  const [showMsgModal, setShowMsgModal] = useState(false)
+  const [msgSubject, setMsgSubject] = useState('')
+  const [msgBody, setMsgBody] = useState('')
+  const [msgWhatsapp, setMsgWhatsapp] = useState(false)
+  const [sendingMsg, setSendingMsg] = useState(false)
+
+  // Modal: solicitar documentación
+  const [showDocsModal, setShowDocsModal] = useState(false)
+  const [docsSelected, setDocsSelected] = useState<string[]>([])
+  const [docsNote, setDocsNote] = useState('')
+  const [sendingDocs, setSendingDocs] = useState(false)
 
   // New incident
   const [newIncident, setNewIncident] = useState({ titulo: '', descripcion: '' })
@@ -134,18 +158,20 @@ export const RentalDetailPage: React.FC = () => {
     setLoading(true)
     setError('')
     try {
-      const [r, d, i, ren, sch] = await Promise.all([
+      const [r, d, i, ren, sch, msgs] = await Promise.all([
         rentalService.getRentalById(id),
         rentalService.getDocuments(id),
         rentalService.getIncidents(id),
         rentalService.getRenewals(id),
         cleaningScheduleService.getSchedules(property_id, { rental_id: id }),
+        rentalService.getMessages(id),
       ])
       setRental(r)
       setDocs(d)
       setIncidents(i)
       setRenewals(ren)
       setSchedules(sch)
+      setMessages(msgs)
     } catch (e: any) {
       setError(e.message ?? 'Error al cargar el contrato')
     } finally {
@@ -159,13 +185,52 @@ export const RentalDetailPage: React.FC = () => {
     if (!rental) return
     setChangingEstado(true)
     try {
-      const updated = await rentalService.changeEstado(rental.id, rental.estado, newEstado, notasEstado || undefined)
-      setRental(updated)
+      await rentalService.changeEstadoViaEF(rental.id, newEstado, notasEstado || undefined, msgEstado || undefined)
+      setRental(prev => prev ? { ...prev, estado: newEstado, notas: notasEstado || prev.notas } : prev)
       setNotasEstado('')
+      setMsgEstado('')
+      // Recargar mensajes para mostrar el log nuevo
+      const msgs = await rentalService.getMessages(rental.id)
+      setMessages(msgs)
     } catch (e: any) {
       setError(e.message)
     } finally {
       setChangingEstado(false)
+    }
+  }
+
+  async function handleSendMessage() {
+    if (!rental || !msgBody.trim()) return
+    setSendingMsg(true)
+    try {
+      await rentalService.sendMessage(rental.id, msgSubject || 'Mensaje sobre tu solicitud', msgBody, msgWhatsapp)
+      const msgs = await rentalService.getMessages(rental.id)
+      setMessages(msgs)
+      setShowMsgModal(false)
+      setMsgSubject('')
+      setMsgBody('')
+      setMsgWhatsapp(false)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSendingMsg(false)
+    }
+  }
+
+  async function handleRequestDocs() {
+    if (!rental || docsSelected.length === 0) return
+    setSendingDocs(true)
+    try {
+      await rentalService.requestDocs(rental.id, docsSelected, docsNote || undefined)
+      const msgs = await rentalService.getMessages(rental.id)
+      setMessages(msgs)
+      setShowDocsModal(false)
+      setDocsSelected([])
+      setDocsNote('')
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSendingDocs(false)
     }
   }
 
@@ -366,8 +431,9 @@ export const RentalDetailPage: React.FC = () => {
           { id: 'inquilino' as Tab,    icon: <User size={13} />,          label: 'Inquilino' },
           { id: 'documentos' as Tab,   icon: <FileText size={13} />,      label: `Documentos${docs.length > 0 ? ` (${docs.length})` : ''}` },
           { id: 'incidencias' as Tab,  icon: <AlertTriangle size={13} />, label: `Incidencias${incidents.length > 0 ? ` (${incidents.length})` : ''}` },
-          { id: 'renovaciones' as Tab, icon: <RefreshCw size={13} />,     label: 'Renovaciones' },
-          { id: 'limpieza' as Tab,     icon: <Sparkles size={13} />,      label: `Limpieza${schedules.length > 0 ? ` (${schedules.length})` : ''}` },
+          { id: 'renovaciones' as Tab,     icon: <RefreshCw size={13} />,     label: 'Renovaciones' },
+          { id: 'limpieza' as Tab,         icon: <Sparkles size={13} />,      label: `Limpieza${schedules.length > 0 ? ` (${schedules.length})` : ''}` },
+          { id: 'comunicaciones' as Tab,   icon: <MessageSquare size={13} />, label: `Comunicaciones${messages.length > 0 ? ` (${messages.length})` : ''}` },
         ] as { id: Tab; icon: React.ReactNode; label: string }[]).map(t => (
           <button
             key={t.id}
@@ -430,7 +496,14 @@ export const RentalDetailPage: React.FC = () => {
                   <textarea
                     value={notasEstado}
                     onChange={e => setNotasEstado(e.target.value)}
-                    placeholder="Notas del cambio (opcional)…"
+                    placeholder="Notas internas (opcional)…"
+                    rows={2}
+                    className={`${inputCls} resize-none text-xs`}
+                  />
+                  <textarea
+                    value={msgEstado}
+                    onChange={e => setMsgEstado(e.target.value)}
+                    placeholder="Mensaje al inquilino con el cambio (se enviará por email)…"
                     rows={2}
                     className={`${inputCls} resize-none text-xs`}
                   />
@@ -454,27 +527,83 @@ export const RentalDetailPage: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Acciones rápidas de comunicación */}
+              <div className="mt-5 space-y-2 border-t border-sidebar-border pt-4">
+                <p className="mb-2 text-xs font-semibold text-slate-400">Comunicación directa</p>
+                <button
+                  onClick={() => setShowMsgModal(true)}
+                  className="flex w-full items-center gap-2 rounded-xl border border-sidebar-border bg-admin-card px-4 py-2.5 text-xs font-medium text-slate-300 hover:bg-sidebar-hover"
+                >
+                  <Mail size={13} /> Enviar mensaje al inquilino
+                </button>
+                <button
+                  onClick={() => setShowDocsModal(true)}
+                  className="flex w-full items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-xs font-medium text-amber-300 hover:bg-amber-500/10"
+                >
+                  <PaperclipIcon size={13} /> Solicitar documentación
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {tab === 'inquilino' && (
-        <div className="rounded-2xl border border-sidebar-border bg-sidebar-bg p-6">
-          <h3 className="mb-5 text-sm font-semibold text-white">Datos del inquilino</h3>
-          <div className="grid grid-cols-2 gap-5 text-sm md:grid-cols-3">
-            {[
-              { l: 'Nombre completo',  v: rental.cliente_nombre },
-              { l: 'Email',           v: rental.cliente_email },
-              { l: 'Teléfono',        v: rental.cliente_telefono ?? '—' },
-              { l: 'DNI / NIE',       v: rental.cliente_dni ?? '—' },
-              { l: 'Ocupantes',       v: String(rental.num_ocupantes) },
-            ].map(({ l, v }) => (
-              <div key={l} className="rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
-                <p className="text-xs text-slate-500">{l}</p>
-                <p className="mt-0.5 font-medium text-slate-100">{v}</p>
+        <div className="space-y-5">
+          {/* Datos de contacto */}
+          <div className="rounded-2xl border border-sidebar-border bg-sidebar-bg p-6">
+            <h3 className="mb-4 text-sm font-semibold text-white">Datos de contacto</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+              {[
+                { l: 'Nombre completo', v: rental.cliente_nombre },
+                { l: 'Email',           v: rental.cliente_email },
+                { l: 'Teléfono',        v: rental.cliente_telefono ?? '—' },
+                { l: 'DNI / NIE',       v: rental.cliente_dni ?? '—' },
+                { l: 'Ocupantes',       v: String(rental.num_ocupantes) },
+              ].map(({ l, v }) => (
+                <div key={l} className="rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
+                  <p className="text-xs text-slate-500">{l}</p>
+                  <p className="mt-0.5 font-medium text-slate-100">{v}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Perfil de la solicitud */}
+          <div className="rounded-2xl border border-sidebar-border bg-sidebar-bg p-6">
+            <h3 className="mb-4 text-sm font-semibold text-white">Perfil de la solicitud</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+              <div className="rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
+                <div className="flex items-center gap-1.5 mb-1"><Briefcase size={12} className="text-slate-500" /><p className="text-xs text-slate-500">Situación laboral</p></div>
+                <p className="font-medium text-slate-100">{rental.estado_laboral ?? '—'}</p>
               </div>
-            ))}
+              <div className="rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
+                <div className="flex items-center gap-1.5 mb-1"><MapPin size={12} className="text-slate-500" /><p className="text-xs text-slate-500">Motivo de la estancia</p></div>
+                <p className="font-medium text-slate-100">{rental.motivo_estancia ?? '—'}</p>
+              </div>
+              <div className="rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
+                <div className="flex items-center gap-1.5 mb-1"><PawPrint size={12} className="text-slate-500" /><p className="text-xs text-slate-500">Mascotas</p></div>
+                <p className="font-medium text-slate-100">
+                  {rental.mascotas
+                    ? `Sí${rental.num_mascotas ? ` · ${rental.num_mascotas}` : ''}${rental.tipo_mascotas ? ` · ${rental.tipo_mascotas}` : ''}`
+                    : 'No'}
+                </p>
+              </div>
+            </div>
+
+            {rental.descripcion_solicitud && (
+              <div className="mt-4 rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
+                <p className="mb-1 text-xs text-slate-500">Presentación del inquilino</p>
+                <p className="text-sm text-slate-200 leading-relaxed">{rental.descripcion_solicitud}</p>
+              </div>
+            )}
+            {rental.notas_solicitud && (
+              <div className="mt-3 rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
+                <p className="mb-1 text-xs text-slate-500">Notas adicionales</p>
+                <p className="text-sm text-slate-200 leading-relaxed">{rental.notas_solicitud}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -810,6 +939,161 @@ export const RentalDetailPage: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Tab: Comunicaciones ─────────────────────────────────────────────── */}
+      {tab === 'comunicaciones' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">Historial de comunicaciones</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDocsModal(true)}
+                className="flex items-center gap-1.5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-500/10"
+              >
+                <PaperclipIcon size={12} /> Solicitar docs
+              </button>
+              <button
+                onClick={() => setShowMsgModal(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700"
+              >
+                <Send size={12} /> Enviar mensaje
+              </button>
+            </div>
+          </div>
+
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-sidebar-border bg-sidebar-bg py-16 text-slate-500">
+              <MessageSquare size={28} className="mb-3 opacity-30" />
+              <p className="text-sm">Sin comunicaciones aún</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {messages.map(m => (
+                <div key={m.id} className="rounded-2xl border border-sidebar-border bg-sidebar-bg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {m.channel === 'EMAIL'    && <Mail size={13} className="text-brand-400" />}
+                      {m.channel === 'WHATSAPP' && <MessageCircle size={13} className="text-emerald-400" />}
+                      {m.channel === 'NOTA'     && <StickyNote size={13} className="text-amber-400" />}
+                      <span className="text-xs font-semibold text-slate-300">{m.subject ?? m.channel}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        m.direction === 'OUTBOUND'
+                          ? 'bg-brand-500/10 text-brand-300 border border-brand-500/20'
+                          : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                      }`}>
+                        {m.direction === 'OUTBOUND' ? 'Enviado' : 'Recibido'}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      {new Date(m.sent_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">{m.body}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Modal: Enviar mensaje libre ──────────────────────────────────────── */}
+      {showMsgModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-sidebar-border bg-sidebar-bg p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-white">Enviar mensaje al inquilino</h3>
+              <button onClick={() => setShowMsgModal(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Asunto</label>
+                <input
+                  value={msgSubject}
+                  onChange={e => setMsgSubject(e.target.value)}
+                  placeholder="Asunto del email…"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Mensaje *</label>
+                <textarea
+                  rows={6}
+                  value={msgBody}
+                  onChange={e => setMsgBody(e.target.value)}
+                  placeholder="Escribe aquí tu mensaje para el inquilino…"
+                  className={`${inputCls} resize-none`}
+                />
+              </div>
+              {rental.cliente_telefono && (
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+                  <input type="checkbox" checked={msgWhatsapp} onChange={e => setMsgWhatsapp(e.target.checked)} className="accent-brand-500" />
+                  Enviar también por WhatsApp a {rental.cliente_telefono}
+                </label>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setShowMsgModal(false)} className="rounded-xl border border-sidebar-border px-4 py-2 text-xs text-slate-400 hover:bg-sidebar-hover">Cancelar</button>
+              <button
+                onClick={handleSendMessage}
+                disabled={sendingMsg || !msgBody.trim()}
+                className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-40"
+              >
+                {sendingMsg ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                Enviar email
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Solicitar documentación ──────────────────────────────────── */}
+      {showDocsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-sidebar-border bg-sidebar-bg p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-white">Solicitar documentación</h3>
+              <button onClick={() => setShowDocsModal(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+            </div>
+            <p className="mb-4 text-xs text-slate-400">Selecciona los documentos que necesitas. Se enviará un email al inquilino con la lista.</p>
+            <div className="mb-4 space-y-2 max-h-56 overflow-y-auto">
+              {Object.entries(DOC_TIPO_LABEL).map(([key, label]) => (
+                <label key={key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-sidebar-border bg-admin-card px-4 py-2.5 text-xs text-slate-300 hover:bg-sidebar-hover">
+                  <input
+                    type="checkbox"
+                    checked={docsSelected.includes(label)}
+                    onChange={e => setDocsSelected(prev =>
+                      e.target.checked ? [...prev, label] : prev.filter(d => d !== label)
+                    )}
+                    className="accent-brand-500"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Mensaje adicional (opcional)</label>
+              <textarea
+                rows={3}
+                value={docsNote}
+                onChange={e => setDocsNote(e.target.value)}
+                placeholder="Añade instrucciones específicas o contexto…"
+                className={`${inputCls} resize-none`}
+              />
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setShowDocsModal(false)} className="rounded-xl border border-sidebar-border px-4 py-2 text-xs text-slate-400 hover:bg-sidebar-hover">Cancelar</button>
+              <button
+                onClick={handleRequestDocs}
+                disabled={sendingDocs || docsSelected.length === 0}
+                className="flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-40"
+              >
+                {sendingDocs ? <Loader2 size={12} className="animate-spin" /> : <PaperclipIcon size={12} />}
+                Solicitar {docsSelected.length > 0 ? `(${docsSelected.length})` : ''}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

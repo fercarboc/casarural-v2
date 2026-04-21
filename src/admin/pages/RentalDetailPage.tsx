@@ -144,6 +144,8 @@ export const RentalDetailPage: React.FC = () => {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
+  const [syncingCalendar, setSyncingCalendar] = useState(false)
+
   // Edit modals
   const [showEditContrato, setShowEditContrato] = useState(false)
   const [editContrato, setEditContrato] = useState<Partial<Rental>>({})
@@ -208,11 +210,21 @@ export const RentalDetailPage: React.FC = () => {
       // Bloquear fechas en calendario al activar contrato
       if (newEstado === 'ACTIVO' && rental.fecha_inicio && rental.fecha_fin) {
         const { supabase: sb } = await import('../../integrations/supabase/client')
+        // El calendario usa fin exclusivo (como check-out). Para que el último día del contrato
+        // quede bloqueado, añadimos 1 día al fecha_fin del rental.
+        const finExclusivo = new Date(rental.fecha_fin + 'T12:00:00')
+        finExclusivo.setDate(finExclusivo.getDate() + 1)
+        const fechaFinBloqueo = finExclusivo.toISOString().split('T')[0]
+        // Eliminar bloqueo anterior de este rental si existía
+        await sb.from('bloqueos').delete()
+          .eq('unidad_id', rental.unidad_id)
+          .eq('origen', 'RENTAL')
+          .like('motivo', `RENTAL:${rental.id}%`)
         await sb.from('bloqueos').insert({
           property_id,
           unidad_id: rental.unidad_id,
           fecha_inicio: rental.fecha_inicio,
-          fecha_fin: rental.fecha_fin,
+          fecha_fin: fechaFinBloqueo,
           motivo: `RENTAL:${rental.id} · ${rental.cliente_nombre}`,
           origen: 'RENTAL',
         })
@@ -316,11 +328,14 @@ export const RentalDetailPage: React.FC = () => {
       // Bloquear las nuevas fechas en calendario si hay fecha fin
       if (newRenewal.fecha_inicio && newRenewal.fecha_fin) {
         const { supabase: sb } = await import('../../integrations/supabase/client')
+        const finExclusivo = new Date(newRenewal.fecha_fin + 'T12:00:00')
+        finExclusivo.setDate(finExclusivo.getDate() + 1)
+        const fechaFinBloqueo = finExclusivo.toISOString().split('T')[0]
         await sb.from('bloqueos').insert({
           property_id,
           unidad_id: rental.unidad_id,
           fecha_inicio: newRenewal.fecha_inicio,
-          fecha_fin: newRenewal.fecha_fin,
+          fecha_fin: fechaFinBloqueo,
           motivo: `RENTAL:${rental.id} · Renovación · ${rental.cliente_nombre}`,
           origen: 'RENTAL',
         })
@@ -384,6 +399,53 @@ export const RentalDetailPage: React.FC = () => {
       setError(e.message)
     } finally {
       setSavingSchedule(false)
+    }
+  }
+
+  async function handleSyncCalendar() {
+    if (!rental || !rental.fecha_inicio || !rental.fecha_fin) {
+      setError('El contrato necesita fecha de inicio y fin para sincronizar el calendario')
+      return
+    }
+    setSyncingCalendar(true)
+    try {
+      const { supabase: sb } = await import('../../integrations/supabase/client')
+      // Eliminar bloqueos anteriores de este rental
+      await sb.from('bloqueos').delete()
+        .eq('unidad_id', rental.unidad_id)
+        .eq('origen', 'RENTAL')
+        .like('motivo', `RENTAL:${rental.id}%`)
+      // Insertar el contrato principal
+      const finExclusivo = new Date(rental.fecha_fin + 'T12:00:00')
+      finExclusivo.setDate(finExclusivo.getDate() + 1)
+      const fechaFinBloqueo = finExclusivo.toISOString().split('T')[0]
+      await sb.from('bloqueos').insert({
+        property_id,
+        unidad_id: rental.unidad_id,
+        fecha_inicio: rental.fecha_inicio,
+        fecha_fin: fechaFinBloqueo,
+        motivo: `RENTAL:${rental.id} · ${rental.cliente_nombre}`,
+        origen: 'RENTAL',
+      })
+      // Insertar renovaciones con fecha fin
+      for (const r of renewals) {
+        if (r.fecha_inicio && r.fecha_fin) {
+          const finRen = new Date(r.fecha_fin + 'T12:00:00')
+          finRen.setDate(finRen.getDate() + 1)
+          await sb.from('bloqueos').insert({
+            property_id,
+            unidad_id: rental.unidad_id,
+            fecha_inicio: r.fecha_inicio,
+            fecha_fin: finRen.toISOString().split('T')[0],
+            motivo: `RENTAL:${rental.id} · Renovación · ${rental.cliente_nombre}`,
+            origen: 'RENTAL',
+          })
+        }
+      }
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSyncingCalendar(false)
     }
   }
 
@@ -641,6 +703,21 @@ export const RentalDetailPage: React.FC = () => {
                       )
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* Sincronizar calendario */}
+              {(rental.estado === 'ACTIVO' || rental.estado === 'RENOVADO') && rental.fecha_fin && (
+                <div className="mt-4 border-t border-sidebar-border pt-4">
+                  <button
+                    onClick={handleSyncCalendar}
+                    disabled={syncingCalendar}
+                    className="flex w-full items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-2.5 text-xs font-medium text-violet-300 hover:bg-violet-500/10 disabled:opacity-40"
+                  >
+                    {syncingCalendar ? <Loader2 size={13} className="animate-spin" /> : <CalendarRange size={13} />}
+                    Sincronizar bloqueo de calendario
+                  </button>
+                  <p className="mt-1 text-[10px] text-slate-600">Recalcula el bloqueo en el calendario con las fechas actuales del contrato</p>
                 </div>
               )}
 

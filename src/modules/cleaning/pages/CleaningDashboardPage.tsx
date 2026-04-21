@@ -12,15 +12,19 @@ import {
   Building2,
   ChevronRight,
   RefreshCw,
+  Zap,
+  RepeatIcon,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useAdminTenant } from '../../../admin/context/AdminTenantContext'
 import { cleaningService } from '../services/cleaningService'
+import { cleaningScheduleService } from '../services/cleaningScheduleService'
 import type {
   CleaningJob,
   CleaningDashboardKPIs,
   CleaningStatus,
+  CleaningSchedule,
 } from '../types/cleaning.types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -91,9 +95,12 @@ export const CleaningDashboardPage: React.FC = () => {
   const [kpis, setKpis] = useState<CleaningDashboardKPIs | null>(null)
   const [todayJobs, setTodayJobs] = useState<CleaningJob[]>([])
   const [upcoming, setUpcoming] = useState<CleaningJob[]>([])
+  const [schedules, setSchedules] = useState<CleaningSchedule[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [transitioning, setTransitioning] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [generateResult, setGenerateResult] = useState<{ created: number; skipped: number } | null>(null)
 
   const today = todayStr()
 
@@ -101,20 +108,37 @@ export const CleaningDashboardPage: React.FC = () => {
     setLoading(true)
     setError('')
     try {
-      const [k, tj, up] = await Promise.all([
+      const [k, tj, up, sc] = await Promise.all([
         cleaningService.getDashboardKPIs(property_id),
         cleaningService.getTodayJobs(property_id),
         cleaningService.getUpcoming7Days(property_id),
+        cleaningScheduleService.getSchedules(property_id, { active: true }),
       ])
       setKpis(k)
       setTodayJobs(tj)
       setUpcoming(up)
+      setSchedules(sc)
     } catch (e: any) {
       setError(e.message ?? 'Error al cargar los datos de limpieza')
     } finally {
       setLoading(false)
     }
   }, [property_id])
+
+  async function handleGenerate() {
+    setGenerating(true)
+    setGenerateResult(null)
+    setError('')
+    try {
+      const result = await cleaningService.generateJobs()
+      setGenerateResult(result)
+      await load()
+    } catch (e: any) {
+      setError(e.message ?? 'Error generando jobs')
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -155,14 +179,24 @@ export const CleaningDashboardPage: React.FC = () => {
               </p>
             </div>
           </div>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-admin-card px-4 py-2.5 text-sm font-medium text-slate-300 transition-all hover:bg-sidebar-hover disabled:opacity-40"
-          >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            Actualizar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleGenerate}
+              disabled={loading || generating}
+              className="flex items-center gap-2 rounded-xl border border-brand-500/30 bg-brand-600/20 px-4 py-2.5 text-sm font-medium text-brand-300 transition-all hover:bg-brand-600/30 disabled:opacity-40"
+            >
+              {generating ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+              Generar jobs
+            </button>
+            <button
+              onClick={load}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-admin-card px-4 py-2.5 text-sm font-medium text-slate-300 transition-all hover:bg-sidebar-hover disabled:opacity-40"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              Actualizar
+            </button>
+          </div>
         </div>
       </header>
 
@@ -170,6 +204,16 @@ export const CleaningDashboardPage: React.FC = () => {
         <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-300">
           <AlertTriangle size={15} className="shrink-0" />
           {error}
+        </div>
+      )}
+
+      {generateResult && (
+        <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-300">
+          <CheckCircle2 size={15} className="shrink-0" />
+          Jobs generados: <strong>{generateResult.created}</strong> nuevos, <strong>{generateResult.skipped}</strong> ya existían.
+          {generateResult.created === 0 && generateResult.skipped === 0 && (
+            <span className="ml-1 text-emerald-400/70">— Verifica que los alquileres estén en estado APROBADO, ACTIVO o RENOVADO.</span>
+          )}
         </div>
       )}
 
@@ -230,6 +274,52 @@ export const CleaningDashboardPage: React.FC = () => {
                     {urgentJobs.map(j => j.unit_name ?? j.unit_id).join(' · ')} — requieren atención inmediata
                   </p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Schedules activos ─────────────────────────────────────────────── */}
+          {schedules.length > 0 && (
+            <div className="overflow-hidden rounded-2xl border border-sidebar-border bg-sidebar-bg">
+              <div className="flex items-center justify-between border-b border-sidebar-border bg-admin-card/70 px-5 py-3.5">
+                <div className="flex items-center gap-2">
+                  <RepeatIcon size={14} className="text-violet-400" />
+                  <h3 className="text-sm font-semibold text-white">Programaciones activas</h3>
+                </div>
+                <span className="text-xs text-slate-500">{schedules.length} schedule{schedules.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-sidebar-border">
+                      <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">Unidad</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">Frecuencia</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">Inicio</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fin</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">Días</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-sidebar-border">
+                    {schedules.map(sc => (
+                      <tr key={sc.id} className="transition-colors hover:bg-sidebar-hover/50">
+                        <td className="px-4 py-2.5 text-xs font-medium text-slate-200">{sc.unit_name ?? '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <FrequencyBadge frequency={sc.frequency} />
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-slate-400">{sc.start_date}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-400">{sc.end_date ?? '—'}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-500">
+                          {sc.days_of_week?.join(', ') ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-sidebar-border bg-admin-card/40 px-5 py-3">
+                <p className="text-[11px] text-slate-500">
+                  Los jobs se generan para alquileres en estado <span className="text-slate-400 font-medium">APROBADO, ACTIVO o RENOVADO</span>. Pulsa "Generar jobs" para actualizar.
+                </p>
               </div>
             </div>
           )}
@@ -350,6 +440,23 @@ function StatusChip({ status }: { status: CleaningStatus }) {
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_CLS[status]}`}>
       {STATUS_LABEL[status]}
+    </span>
+  )
+}
+
+const FREQ_LABEL: Record<string, string> = {
+  WEEKLY: 'Semanal', BIWEEKLY: 'Quincenal', MONTHLY: 'Mensual',
+}
+const FREQ_CLS: Record<string, string> = {
+  WEEKLY:   'bg-blue-500/10 text-blue-300',
+  BIWEEKLY: 'bg-violet-500/10 text-violet-300',
+  MONTHLY:  'bg-amber-500/10 text-amber-300',
+}
+
+function FrequencyBadge({ frequency }: { frequency: string }) {
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${FREQ_CLS[frequency] ?? 'bg-slate-500/10 text-slate-400'}`}>
+      {FREQ_LABEL[frequency] ?? frequency}
     </span>
   )
 }

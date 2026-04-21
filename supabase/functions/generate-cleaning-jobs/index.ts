@@ -117,7 +117,7 @@ serve(async (req) => {
         rentals!inner(estado)
       `)
       .eq('active', true)
-      .in('rentals.estado', ['ACTIVO', 'RENOVADO'])
+      .in('rentals.estado', ['APROBADO', 'ACTIVO', 'RENOVADO'])
 
     if (sErr) throw sErr
 

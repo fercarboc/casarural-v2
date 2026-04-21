@@ -27,6 +27,9 @@ import {
   PawPrint,
   Briefcase,
   MapPin,
+  Eye,
+  Pencil,
+  CalendarRange,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -141,6 +144,19 @@ export const RentalDetailPage: React.FC = () => {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
+  // Edit modals
+  const [showEditContrato, setShowEditContrato] = useState(false)
+  const [editContrato, setEditContrato] = useState<Partial<Rental>>({})
+  const [savingContrato, setSavingContrato] = useState(false)
+
+  const [showEditContacto, setShowEditContacto] = useState(false)
+  const [editContacto, setEditContacto] = useState<Partial<Rental>>({})
+  const [savingContacto, setSavingContacto] = useState(false)
+
+  const [showEditPerfil, setShowEditPerfil] = useState(false)
+  const [editPerfil, setEditPerfil] = useState<Partial<Rental>>({})
+  const [savingPerfil, setSavingPerfil] = useState(false)
+
   // New cleaning schedule
   const [newSchedule, setNewSchedule] = useState({
     frequency: 'WEEKLY' as CleaningSchedule['frequency'],
@@ -189,7 +205,18 @@ export const RentalDetailPage: React.FC = () => {
       setRental(prev => prev ? { ...prev, estado: newEstado, notas: notasEstado || prev.notas } : prev)
       setNotasEstado('')
       setMsgEstado('')
-      // Recargar mensajes para mostrar el log nuevo
+      // Bloquear fechas en calendario al activar contrato
+      if (newEstado === 'ACTIVO' && rental.fecha_inicio && rental.fecha_fin) {
+        const { supabase: sb } = await import('../../integrations/supabase/client')
+        await sb.from('bloqueos').insert({
+          property_id,
+          unidad_id: rental.unidad_id,
+          fecha_inicio: rental.fecha_inicio,
+          fecha_fin: rental.fecha_fin,
+          motivo: `RENTAL:${rental.id} · ${rental.cliente_nombre}`,
+          origen: 'RENTAL',
+        })
+      }
       const msgs = await rentalService.getMessages(rental.id)
       setMessages(msgs)
     } catch (e: any) {
@@ -286,6 +313,18 @@ export const RentalDetailPage: React.FC = () => {
         nuevo_precio: newRenewal.nuevo_precio ? parseFloat(newRenewal.nuevo_precio) : null,
         notas: newRenewal.notas.trim() || null,
       })
+      // Bloquear las nuevas fechas en calendario si hay fecha fin
+      if (newRenewal.fecha_inicio && newRenewal.fecha_fin) {
+        const { supabase: sb } = await import('../../integrations/supabase/client')
+        await sb.from('bloqueos').insert({
+          property_id,
+          unidad_id: rental.unidad_id,
+          fecha_inicio: newRenewal.fecha_inicio,
+          fecha_fin: newRenewal.fecha_fin,
+          motivo: `RENTAL:${rental.id} · Renovación · ${rental.cliente_nombre}`,
+          origen: 'RENTAL',
+        })
+      }
       setRenewals(prev => [created, ...prev])
       setNewRenewal({ fecha_inicio: '', fecha_fin: '', duracion_meses: '', nuevo_precio: '', notas: '' })
     } catch (e: any) {
@@ -345,6 +384,57 @@ export const RentalDetailPage: React.FC = () => {
       setError(e.message)
     } finally {
       setSavingSchedule(false)
+    }
+  }
+
+  async function handleViewDoc(doc: RentalDocument) {
+    try {
+      const url = await rentalService.getDocumentUrl(doc.file_path)
+      window.open(url, '_blank')
+    } catch (e: any) {
+      setError(e.message)
+    }
+  }
+
+  async function handleSaveContrato() {
+    if (!rental) return
+    setSavingContrato(true)
+    try {
+      const updated = await rentalService.updateRental(rental.id, editContrato)
+      setRental(updated)
+      setShowEditContrato(false)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSavingContrato(false)
+    }
+  }
+
+  async function handleSaveContacto() {
+    if (!rental) return
+    setSavingContacto(true)
+    try {
+      const updated = await rentalService.updateRental(rental.id, editContacto)
+      setRental(updated)
+      setShowEditContacto(false)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSavingContacto(false)
+    }
+  }
+
+  async function handleSavePerfil() {
+    if (!rental) return
+    setSavingPerfil(true)
+    try {
+      const updated = await rentalService.updateRental(rental.id, editPerfil)
+      setRental(updated)
+      setShowEditPerfil(false)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setSavingPerfil(false)
     }
   }
 
@@ -453,7 +543,15 @@ export const RentalDetailPage: React.FC = () => {
           <div className="space-y-4 xl:col-span-2">
             {/* Datos contrato */}
             <div className="rounded-2xl border border-sidebar-border bg-sidebar-bg p-5">
-              <h3 className="mb-4 text-sm font-semibold text-white">Datos del contrato</h3>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white">Datos del contrato</h3>
+                <button
+                  onClick={() => { setEditContrato({ precio_mensual: rental.precio_mensual, fianza: rental.fianza, fianza_cobrada: rental.fianza_cobrada, fecha_inicio: rental.fecha_inicio, fecha_fin: rental.fecha_fin ?? '', duracion_meses: rental.duracion_meses ?? undefined, forma_pago: rental.forma_pago, num_ocupantes: rental.num_ocupantes, incluye_gastos: rental.incluye_gastos, incluye_limpieza: rental.incluye_limpieza, notas_solicitud: rental.notas_solicitud ?? '' }); setShowEditContrato(true) }}
+                  className="flex items-center gap-1.5 rounded-lg border border-sidebar-border bg-admin-card px-3 py-1.5 text-[11px] font-medium text-slate-400 hover:bg-sidebar-hover hover:text-slate-200"
+                >
+                  <Pencil size={11} /> Editar
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 {[
                   { l: 'Unidad',         v: rental.unidad_nombre ?? '—' },
@@ -508,22 +606,40 @@ export const RentalDetailPage: React.FC = () => {
                     className={`${inputCls} resize-none text-xs`}
                   />
                   <div className="space-y-2">
-                    {nextStates.map(s => (
-                      <button
-                        key={s}
-                        onClick={() => handleChangeEstado(s)}
-                        disabled={changingEstado}
-                        className={`w-full rounded-xl px-4 py-2.5 text-xs font-bold transition-all disabled:opacity-40 ${
-                          s === 'CANCELADO'
-                            ? 'border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20'
-                            : s === 'ACTIVO' || s === 'APROBADO'
-                            ? 'bg-brand-600 text-white hover:bg-brand-700'
-                            : 'border border-sidebar-border bg-admin-card text-slate-300 hover:bg-sidebar-hover'
-                        }`}
-                      >
-                        {changingEstado ? <Loader2 size={12} className="mx-auto animate-spin" /> : `→ ${RENTAL_ESTADO_LABEL[s]}`}
-                      </button>
-                    ))}
+                    {nextStates.map(s => {
+                      const btnLabel: Record<RentalEstado, string> = {
+                        SOLICITUD:   'Volver a solicitud',
+                        EN_REVISION: 'Poner en revisión',
+                        APROBADO:    'Aprobar solicitud',
+                        ACTIVO:      'Activar contrato (firma recibida)',
+                        RENOVADO:    'Registrar renovación',
+                        FINALIZADO:  'Finalizar contrato',
+                        CANCELADO:   'Cancelar',
+                      }
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => handleChangeEstado(s)}
+                          disabled={changingEstado}
+                          className={`w-full rounded-xl px-4 py-2.5 text-xs font-bold transition-all disabled:opacity-40 ${
+                            s === 'CANCELADO'
+                              ? 'border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                              : s === 'ACTIVO'
+                              ? 'flex items-center justify-center gap-2 bg-emerald-600 text-white hover:bg-emerald-700'
+                              : s === 'APROBADO'
+                              ? 'bg-brand-600 text-white hover:bg-brand-700'
+                              : 'border border-sidebar-border bg-admin-card text-slate-300 hover:bg-sidebar-hover'
+                          }`}
+                        >
+                          {changingEstado
+                            ? <Loader2 size={12} className="mx-auto animate-spin" />
+                            : s === 'ACTIVO'
+                            ? <><CalendarRange size={12} className="inline mr-1" />{btnLabel[s]}</>
+                            : btnLabel[s]
+                          }
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -553,7 +669,15 @@ export const RentalDetailPage: React.FC = () => {
         <div className="space-y-5">
           {/* Datos de contacto */}
           <div className="rounded-2xl border border-sidebar-border bg-sidebar-bg p-6">
-            <h3 className="mb-4 text-sm font-semibold text-white">Datos de contacto</h3>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">Datos de contacto</h3>
+              <button
+                onClick={() => { setEditContacto({ cliente_nombre: rental.cliente_nombre, cliente_email: rental.cliente_email, cliente_telefono: rental.cliente_telefono ?? '', cliente_dni: rental.cliente_dni ?? '', num_ocupantes: rental.num_ocupantes }); setShowEditContacto(true) }}
+                className="flex items-center gap-1.5 rounded-lg border border-sidebar-border bg-admin-card px-3 py-1.5 text-[11px] font-medium text-slate-400 hover:bg-sidebar-hover hover:text-slate-200"
+              >
+                <Pencil size={11} /> Editar
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
               {[
                 { l: 'Nombre completo', v: rental.cliente_nombre },
@@ -572,7 +696,15 @@ export const RentalDetailPage: React.FC = () => {
 
           {/* Perfil de la solicitud */}
           <div className="rounded-2xl border border-sidebar-border bg-sidebar-bg p-6">
-            <h3 className="mb-4 text-sm font-semibold text-white">Perfil de la solicitud</h3>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">Perfil de la solicitud</h3>
+              <button
+                onClick={() => { setEditPerfil({ estado_laboral: rental.estado_laboral ?? '', motivo_estancia: rental.motivo_estancia ?? '', mascotas: rental.mascotas, num_mascotas: rental.num_mascotas ?? undefined, tipo_mascotas: rental.tipo_mascotas ?? '', descripcion_solicitud: rental.descripcion_solicitud ?? '', notas_solicitud: rental.notas_solicitud ?? '' }); setShowEditPerfil(true) }}
+                className="flex items-center gap-1.5 rounded-lg border border-sidebar-border bg-admin-card px-3 py-1.5 text-[11px] font-medium text-slate-400 hover:bg-sidebar-hover hover:text-slate-200"
+              >
+                <Pencil size={11} /> Editar
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
               <div className="rounded-xl border border-sidebar-border bg-admin-card px-4 py-3">
                 <div className="flex items-center gap-1.5 mb-1"><Briefcase size={12} className="text-slate-500" /><p className="text-xs text-slate-500">Situación laboral</p></div>
@@ -668,6 +800,13 @@ export const RentalDetailPage: React.FC = () => {
                   <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${DOC_ESTADO_CLS[doc.estado]}`}>
                     {doc.estado}
                   </span>
+                  <button
+                    onClick={() => handleViewDoc(doc)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-sidebar-hover hover:text-brand-300"
+                    title="Ver documento"
+                  >
+                    <Eye size={13} />
+                  </button>
                   {doc.estado === 'PENDIENTE' && (
                     <div className="flex gap-2">
                       <button
@@ -1042,6 +1181,174 @@ export const RentalDetailPage: React.FC = () => {
               >
                 {sendingMsg ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
                 Enviar email
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Editar contrato ──────────────────────────────────────────── */}
+      {showEditContrato && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl rounded-3xl border border-sidebar-border bg-sidebar-bg p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-white">Editar datos del contrato</h3>
+              <button onClick={() => setShowEditContrato(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Precio mensual (€)</label>
+                <input type="number" step="0.01" value={editContrato.precio_mensual ?? ''} onChange={e => setEditContrato(p => ({ ...p, precio_mensual: parseFloat(e.target.value) }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Fianza (€)</label>
+                <input type="number" step="0.01" value={editContrato.fianza ?? ''} onChange={e => setEditContrato(p => ({ ...p, fianza: parseFloat(e.target.value) }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Fecha inicio</label>
+                <input type="date" value={editContrato.fecha_inicio ?? ''} onChange={e => setEditContrato(p => ({ ...p, fecha_inicio: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Fecha fin prevista</label>
+                <input type="date" value={editContrato.fecha_fin ?? ''} onChange={e => setEditContrato(p => ({ ...p, fecha_fin: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Duración (meses)</label>
+                <input type="number" min={1} value={editContrato.duracion_meses ?? ''} onChange={e => setEditContrato(p => ({ ...p, duracion_meses: parseInt(e.target.value) }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Forma de pago</label>
+                <select value={editContrato.forma_pago ?? ''} onChange={e => setEditContrato(p => ({ ...p, forma_pago: e.target.value as Rental['forma_pago'] }))} className={inputCls}>
+                  {['TARJETA','SEPA','TRANSFERENCIA','EFECTIVO'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Nº de ocupantes</label>
+                <input type="number" min={1} value={editContrato.num_ocupantes ?? ''} onChange={e => setEditContrato(p => ({ ...p, num_ocupantes: parseInt(e.target.value) }))} className={inputCls} />
+              </div>
+              <div className="flex items-center gap-6 pt-5">
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+                  <input type="checkbox" checked={!!editContrato.incluye_gastos} onChange={e => setEditContrato(p => ({ ...p, incluye_gastos: e.target.checked }))} className="accent-brand-500" />
+                  Gastos incluidos
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+                  <input type="checkbox" checked={!!editContrato.incluye_limpieza} onChange={e => setEditContrato(p => ({ ...p, incluye_limpieza: e.target.checked }))} className="accent-brand-500" />
+                  Limpieza incluida
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+                  <input type="checkbox" checked={!!editContrato.fianza_cobrada} onChange={e => setEditContrato(p => ({ ...p, fianza_cobrada: e.target.checked }))} className="accent-brand-500" />
+                  Fianza cobrada
+                </label>
+              </div>
+              <div className="col-span-2">
+                <label className="mb-1 block text-xs text-slate-400">Notas de la solicitud</label>
+                <textarea rows={3} value={editContrato.notas_solicitud ?? ''} onChange={e => setEditContrato(p => ({ ...p, notas_solicitud: e.target.value }))} className={`${inputCls} resize-none`} />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setShowEditContrato(false)} className="rounded-xl border border-sidebar-border px-4 py-2 text-xs text-slate-400 hover:bg-sidebar-hover">Cancelar</button>
+              <button onClick={handleSaveContrato} disabled={savingContrato} className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-40">
+                {savingContrato ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Editar contacto ───────────────────────────────────────────── */}
+      {showEditContacto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-sidebar-border bg-sidebar-bg p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-white">Editar datos de contacto</h3>
+              <button onClick={() => setShowEditContacto(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="mb-1 block text-xs text-slate-400">Nombre completo</label>
+                <input value={editContacto.cliente_nombre ?? ''} onChange={e => setEditContacto(p => ({ ...p, cliente_nombre: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Email</label>
+                <input type="email" value={editContacto.cliente_email ?? ''} onChange={e => setEditContacto(p => ({ ...p, cliente_email: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Teléfono</label>
+                <input value={editContacto.cliente_telefono ?? ''} onChange={e => setEditContacto(p => ({ ...p, cliente_telefono: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">DNI / NIE</label>
+                <input value={editContacto.cliente_dni ?? ''} onChange={e => setEditContacto(p => ({ ...p, cliente_dni: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Nº de ocupantes</label>
+                <input type="number" min={1} value={editContacto.num_ocupantes ?? ''} onChange={e => setEditContacto(p => ({ ...p, num_ocupantes: parseInt(e.target.value) }))} className={inputCls} />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setShowEditContacto(false)} className="rounded-xl border border-sidebar-border px-4 py-2 text-xs text-slate-400 hover:bg-sidebar-hover">Cancelar</button>
+              <button onClick={handleSaveContacto} disabled={savingContacto} className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-40">
+                {savingContacto ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Editar perfil solicitud ──────────────────────────────────── */}
+      {showEditPerfil && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-sidebar-border bg-sidebar-bg p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-white">Editar perfil de la solicitud</h3>
+              <button onClick={() => setShowEditPerfil(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Situación laboral</label>
+                <select value={editPerfil.estado_laboral ?? ''} onChange={e => setEditPerfil(p => ({ ...p, estado_laboral: e.target.value }))} className={inputCls}>
+                  <option value="">— Sin especificar —</option>
+                  {['EMPLEADO','AUTONOMO','FUNCIONARIO','JUBILADO','ESTUDIANTE','DESEMPLEADO','OTRO'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Motivo de la estancia</label>
+                <select value={editPerfil.motivo_estancia ?? ''} onChange={e => setEditPerfil(p => ({ ...p, motivo_estancia: e.target.value }))} className={inputCls}>
+                  <option value="">— Sin especificar —</option>
+                  {['TRABAJO','ESTUDIOS','RESIDENCIA_HABITUAL','TEMPORAL','OTRO'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-3 pt-4">
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+                  <input type="checkbox" checked={!!editPerfil.mascotas} onChange={e => setEditPerfil(p => ({ ...p, mascotas: e.target.checked }))} className="accent-brand-500" />
+                  Tiene mascotas
+                </label>
+              </div>
+              {editPerfil.mascotas && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-400">Nº de mascotas</label>
+                    <input type="number" min={1} value={editPerfil.num_mascotas ?? ''} onChange={e => setEditPerfil(p => ({ ...p, num_mascotas: parseInt(e.target.value) }))} className={inputCls} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="mb-1 block text-xs text-slate-400">Tipo de mascotas</label>
+                    <input value={editPerfil.tipo_mascotas ?? ''} onChange={e => setEditPerfil(p => ({ ...p, tipo_mascotas: e.target.value }))} placeholder="Ej: perro, gato…" className={inputCls} />
+                  </div>
+                </>
+              )}
+              <div className="col-span-2">
+                <label className="mb-1 block text-xs text-slate-400">Presentación del inquilino</label>
+                <textarea rows={3} value={editPerfil.descripcion_solicitud ?? ''} onChange={e => setEditPerfil(p => ({ ...p, descripcion_solicitud: e.target.value }))} className={`${inputCls} resize-none`} />
+              </div>
+              <div className="col-span-2">
+                <label className="mb-1 block text-xs text-slate-400">Notas adicionales</label>
+                <textarea rows={2} value={editPerfil.notas_solicitud ?? ''} onChange={e => setEditPerfil(p => ({ ...p, notas_solicitud: e.target.value }))} className={`${inputCls} resize-none`} />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setShowEditPerfil(false)} className="rounded-xl border border-sidebar-border px-4 py-2 text-xs text-slate-400 hover:bg-sidebar-hover">Cancelar</button>
+              <button onClick={handleSavePerfil} disabled={savingPerfil} className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-40">
+                {savingPerfil ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Guardar
               </button>
             </div>
           </div>

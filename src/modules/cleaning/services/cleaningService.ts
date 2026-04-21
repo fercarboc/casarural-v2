@@ -207,6 +207,12 @@ export const cleaningService = {
     return mapJob(row)
   },
 
+  async generateJobs(): Promise<{ created: number; skipped: number }> {
+    const res = await supabase.functions.invoke('generate-cleaning-jobs', { body: {} })
+    if (res.error) throw new Error(res.error.message)
+    return res.data
+  },
+
   async changeStatus(id: string, currentStatus: CleaningStatus, newStatus: CleaningStatus): Promise<CleaningJob> {
     const allowed = TRANSITIONS[currentStatus]
     if (!allowed.includes(newStatus)) {

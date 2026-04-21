@@ -227,6 +227,14 @@ export const rentalService = {
     return data
   },
 
+  async getDocumentUrl(filePath: string): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from('rental-documents')
+      .createSignedUrl(filePath, 3600)
+    if (error) throw error
+    return data.signedUrl
+  },
+
   async deleteDocument(id: string): Promise<void> {
     const { error } = await supabase.from('rental_documents').delete().eq('id', id)
     if (error) throw error

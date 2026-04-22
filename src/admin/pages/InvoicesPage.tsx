@@ -82,287 +82,6 @@ function EstadoBadge({ estado }: { estado: string }) {
   )
 }
 
-// ─── print template ───────────────────────────────────────────────────────────
-
-function PrintFactura({ factura }: { factura: FacturaDetalle }) {
-  const isNoReembolsable = factura.reserva_tarifa === 'NO_REEMBOLSABLE'
-  const descuento = factura.reserva_descuento ?? 0
-
-  return (
-    <div
-      id="invoice-print"
-      style={{
-        fontFamily: 'Arial, sans-serif',
-        color: '#111',
-        background: '#fff',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginBottom: 32,
-          borderBottom: '2px solid #111',
-          paddingBottom: 16,
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>La Rasilla</div>
-          <div
-            style={{
-              fontSize: 12,
-              color: '#555',
-              marginTop: 4,
-              lineHeight: 1.6,
-            }}
-          >
-            Castillo Pedroso, Valles Pasiegos
-            <br />
-            Cantabria, España
-            <br />
-            casarurallarasilla.com
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#333' }}>
-            FACTURA
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4 }}>
-            {factura.numero}
-          </div>
-          <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
-            Fecha: {fmtDate(factura.fecha_emision)}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginBottom: 28 }}>
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            color: '#888',
-            marginBottom: 6,
-            letterSpacing: 1,
-          }}
-        >
-          Facturar a
-        </div>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>{factura.nombre}</div>
-        {factura.nif && (
-          <div style={{ fontSize: 12, color: '#555' }}>
-            NIF/DNI: {factura.nif}
-          </div>
-        )}
-        {factura.direccion && (
-          <div style={{ fontSize: 12, color: '#555' }}>{factura.direccion}</div>
-        )}
-        {factura.reserva_email && (
-          <div style={{ fontSize: 12, color: '#555' }}>
-            {factura.reserva_email}
-          </div>
-        )}
-      </div>
-
-      {factura.reserva_codigo && (
-        <div
-          style={{
-            marginBottom: 28,
-            background: '#f9f9f9',
-            padding: '10px 14px',
-            borderRadius: 6,
-            fontSize: 12,
-            color: '#555',
-          }}
-        >
-          Reserva <strong>{factura.reserva_codigo}</strong>
-          {' · '}
-          {fmtDate(factura.reserva_fecha_entrada)} –{' '}
-          {fmtDate(factura.reserva_fecha_salida)}
-          {' · '}
-          {factura.reserva_noches} noche
-          {(factura.reserva_noches ?? 1) > 1 ? 's' : ''}
-          {' · '}
-          {factura.reserva_num_huespedes} huésped
-          {(factura.reserva_num_huespedes ?? 1) > 1 ? 'es' : ''}
-        </div>
-      )}
-
-      <table
-        style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 24 }}
-      >
-        <thead>
-          <tr style={{ background: '#f0f0f0' }}>
-            <th
-              style={{
-                textAlign: 'left',
-                padding: '8px 12px',
-                fontSize: 11,
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}
-            >
-              Concepto
-            </th>
-            <th
-              style={{
-                textAlign: 'right',
-                padding: '8px 12px',
-                fontSize: 11,
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}
-            >
-              Importe
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr style={{ borderBottom: '1px solid #eee' }}>
-            <td style={{ padding: '9px 12px', fontSize: 12 }}>
-              Alojamiento — {factura.reserva_noches ?? '?'} noche
-              {(factura.reserva_noches ?? 1) > 1 ? 's' : ''}
-              {factura.reserva_precio_noche
-                ? ` × ${fmtEur(factura.reserva_precio_noche)}/noche`
-                : ''}
-            </td>
-            <td
-              style={{
-                padding: '9px 12px',
-                fontSize: 12,
-                textAlign: 'right',
-              }}
-            >
-              {fmtEur(factura.reserva_importe_alojamiento ?? 0)}
-            </td>
-          </tr>
-
-          {(factura.reserva_importe_extra ?? 0) > 0 && (
-            <tr style={{ borderBottom: '1px solid #eee' }}>
-              <td style={{ padding: '9px 12px', fontSize: 12 }}>
-                Suplemento huésped extra
-              </td>
-              <td
-                style={{
-                  padding: '9px 12px',
-                  fontSize: 12,
-                  textAlign: 'right',
-                }}
-              >
-                {fmtEur(factura.reserva_importe_extra ?? 0)}
-              </td>
-            </tr>
-          )}
-
-          <tr style={{ borderBottom: '1px solid #eee' }}>
-            <td style={{ padding: '9px 12px', fontSize: 12 }}>
-              Tarifa de limpieza
-            </td>
-            <td
-              style={{
-                padding: '9px 12px',
-                fontSize: 12,
-                textAlign: 'right',
-              }}
-            >
-              {fmtEur(factura.reserva_importe_limpieza ?? 0)}
-            </td>
-          </tr>
-
-          {isNoReembolsable && descuento > 0 && (
-            <tr style={{ borderBottom: '1px solid #eee' }}>
-              <td
-                style={{ padding: '9px 12px', fontSize: 12, color: '#16a34a' }}
-              >
-                Descuento tarifa no reembolsable (−10%)
-              </td>
-              <td
-                style={{
-                  padding: '9px 12px',
-                  fontSize: 12,
-                  textAlign: 'right',
-                  color: '#16a34a',
-                }}
-              >
-                −{fmtEur(descuento)}
-              </td>
-            </tr>
-          )}
-        </tbody>
-        <tfoot>
-          <tr style={{ borderTop: '2px solid #111' }}>
-            <td style={{ padding: '10px 12px', fontSize: 12, color: '#555' }}>
-              Base imponible (sin IVA)
-            </td>
-            <td
-              style={{
-                padding: '10px 12px',
-                fontSize: 12,
-                textAlign: 'right',
-              }}
-            >
-              {fmtEur(factura.base_imponible)}
-            </td>
-          </tr>
-          <tr>
-            <td style={{ padding: '6px 12px', fontSize: 12, color: '#555' }}>
-              IVA {factura.iva_porcentaje}%
-            </td>
-            <td
-              style={{
-                padding: '6px 12px',
-                fontSize: 12,
-                textAlign: 'right',
-              }}
-            >
-              {fmtEur(factura.iva_importe)}
-            </td>
-          </tr>
-          <tr style={{ background: '#111' }}>
-            <td
-              style={{
-                padding: '12px',
-                fontSize: 14,
-                fontWeight: 700,
-                color: '#fff',
-              }}
-            >
-              TOTAL
-            </td>
-            <td
-              style={{
-                padding: '12px',
-                fontSize: 14,
-                fontWeight: 700,
-                textAlign: 'right',
-                color: '#fff',
-              }}
-            >
-              {fmtEur(factura.total)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-
-      <div
-        style={{
-          fontSize: 10,
-          color: '#888',
-          borderTop: '1px solid #eee',
-          paddingTop: 12,
-          lineHeight: 1.6,
-        }}
-      >
-        Servicios de hospedaje sujetos a IVA tipo reducido del 10% (art. 91 Ley
-        37/1992).
-      </div>
-    </div>
-  )
-}
-
 // ─── create modal ─────────────────────────────────────────────────────────────
 
 interface CreateModalProps {
@@ -1169,7 +888,7 @@ export const InvoicesPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-bg shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
+      <div className="rounded-3xl border border-sidebar-border bg-sidebar-bg shadow-[0_10px_40px_rgba(0,0,0,0.15)]">
         {loading ? (
           <div className="flex h-56 items-center justify-center">
             <Loader2 className="h-7 w-7 animate-spin text-slate-500" />
@@ -1183,7 +902,7 @@ export const InvoicesPage: React.FC = () => {
           </div>
         ) : (
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-sidebar-border bg-admin-card/70">
+            <thead className="border-b border-sidebar-border bg-admin-card/70 [&>tr>th:first-child]:rounded-tl-3xl [&>tr>th:last-child]:rounded-tr-3xl">
               <tr>
                 <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 whitespace-nowrap">
                   Número
@@ -1313,7 +1032,7 @@ export const InvoicesPage: React.FC = () => {
                                 importePendiente: Math.max(
                                   0,
                                   (f.reserva_total ?? 0) -
-                                    (f.reserva_importe_pagado ?? 0)
+                                    (f.reserva_importe_senal ?? 0)
                                 ),
                               })
                             }
@@ -1363,7 +1082,7 @@ export const InvoicesPage: React.FC = () => {
                                 className="fixed inset-0 z-10"
                                 onClick={() => setActionMenu(null)}
                               />
-                              <div className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-sidebar-border bg-sidebar-bg py-1 shadow-xl">
+                              <div className="absolute right-0 z-50 bottom-full mb-1 w-52 rounded-xl border border-sidebar-border bg-sidebar-bg py-1 shadow-xl">
                                 {!f.bloqueada && f.estado !== 'ENVIADA' && (
                                   <button
                                     onClick={() => handleUpdateEstado(f.id, 'ENVIADA')}

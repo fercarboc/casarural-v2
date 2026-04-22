@@ -936,6 +936,7 @@ export const InvoicesPage: React.FC = () => {
   } | null>(null)
   const [actionMenu, setActionMenu] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState<string | null>(null)
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1184,56 +1185,64 @@ export const InvoicesPage: React.FC = () => {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-sidebar-border bg-admin-card/70">
               <tr>
-                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 whitespace-nowrap">
                   Número
                 </th>
-                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Tipo
                 </th>
-                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Cliente
                 </th>
-                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Reserva
                 </th>
-                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 whitespace-nowrap">
                   Fecha emisión
                 </th>
-                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 whitespace-nowrap">
                   Importe
                 </th>
-                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Estado
                 </th>
-                <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   AEAT
                 </th>
-                <th className="px-6 py-4" />
+                <th className="px-4 py-3" />
               </tr>
             </thead>
 
             <tbody className="divide-y divide-sidebar-border">
               {filtered.map((f) => (
+                <React.Fragment key={f.id}>
                 <tr
-                  key={f.id}
                   className={`transition-colors ${
                     f.estado === 'ANULADA' || f.estado === 'RECTIFICADA'
                       ? 'bg-slate-900/30 opacity-60'
                       : 'hover:bg-sidebar-hover/60'
                   }`}
                 >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1.5">
-                      <p className="font-bold text-white">{f.numero}</p>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <button
+                      onClick={() => setExpandedRow(expandedRow === f.id ? null : f.id)}
+                      className="flex items-center gap-1.5 group"
+                      title="Ver hashes de trazabilidad"
+                    >
+                      <ChevronDown
+                        size={12}
+                        className={`shrink-0 text-slate-600 transition-transform group-hover:text-slate-400 ${expandedRow === f.id ? 'rotate-180' : ''}`}
+                      />
+                      <p className="font-bold text-white text-xs">{f.numero}</p>
                       {f.bloqueada && (
                         <span title="Factura bloqueada (inmutable)">
                           <Lock size={11} className="shrink-0 text-slate-500" />
                         </span>
                       )}
-                    </div>
+                    </button>
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
                       f.tipo_factura === 'RECTIFICATIVA'
                         ? 'bg-amber-500/10 text-amber-300'
@@ -1243,15 +1252,15 @@ export const InvoicesPage: React.FC = () => {
                     </span>
                   </td>
 
-                  <td className="px-6 py-4">
-                    <p className="font-medium text-slate-100">{f.nombre}</p>
-                    {f.nif && <p className="text-[11px] text-slate-500">{f.nif}</p>}
+                  <td className="px-4 py-3 max-w-[160px]">
+                    <p className="font-medium text-slate-100 truncate text-xs">{f.nombre}</p>
+                    {f.nif && <p className="text-[11px] text-slate-500 truncate">{f.nif}</p>}
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     {f.reserva_codigo ? (
                       <>
-                        <p className="font-medium text-slate-100">{f.reserva_codigo}</p>
+                        <p className="font-medium text-slate-100 text-xs">{f.reserva_codigo}</p>
                         <p className="text-[11px] text-slate-500">
                           {fmtDate(f.reserva_fecha_entrada)} –{' '}
                           {fmtDate(f.reserva_fecha_salida)}
@@ -1262,19 +1271,19 @@ export const InvoicesPage: React.FC = () => {
                     )}
                   </td>
 
-                  <td className="px-6 py-4 font-medium text-slate-400">
+                  <td className="px-4 py-3 whitespace-nowrap text-xs font-medium text-slate-400">
                     {fmtDate(f.fecha_emision)}
                   </td>
 
-                  <td className={`px-6 py-4 font-bold ${f.total < 0 ? 'text-red-300' : 'text-white'}`}>
+                  <td className={`px-4 py-3 whitespace-nowrap text-xs font-bold ${f.total < 0 ? 'text-red-300' : 'text-white'}`}>
                     {fmtEur(f.total)}
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3">
                     <EstadoBadge estado={f.estado} />
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3">
                     {f.bloqueada && f.estado_aeat !== 'NO_APLICA' ? (
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${AEAT_STYLES[f.estado_aeat] ?? ''}`}>
                         {f.estado_aeat}
@@ -1284,7 +1293,7 @@ export const InvoicesPage: React.FC = () => {
                     )}
                   </td>
 
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       {(() => {
                         if (f.reserva_estado_pago !== 'PARTIAL' || !f.reserva_id) return null
@@ -1402,6 +1411,61 @@ export const InvoicesPage: React.FC = () => {
                     </div>
                   </td>
                 </tr>
+
+                {/* Fila expandible: hashes de trazabilidad */}
+                {expandedRow === f.id && (
+                  <tr className="bg-slate-900/60">
+                    <td colSpan={9} className="px-6 py-4">
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                          Trazabilidad fiscal
+                        </p>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          {/* Nuestro hash */}
+                          <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+                            <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-violet-400">
+                              Huella VeriFactu (nuestra)
+                            </p>
+                            {f.hash_actual ? (
+                              <p className="break-all font-mono text-[10px] text-slate-300">
+                                {f.hash_actual}
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-slate-600 italic">Sin hash (factura no bloqueada)</p>
+                            )}
+                            {f.hash_anterior && f.hash_anterior !== '0' && (
+                              <p className="mt-1.5 text-[9px] text-slate-600">
+                                Hash anterior: <span className="font-mono">{f.hash_anterior.slice(0, 16)}…</span>
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Hash AEAT — fase 2 */}
+                          <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-3">
+                            <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                              Huella AEAT / VeriFactu (respuesta)
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${AEAT_STYLES[f.estado_aeat] ?? ''}`}>
+                                {f.estado_aeat}
+                              </span>
+                              {f.estado_aeat === 'PENDIENTE' && (
+                                <span className="text-[10px] text-slate-600 italic">Pendiente de enviar a AEAT</span>
+                              )}
+                              {f.estado_aeat === 'PREPARADA' && (
+                                <span className="text-[10px] text-violet-400 italic">Lote preparado — pendiente de envío real (Fase 2)</span>
+                              )}
+                            </div>
+                            <p className="mt-2 text-[9px] text-slate-600 italic">
+                              El hash de confirmación AEAT se añadirá aquí cuando se implemente el envío real (Fase 2).
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

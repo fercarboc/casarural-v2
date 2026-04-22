@@ -35,6 +35,10 @@ export interface FacturaDetalle {
   email_cliente: string | null;
   fecha_operacion: string | null;
 
+  // Datos del emisor (property)
+  property_legal_tax_id?: string | null;
+  property_legal_name?: string | null;
+
   // Join con reservas
   reserva_codigo?: string;
   reserva_fecha_entrada?: string;
@@ -162,6 +166,9 @@ function mapFactura(f: any): FacturaDetalle {
     reserva_importe_pagado: 0,
     reserva_importe_senal:
       f.reservas?.importe_senal != null ? Number(f.reservas.importe_senal) : undefined,
+
+    property_legal_tax_id: f.properties?.legal_tax_id ?? null,
+    property_legal_name:   f.properties?.legal_business_name ?? null,
   };
 }
 
@@ -204,7 +211,7 @@ export const invoiceService = {
 
     const { data, error } = await supabase
       .from('facturas')
-      .select(`*, reservas(${RESERVAS_SELECT})`)
+      .select(`*, reservas(${RESERVAS_SELECT}), properties(legal_tax_id, legal_business_name)`)
       .order('created_at', { ascending: false });
 
     if (error) throw error;

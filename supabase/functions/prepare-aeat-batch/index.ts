@@ -1,10 +1,9 @@
 // supabase/functions/prepare-aeat-batch/index.ts
 // POST { propertyId, facturaIds: string[] }
 // Marks invoices as PREPARADA for AEAT and creates a lote_aeat record.
-// Phase 1: prepares the VeriFactu payload. Phase 2 (actual submission) is a future stub.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,10 +32,10 @@ serve(async (req) => {
       return json({ error: 'propertyId y facturaIds[] son obligatorios' }, 400);
     }
 
-    // Cargar facturas verificando propiedad
+    // Cargar facturas verificando propiedad (columnas reales de la tabla)
     const { data: facturas, error: fErr } = await db
       .from('facturas')
-      .select('id, numero, fecha_emision, nombre, nif, total, base_imponible, iva_porcentaje, iva_importe, tipo_factura, hash_actual, hash_anterior, estado_aeat, bloqueada, property_id')
+      .select('id, numero_factura, fecha_emision, nombre_cliente, nif_cliente, total, base_imponible, iva_porcentaje, cuota_iva, tipo_factura, hash_actual, hash_anterior, estado_aeat, bloqueada, property_id')
       .in('id', facturaIds)
       .eq('property_id', propertyId);
 
@@ -54,7 +53,7 @@ serve(async (req) => {
       .eq('id', propertyId)
       .single();
 
-    // Construir payload VeriFactu (estructura de referencia, no normativa final)
+    // Construir payload VeriFactu
     const verifactuPayload = {
       version: '1.0',
       emisor: {
@@ -65,15 +64,15 @@ serve(async (req) => {
       facturas: elegibles.map(f => ({
         id_factura: {
           id_emisor:      property?.legal_tax_id ?? '',
-          num_serie_fact: f.numero,
+          num_serie_fact: f.numero_factura,
           fecha_exp_fact: f.fecha_emision,
         },
         tipo_fact:         f.tipo_factura === 'ORDINARIA' ? 'F1' : 'R1',
         base_imponible:    f.base_imponible,
-        cuota_repercutida: f.iva_importe,
+        cuota_repercutida: f.cuota_iva,
         tipo_impositivo:   f.iva_porcentaje,
         importe_total:     f.total,
-        destinatario:      f.nif ? { nif: f.nif, nombre: f.nombre } : null,
+        destinatario:      f.nif_cliente ? { nif: f.nif_cliente, nombre: f.nombre_cliente } : null,
         encadenamiento: {
           primer_registro:   f.hash_anterior === '0',
           hash_registro_ant: f.hash_anterior,
@@ -98,7 +97,7 @@ serve(async (req) => {
 
     if (loteErr || !lote) return json({ error: loteErr?.message ?? 'Error al crear el lote' }, 500);
 
-    // Actualizar estado_aeat de las facturas a PREPARADA y guardar payload
+    // Actualizar estado_aeat de las facturas
     await db
       .from('facturas')
       .update({ estado_aeat: 'PREPARADA', verifactu_payload: verifactuPayload })
@@ -116,10 +115,9 @@ serve(async (req) => {
     );
 
     return json({
-      lote_id:       lote.id,
-      num_facturas:  elegibles.length,
-      payload:       verifactuPayload,
-      // Phase 2 stub: aeat_response pending actual submission
+      lote_id:      lote.id,
+      num_facturas: elegibles.length,
+      payload:      verifactuPayload,
       aeat_enviada: false,
       mensaje: 'Lote preparado. La integración real con AEAT/VeriFactu está pendiente de implementación (Fase 2).',
     });

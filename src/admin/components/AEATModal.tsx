@@ -1,7 +1,7 @@
 // src/admin/components/AEATModal.tsx
 // Modal to prepare an AEAT/VeriFactu batch from bloqueada invoices with estado_aeat=PENDIENTE.
 
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Building2, Loader2, AlertCircle, CheckCircle2, ChevronRight, Square, CheckSquare } from 'lucide-react'
 import { supabase } from '../../integrations/supabase/client'
 import { invoiceService, type FacturaDetalle } from '../../services/invoice.service'
@@ -40,10 +40,14 @@ export function AEATModal({ onClose, onLoteCreado }: Props) {
       .eq('estado_aeat', 'PENDIENTE')
       .neq('estado', 'RECTIFICADA')
       .order('fecha_emision', { ascending: true })
-      .then(({ data, error: e }) => {
+      .then(({ data, error: e }: { data: any[] | null; error: any }) => {
         if (e) { setError(e.message); return }
         const mapped = (data ?? []).map((f: any) => ({
           ...f,
+          // normalize DB column names → FacturaDetalle field names
+          numero:                 f.numero_factura,
+          nombre:                 f.nombre_cliente,
+          nif:                    f.nif_cliente,
           tipo_factura:           f.tipo_factura   ?? 'ORDINARIA',
           bloqueada:              f.bloqueada      ?? false,
           hash_actual:            f.hash_actual    ?? null,

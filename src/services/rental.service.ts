@@ -492,6 +492,34 @@ export const rentalService = {
     return row
   },
 
+  async getActiveRentalsForForecast(propertyId: string): Promise<{ rental: Rental; payments: RentalPayment[] }[]> {
+    const { data: rentals, error: r1 } = await supabase
+      .from('rentals')
+      .select(RENTAL_SELECT)
+      .eq('property_id', propertyId)
+      .in('estado', ['ACTIVO', 'RENOVADO', 'APROBADO'])
+      .order('fecha_inicio', { ascending: true })
+    if (r1) throw r1
+    if (!rentals?.length) return []
+
+    const rentalIds = rentals.map((r: any) => r.id)
+    const { data: payments, error: r2 } = await supabase
+      .from('rental_payments')
+      .select('*')
+      .in('rental_id', rentalIds)
+      .eq('tipo', 'MENSUALIDAD')
+      .order('fecha_vencimiento', { ascending: true })
+    if (r2) throw r2
+
+    const byRental: Record<string, RentalPayment[]> = {}
+    for (const p of payments ?? []) {
+      if (!byRental[p.rental_id]) byRental[p.rental_id] = []
+      byRental[p.rental_id].push(p)
+    }
+
+    return rentals.map((r: any) => ({ rental: mapRental(r), payments: byRental[r.id] ?? [] }))
+  },
+
   async requestDocs(rentalId: string, docTypes: string[], message?: string): Promise<void> {
     const res = await supabase.functions.invoke('update-rental-status', {
       body: { rental_id: rentalId, action: 'REQUEST_DOCS', doc_types: docTypes, message },

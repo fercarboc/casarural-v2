@@ -7,6 +7,7 @@ import {
   Loader2,
   FileText,
   CheckCircle2,
+  CalendarClock,
 } from 'lucide-react'
 import {
   format,
@@ -19,6 +20,7 @@ import {
 import { es } from 'date-fns/locale'
 import { useAdminTenant } from '../context/AdminTenantContext'
 import { EmitirFacturaModal, type ReservaParaEmitir } from '../components/EmitirFacturaModal'
+import { IngresosPrevistoModal } from '../components/IngresosPrevistoModal'
 import type { FacturaDetalle } from '../../services/invoice.service'
 import {
   incomeService,
@@ -113,6 +115,7 @@ export const IncomePage: React.FC = () => {
   const [error, setError] = useState('')
   const [emitirReserva, setEmitirReserva] = useState<ReservaParaEmitir | null>(null)
   const [markingPaid, setMarkingPaid] = useState<string | null>(null)
+  const [showPrevistos, setShowPrevistos] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -232,6 +235,9 @@ export const IncomePage: React.FC = () => {
 
   return (
     <>
+      {showPrevistos && (
+        <IngresosPrevistoModal onClose={() => setShowPrevistos(false)} />
+      )}
       {emitirReserva && (
         <EmitirFacturaModal
           reserva={emitirReserva}
@@ -381,13 +387,22 @@ export const IncomePage: React.FC = () => {
               <p className="mt-1 text-sm capitalize text-slate-400">{periodoLabel}</p>
             </div>
 
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-admin-card px-4 py-3 text-sm font-medium text-slate-200 transition-all hover:bg-sidebar-hover"
-            >
-              <Download size={15} />
-              Descargar PDF
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowPrevistos(true)}
+                className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-3 text-sm font-medium text-teal-300 transition-all hover:bg-teal-500/20"
+              >
+                <CalendarClock size={15} />
+                Ingresos previstos
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-admin-card px-4 py-3 text-sm font-medium text-slate-200 transition-all hover:bg-sidebar-hover"
+              >
+                <Download size={15} />
+                Descargar PDF
+              </button>
+            </div>
           </div>
         </header>
 

@@ -66,6 +66,7 @@ interface Bloqueo {
   origen: string | null
   uid_ical: string | null
   linkedReservation?: Reserva | null
+  linkedRental?: { cliente_nombre: string; numero_contrato: string | null } | null
 }
 
 interface UnidadOption {
@@ -103,14 +104,11 @@ function enrichBloqueosWithReservations(
   reservas: Reserva[]
 ): Bloqueo[] {
   const reservationMap = new Map<string, Reserva>()
-
   for (const reserva of reservas) {
     reservationMap.set((reserva.id ?? '').trim().toLowerCase(), reserva)
   }
-
   return bloqueos.map((bloqueo) => {
     const reservationId = extractReservationIdFromMotivo(bloqueo.motivo)
-
     return {
       ...bloqueo,
       linkedReservation: reservationId ? reservationMap.get(reservationId) ?? null : null,
@@ -118,73 +116,57 @@ function enrichBloqueosWithReservations(
   })
 }
 
+function enrichBloqueosWithRentals(
+  bloqueos: Bloqueo[],
+  rentals: Array<{ id: string; cliente_nombre: string; numero_contrato: string | null }>
+): Bloqueo[] {
+  const rentalMap = new Map(rentals.map(r => [r.id.trim().toLowerCase(), r]))
+  return bloqueos.map(b => {
+    if (b.origen !== 'RENTAL') return b
+    const rentalId = extractReservationIdFromMotivo(b.motivo)
+    const rental = rentalId ? rentalMap.get(rentalId) ?? null : null
+    return {
+      ...b,
+      linkedRental: rental
+        ? { cliente_nombre: rental.cliente_nombre, numero_contrato: rental.numero_contrato }
+        : null,
+    }
+  })
+}
+
 // ─── Colores por tipo/origen ──────────────────────────────────────────────────
+// Verde  → reserva corta estancia (directa o iCal)
+// Naranja → bloqueo media/larga estancia (RENTAL)
+// Gris   → bloqueo manual / avería
 function eventColor(ev: CalEvent): { bg: string; text: string; border: string; dot: string } {
   if (ev.kind === 'reserva') {
     if (ev.data.estado === 'CONFIRMED') {
-      return {
-        bg: 'bg-emerald-500',
-        text: 'text-white',
-        border: 'border-emerald-600',
-        dot: 'bg-emerald-500',
-      }
+      return { bg: 'bg-emerald-500', text: 'text-white', border: 'border-emerald-600', dot: 'bg-emerald-500' }
     }
     if (ev.data.estado === 'PENDING_PAYMENT') {
-      return {
-        bg: 'bg-amber-400',
-        text: 'text-amber-950',
-        border: 'border-amber-500',
-        dot: 'bg-amber-400',
-      }
+      return { bg: 'bg-amber-400', text: 'text-amber-950', border: 'border-amber-500', dot: 'bg-amber-400' }
     }
-    return {
-      bg: 'bg-slate-500',
-      text: 'text-white',
-      border: 'border-slate-600',
-      dot: 'bg-slate-500',
-    }
+    return { bg: 'bg-slate-500', text: 'text-white', border: 'border-slate-600', dot: 'bg-slate-500' }
   }
 
   if (ev.data.linkedReservation) {
-    return {
-      bg: 'bg-emerald-500',
-      text: 'text-white',
-      border: 'border-emerald-600',
-      dot: 'bg-emerald-500',
-    }
+    return { bg: 'bg-emerald-500', text: 'text-white', border: 'border-emerald-600', dot: 'bg-emerald-500' }
   }
 
   const o = ev.data.origen ?? ''
-  if (o.includes('BOOKING')) {
-    return {
-      bg: 'bg-blue-500',
-      text: 'text-white',
-      border: 'border-blue-600',
-      dot: 'bg-blue-500',
-    }
+
+  // Media/larga estancia → naranja
+  if (o === 'RENTAL') {
+    return { bg: 'bg-orange-500', text: 'text-white', border: 'border-orange-600', dot: 'bg-orange-500' }
   }
-  if (o.includes('AIRBNB')) {
-    return {
-      bg: 'bg-rose-500',
-      text: 'text-white',
-      border: 'border-rose-600',
-      dot: 'bg-rose-500',
-    }
+
+  // iCal (Booking, Airbnb, Escapada) → verde
+  if (o.includes('BOOKING') || o.includes('AIRBNB') || o.includes('ESCAPADARURAL')) {
+    return { bg: 'bg-emerald-600', text: 'text-white', border: 'border-emerald-700', dot: 'bg-emerald-600' }
   }
-  if (o.includes('ESCAPADARURAL')) {
-    return {
-      bg: 'bg-orange-500',
-      text: 'text-white',
-      border: 'border-orange-600',
-      dot: 'bg-orange-500',
-    }
-  }
-  return {
-    bg: 'bg-slate-400',
-    text: 'text-white',
-    border: 'border-slate-500',
-    dot: 'bg-slate-400',
-  }
+
+  // Manual / avería → gris
+  return { bg: 'bg-slate-400', text: 'text-white', border: 'border-slate-500', dot: 'bg-slate-400' }
 }
 
 function eventLabel(
@@ -204,13 +186,22 @@ function eventLabel(
   }
 
   const o = ev.data.origen ?? ''
-  if (o.includes('BOOKING')) return 'Booking'
-  if (o.includes('AIRBNB')) return 'Airbnb'
-  if (o.includes('ESCAPADARURAL')) return 'Escapada Rural'
-  if (ev.data.unidad_id && unidadesMap?.[ev.data.unidad_id]) {
-    return `Bloqueo · ${unidadesMap[ev.data.unidad_id]}`
+
+  if (o === 'RENTAL') {
+    const nombre = ev.data.linkedRental?.cliente_nombre
+    return nombre ? `ML Estancia · ${nombre}` : 'ML Estancia'
   }
-  return ev.data.motivo ?? 'Bloqueo'
+
+  if (o.includes('BOOKING')) return 'Bloqueo Booking'
+  if (o.includes('AIRBNB')) return 'Bloqueo Airbnb'
+  if (o.includes('ESCAPADARURAL')) return 'Bloqueo Escapada Rural'
+
+  const motivo = ev.data.motivo
+  if (motivo && !motivo.startsWith('RENTAL:')) return motivo
+  if (ev.data.unidad_id && unidadesMap?.[ev.data.unidad_id]) {
+    return `Bloqueo manual · ${unidadesMap[ev.data.unidad_id]}`
+  }
+  return 'Bloqueo manual'
 }
 
 function eventStart(ev: CalEvent): string {
@@ -362,7 +353,7 @@ export const CalendarPage: React.FC = () => {
       // no-op
     }
 
-    const [{ data: r }, { data: b }] = await Promise.all([
+    const [{ data: r }, { data: b }, { data: rents }] = await Promise.all([
       supabase
         .from('reservas')
         .select(
@@ -372,6 +363,10 @@ export const CalendarPage: React.FC = () => {
       supabase
         .from('bloqueos')
         .select('id,unidad_id,fecha_inicio,fecha_fin,motivo,origen,uid_ical'),
+      supabase
+        .from('rentals')
+        .select('id,cliente_nombre,numero_contrato')
+        .in('estado', ['ACTIVO', 'RENOVADO', 'APROBADO']),
     ])
 
     const typedReservas = (r ?? []).map((res: any) => ({
@@ -379,7 +374,10 @@ export const CalendarPage: React.FC = () => {
       unidad_id: res.reserva_unidades?.[0]?.unidad_id ?? null,
     })) as Reserva[]
     const typedBloqueos = (b ?? []) as Bloqueo[]
-    const enrichedBloqueos = enrichBloqueosWithReservations(typedBloqueos, typedReservas)
+    const enrichedBloqueos = enrichBloqueosWithRentals(
+      enrichBloqueosWithReservations(typedBloqueos, typedReservas),
+      (rents ?? []) as Array<{ id: string; cliente_nombre: string; numero_contrato: string | null }>
+    )
 
     setReservas(typedReservas)
     setBloqueos(enrichedBloqueos)
@@ -664,12 +662,11 @@ export const CalendarPage: React.FC = () => {
 
               <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-700 pt-4">
                 {[
-                  { color: 'bg-emerald-500', label: 'Confirmada (web)' },
+                  { color: 'bg-emerald-500', label: 'Reserva confirmada' },
                   { color: 'bg-amber-400', label: 'Pdte. de pago' },
-                  { color: 'bg-blue-500', label: 'Booking.com' },
-                  { color: 'bg-rose-500', label: 'Airbnb' },
-                  { color: 'bg-orange-500', label: 'Escapada Rural' },
-                  { color: 'bg-slate-400', label: 'Bloqueo manual' },
+                  { color: 'bg-emerald-600', label: 'Booking / Airbnb / Escapada (iCal)' },
+                  { color: 'bg-orange-500', label: 'Media / Larga estancia' },
+                  { color: 'bg-slate-400', label: 'Bloqueo manual / Avería' },
                 ].map((l) => (
                   <div key={l.label} className="flex items-center gap-1.5">
                     <div className={`h-2.5 w-2.5 rounded-sm ${l.color}`} />
@@ -1052,17 +1049,20 @@ function EventCard({
 
   const b = ev.data
   const linkedReservation = b.linkedReservation
+  const isRental = b.origen === 'RENTAL'
 
   const origenLabel =
     linkedReservation
       ? 'Reserva confirmada'
-      : b.origen?.includes('BOOKING')
-        ? 'Booking.com'
-        : b.origen?.includes('AIRBNB')
-          ? 'Airbnb'
-          : b.origen?.includes('ESCAPADARURAL')
-            ? 'Escapada Rural'
-            : 'Bloqueo manual'
+      : isRental
+        ? 'Media / Larga estancia'
+        : b.origen?.includes('BOOKING')
+          ? 'Bloqueo Booking.com (iCal)'
+          : b.origen?.includes('AIRBNB')
+            ? 'Bloqueo Airbnb (iCal)'
+            : b.origen?.includes('ESCAPADARURAL')
+              ? 'Bloqueo Escapada Rural (iCal)'
+              : 'Bloqueo manual'
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-700 bg-[#0f1b2d]">
@@ -1081,8 +1081,19 @@ function EventCard({
             <InfoRow label="Código" value={getReservationDisplayCode(linkedReservation)} />
             <InfoRow label="Cliente" value={safeGuestName(linkedReservation)} />
           </>
+        ) : isRental ? (
+          <>
+            {b.linkedRental?.cliente_nombre && (
+              <InfoRow label="Inquilino" value={b.linkedRental.cliente_nombre} />
+            )}
+            {b.linkedRental?.numero_contrato && (
+              <InfoRow label="Contrato" value={b.linkedRental.numero_contrato} />
+            )}
+          </>
         ) : (
-          b.motivo && <InfoRow label="Motivo" value={b.motivo} />
+          b.motivo && !b.motivo.startsWith('RENTAL:') && (
+            <InfoRow label="Motivo" value={b.motivo} />
+          )
         )}
 
         {b.uid_ical && (

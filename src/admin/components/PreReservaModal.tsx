@@ -200,7 +200,7 @@ export function PreReservaModal({ onClose, onSent }: Props) {
           precio_final:     precioFinal,
           comentarios,
           unidad_nombres:   unidadNombres,
-          app_url:          window.location.origin,
+          app_url:          `${window.location.origin}/reservar?entrada=${fechaEntrada}&salida=${fechaSalida}&huespedes=${numHuespedes}`,
         },
       })
 

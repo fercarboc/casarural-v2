@@ -123,9 +123,18 @@ export default function BookingPage() {
   const [property, setProperty] = useState<PropertyRow | null>(null);
   const [units, setUnits] = useState<UnitRow[]>([]);
 
-  const [checkIn, setCheckIn] = useState<Date | null>(null);
-  const [checkOut, setCheckOut] = useState<Date | null>(null);
-  const [guests, setGuests] = useState(2);
+  const [checkIn, setCheckIn] = useState<Date | null>(() => {
+    const v = new URLSearchParams(window.location.search).get('entrada')
+    return v ? new Date(v + 'T12:00:00') : null
+  });
+  const [checkOut, setCheckOut] = useState<Date | null>(() => {
+    const v = new URLSearchParams(window.location.search).get('salida')
+    return v ? new Date(v + 'T12:00:00') : null
+  });
+  const [guests, setGuests] = useState(() => {
+    const v = new URLSearchParams(window.location.search).get('huespedes')
+    return v ? Math.max(1, parseInt(v, 10)) : 2
+  });
   const [rateType, setRateType] = useState<RateType>('FLEXIBLE');
 
   const [isSearching, setIsSearching] = useState(false);

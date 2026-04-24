@@ -1,0 +1,2 @@
+[functions.generate-cleaning-jobs]
+verify_jwt = false

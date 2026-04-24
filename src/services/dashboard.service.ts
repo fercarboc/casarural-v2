@@ -26,11 +26,13 @@ type ReservaDashboardRow = {
   apellidos_cliente?: string | null
   num_huespedes?: number | null
   origen?: string | null
+  reserva_unidades?: Array<{ unidad_id: string }> | null
 }
 
 type BloqueoDashboardRow = {
   fecha_inicio: string
   fecha_fin: string
+  unidad_id: string | null
 }
 
 function buildGuestName(nombre?: string | null, apellidos?: string | null): string {
@@ -75,7 +77,7 @@ export const dashboardService = {
       ] = await Promise.all([
         supabase
           .from('reservas')
-          .select('id, importe_total, estado, estado_pago, fecha_entrada, fecha_salida, created_at')
+          .select('id, importe_total, estado, estado_pago, fecha_entrada, fecha_salida, created_at, reserva_unidades(unidad_id)')
           .gte('fecha_entrada', monthStart)
           .lte('fecha_entrada', monthEnd),
 
@@ -133,7 +135,7 @@ export const dashboardService = {
 
         supabase
           .from('bloqueos')
-          .select('fecha_inicio, fecha_fin')
+          .select('fecha_inicio, fecha_fin, unidad_id')
           .lte('fecha_inicio', monthEnd)
           .gte('fecha_fin', monthStart),
 
@@ -176,15 +178,24 @@ export const dashboardService = {
       )
 
       const diasMes = getDaysInMonth(targetDate)
-      const ocupadosSet = new Set<string>()
+      const numUnidades = totalUnidades ?? 1
+
+      // Días ocupados por unidad: Map<unidad_id, Set<'yyyy-MM-dd'>>
+      const unitDays = new Map<string, Set<string>>()
+
+      function addDay(unidadId: string | null | undefined, dayStr: string) {
+        if (!unidadId) return
+        if (!unitDays.has(unidadId)) unitDays.set(unidadId, new Set())
+        unitDays.get(unidadId)!.add(dayStr)
+      }
 
       for (const r of confirmadas as ReservaDashboardRow[]) {
+        const unidadId = r.reserva_unidades?.[0]?.unidad_id ?? null
         let d = new Date(r.fecha_entrada)
         const fin = new Date(r.fecha_salida ?? r.fecha_entrada)
-
         while (d < fin) {
           const s = format(d, 'yyyy-MM-dd')
-          if (s >= monthStart && s <= monthEnd) ocupadosSet.add(s)
+          if (s >= monthStart && s <= monthEnd) addDay(unidadId, s)
           d = addDays(d, 1)
         }
       }
@@ -192,16 +203,16 @@ export const dashboardService = {
       for (const b of ((bloqueosMes ?? []) as BloqueoDashboardRow[])) {
         let d = new Date(b.fecha_inicio)
         const fin = new Date(b.fecha_fin)
-
         while (d < fin) {
           const s = format(d, 'yyyy-MM-dd')
-          if (s >= monthStart && s <= monthEnd) ocupadosSet.add(s)
+          if (s >= monthStart && s <= monthEnd) addDay(b.unidad_id, s)
           d = addDays(d, 1)
         }
       }
 
-      const ocupacionPct = diasMes > 0
-        ? Math.round((ocupadosSet.size / diasMes) * 100)
+      const totalOcupadosUnitDays = Array.from(unitDays.values()).reduce((acc, s) => acc + s.size, 0)
+      const ocupacionPct = numUnidades > 0 && diasMes > 0
+        ? Math.round((totalOcupadosUnitDays / (numUnidades * diasMes)) * 100)
         : 0
 
       return {

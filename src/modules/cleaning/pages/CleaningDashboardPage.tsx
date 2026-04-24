@@ -14,12 +14,14 @@ import {
   RefreshCw,
   Zap,
   RepeatIcon,
+  Plus,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useAdminTenant } from '../../../admin/context/AdminTenantContext'
 import { cleaningService } from '../services/cleaningService'
 import { cleaningScheduleService } from '../services/cleaningScheduleService'
+import { CreateCleaningJobModal } from '../components/CreateCleaningJobModal'
 import type {
   CleaningJob,
   CleaningDashboardKPIs,
@@ -101,6 +103,7 @@ export const CleaningDashboardPage: React.FC = () => {
   const [transitioning, setTransitioning] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [generateResult, setGenerateResult] = useState<{ created: number; skipped: number } | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
   const today = todayStr()
 
@@ -180,6 +183,13 @@ export const CleaningDashboardPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-700"
+            >
+              <Plus size={13} />
+              Nueva tarea
+            </button>
             <button
               onClick={handleGenerate}
               disabled={loading || generating}
@@ -398,6 +408,13 @@ export const CleaningDashboardPage: React.FC = () => {
             </div>
           </div>
         </>
+      )}
+
+      {showCreateModal && (
+        <CreateCleaningJobModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={load}
+        />
       )}
     </div>
   )

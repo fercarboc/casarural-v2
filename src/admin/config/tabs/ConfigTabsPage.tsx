@@ -10,6 +10,7 @@ import { PaymentsTab } from './PaymentsTab'
 import { SecurityTab } from './SecurityTab'
 import { EmailTab } from './EmailTab'
 import { WhatsAppTab } from './WhatsAppTab'
+import { CleaningTab } from './CleaningTab'
 
 const TABS = [
   { id: 'general',   label: 'General' },
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'whatsapp',  label: 'WhatsApp' },
   { id: 'payments',  label: 'Pagos' },
   { id: 'security',  label: 'Seguridad' },
+  { id: 'cleaning',  label: 'Limpieza' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -54,7 +56,7 @@ export function ConfigTabsPage({ property, upd, handleSave, status, errorMsg, st
             </div>
           </div>
 
-          {activeTab !== 'security' && activeTab !== 'payments' && activeTab !== 'email' && activeTab !== 'whatsapp' && (
+          {activeTab !== 'security' && activeTab !== 'payments' && activeTab !== 'email' && activeTab !== 'whatsapp' && activeTab !== 'cleaning' && (
             <button
               onClick={handleSave}
               disabled={status === 'saving'}
@@ -121,6 +123,7 @@ export function ConfigTabsPage({ property, upd, handleSave, status, errorMsg, st
       {activeTab === 'whatsapp' && <WhatsAppTab property={property} upd={upd} handleSave={handleSave} status={status} />}
       {activeTab === 'payments' && <PaymentsTab property={property} stripeProps={stripeProps} />}
       {activeTab === 'security' && <SecurityTab />}
+      {activeTab === 'cleaning' && <CleaningTab />}
     </div>
   )
 }

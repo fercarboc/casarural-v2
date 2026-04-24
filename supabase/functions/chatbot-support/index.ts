@@ -264,9 +264,12 @@ serve(async (req: Request) => {
     })
 
     if (!response.ok) {
-      const err = await response.text()
-      console.error('[chatbot-support] Anthropic error:', err)
-      throw new Error('Error al contactar con el asistente')
+      const errText = await response.text()
+      console.error('[chatbot-support] Anthropic error:', response.status, errText)
+      // Devolver el error real al frontend para diagnóstico
+      let detail = errText
+      try { detail = JSON.parse(errText)?.error?.message ?? errText } catch (_) {}
+      throw new Error(`Anthropic ${response.status}: ${detail}`)
     }
 
     const data = await response.json()

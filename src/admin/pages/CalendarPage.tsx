@@ -640,6 +640,7 @@ export const CalendarPage: React.FC = () => {
                           return (
                             <div
                               key={`${ev.kind}-${ev.data.id}`}
+                              title={eventLabel(ev, unidadesMap)}
                               className={`w-full truncate rounded-sm px-1 py-0.5 text-[9px] font-bold leading-tight ${c.bg} ${c.text} ${
                                 !isStart && !isFirstOfWeek ? 'opacity-80' : ''
                               }`}

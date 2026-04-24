@@ -44,26 +44,14 @@ export const ChatWidget: React.FC = () => {
     setError('')
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Sesión expirada. Recarga la página.')
+      const { data, error } = await supabase.functions.invoke('chatbot-support', {
+        body: { message: text, history },
+      })
 
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chatbot-support`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ message: text, history }),
-        }
-      )
+      if (error) throw new Error(error.message ?? 'Error del asistente')
+      if (data?.error) throw new Error(data.error)
 
-      const json = await res.json()
-      if (!res.ok || json.error) throw new Error(json.error ?? 'Error del asistente')
-
-      const assistantMsg: Message = { role: 'assistant', content: json.reply }
+      const assistantMsg: Message = { role: 'assistant', content: data.reply ?? '' }
       setMessages(prev => [...prev, assistantMsg])
     } catch (e: any) {
       setError(e.message ?? 'No se pudo obtener respuesta')

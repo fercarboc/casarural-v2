@@ -4,7 +4,6 @@
 // Secrets: ANTHROPIC_API_KEY
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -204,7 +203,8 @@ INSTRUCCIONES:
 - No inventes funcionalidades que no existan.
 - Trata al usuario de "tú".
 - No repitas la pregunta del usuario. Ve directo a la respuesta.
-- Si el usuario saluda, responde brevemente y pregunta en qué puedes ayudar.`
+- Si el usuario saluda, responde brevemente y pregunta en qué puedes ayudar.
+- IMPORTANTE: Cuando el usuario diga "propiedad" o "crear una propiedad" se refiere a una UNIDAD alquilable (alojamiento, apartamento, casa rural). En StayNex las "propiedades" para el usuario son las unidades que gestionan. Responde siempre en ese contexto, no confundas con el concepto técnico de propiedad del Super Admin.`
 
 function getRequiredEnv(name: string): string {
   const value = Deno.env.get(name)?.trim()
@@ -229,22 +229,7 @@ serve(async (req: Request) => {
       return jsonResponse({ error: 'Método no permitido' }, 405)
     }
 
-    // Verificar autenticación Supabase
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return jsonResponse({ error: 'No autorizado' }, 401)
-    }
-
-    const supabase = createClient(
-      getRequiredEnv('SUPABASE_URL'),
-      getRequiredEnv('SUPABASE_ANON_KEY'),
-      { global: { headers: { authorization: authHeader } } }
-    )
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return jsonResponse({ error: 'No autorizado' }, 401)
-    }
-
+    // JWT verificado automáticamente por Supabase gateway (verify_jwt = true)
     const { message, history = [] } = await req.json() as {
       message: string
       history: { role: 'user' | 'assistant'; content: string }[]

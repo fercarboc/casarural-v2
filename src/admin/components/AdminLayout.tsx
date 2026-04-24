@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useAdminTenant } from '../context/AdminTenantContext'
+import { ChatWidget } from './ChatWidget'
 
 const NAV_GROUPS_BASE = [
   {
@@ -161,6 +162,9 @@ export const AdminLayout: React.FC = () => {
           <Outlet />
         </div>
       </main>
+
+      {/* Asistente de soporte */}
+      <ChatWidget />
     </div>
   )
 }

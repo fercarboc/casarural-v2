@@ -4,6 +4,7 @@ import {
   Clock, FileSpreadsheet, FileCode2, AlertTriangle,
 } from 'lucide-react'
 import { useAdminTenant } from '../context/AdminTenantContext'
+import { supabase } from '../../integrations/supabase/client'
 import {
   invoiceExportService,
   type InvoiceExport,
@@ -87,7 +88,7 @@ export function InvoiceExportsPage() {
 
   useEffect(() => { loadExports() }, [propertyId])
 
-  async function handleGenerate(e: React.FormEvent<HTMLFormElement>) {
+  async function handleGenerate(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!propertyId) return
     setGenerating(true)
@@ -226,6 +227,26 @@ export function InvoiceExportsPage() {
 }
 
 function ExportRow({ ex }: { ex: InvoiceExport }) {
+  const [downloading, setDownloading] = useState<'xml' | 'csv' | null>(null)
+
+  async function handleDownload(path: string, type: 'xml' | 'csv') {
+    setDownloading(type)
+    try {
+      const { data, error } = await supabase.storage
+        .from('fiscal-exports')
+        .createSignedUrl(path, 3600)
+      if (error) throw error
+      const a = document.createElement('a')
+      a.href = data.signedUrl
+      a.download = path.split('/').pop() ?? `export.${type}`
+      a.click()
+    } catch (e: any) {
+      alert(`Error al descargar: ${e.message}`)
+    } finally {
+      setDownloading(null)
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-4 px-6 py-4">
       <div className="min-w-0 flex-1 space-y-1">
@@ -248,30 +269,30 @@ function ExportRow({ ex }: { ex: InvoiceExport }) {
 
       <div className="flex items-center gap-2">
         {ex.xml_url && (
-          <a
-            href={ex.xml_url}
-            download
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 rounded-xl border border-sidebar-border px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-sidebar-hover"
+          <button
+            onClick={() => handleDownload(ex.xml_url!, 'xml')}
+            disabled={downloading === 'xml'}
+            className="flex items-center gap-1.5 rounded-xl border border-sidebar-border px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-sidebar-hover disabled:opacity-50"
           >
-            <FileCode2 size={13} />
+            {downloading === 'xml'
+              ? <Loader2 size={13} className="animate-spin" />
+              : <FileCode2 size={13} />}
             XML
             <Download size={11} className="text-slate-500" />
-          </a>
+          </button>
         )}
         {ex.csv_url && (
-          <a
-            href={ex.csv_url}
-            download
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 rounded-xl border border-sidebar-border px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-sidebar-hover"
+          <button
+            onClick={() => handleDownload(ex.csv_url!, 'csv')}
+            disabled={downloading === 'csv'}
+            className="flex items-center gap-1.5 rounded-xl border border-sidebar-border px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-sidebar-hover disabled:opacity-50"
           >
-            <FileSpreadsheet size={13} />
+            {downloading === 'csv'
+              ? <Loader2 size={13} className="animate-spin" />
+              : <FileSpreadsheet size={13} />}
             CSV
             <Download size={11} className="text-slate-500" />
-          </a>
+          </button>
         )}
       </div>
     </div>

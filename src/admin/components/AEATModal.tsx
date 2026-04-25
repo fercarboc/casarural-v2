@@ -36,9 +36,8 @@ export function AEATModal({ onClose, onLoteCreado }: Props) {
       .from('facturas')
       .select('*, reservas(codigo, fecha_entrada, fecha_salida)')
       .eq('property_id', property_id)
-      .eq('bloqueada', true)
-      .eq('estado_aeat', 'PENDIENTE')
-      .neq('estado', 'RECTIFICADA')
+      .not('estado', 'in', '(ANULADA,RECTIFICADA)')
+      .not('estado_aeat', 'in', '(PREPARADA,ENVIADA)')
       .order('fecha_emision', { ascending: true })
       .then(({ data, error: e }: { data: any[] | null; error: any }) => {
         if (e) { setError(e.message); return }

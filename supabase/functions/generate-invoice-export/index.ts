@@ -114,6 +114,8 @@ serve(async (req) => {
     const emisorNif    = property?.legal_tax_id ?? ''
     const now          = new Date().toISOString()
 
+    // Guardamos el PATH dentro del bucket (no la URL pública)
+    // El frontend genera URLs firmadas al descargar
     let xmlUrl: string | null = null
     let csvUrl: string | null = null
 
@@ -124,10 +126,7 @@ serve(async (req) => {
       const { error: xmlErr } = await supabase.storage
         .from('fiscal-exports')
         .upload(xmlPath, new Blob([xml], { type: 'application/xml' }), { upsert: true })
-      if (!xmlErr) {
-        const { data: pub } = supabase.storage.from('fiscal-exports').getPublicUrl(xmlPath)
-        xmlUrl = pub.publicUrl
-      }
+      if (!xmlErr) xmlUrl = xmlPath
     }
 
     // 6. Generar CSV
@@ -137,10 +136,7 @@ serve(async (req) => {
       const { error: csvErr } = await supabase.storage
         .from('fiscal-exports')
         .upload(csvPath, new Blob([csv], { type: 'text/csv' }), { upsert: true })
-      if (!csvErr) {
-        const { data: pub } = supabase.storage.from('fiscal-exports').getPublicUrl(csvPath)
-        csvUrl = pub.publicUrl
-      }
+      if (!csvErr) csvUrl = csvPath
     }
 
     // 7. Actualizar registro como COMPLETADO

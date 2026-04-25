@@ -4,6 +4,7 @@
  */
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import QRCode from 'qrcode';
 import type { FacturaDetalle } from '../../services/invoice.service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -22,9 +23,24 @@ function line(color = '#e4e4e7'): string {
   return `<hr style="border:none;border-top:1px solid ${color};margin:12px 0;">`;
 }
 
+// ─── QR VeriFactu ────────────────────────────────────────────────────────────
+
+async function generarQRDataUrl(f: FacturaDetalle): Promise<string | null> {
+  if (!f.hash_actual) return null;
+  const payload = [
+    `NF=${f.numero}`,
+    `FE=${f.fecha_emision}`,
+    `NIF=${f.property_legal_tax_id ?? ''}`,
+    `BI=${f.base_imponible.toFixed(2)}`,
+    `T=${f.total.toFixed(2)}`,
+    `H=${f.hash_actual.slice(0, 16)}`,
+  ].join('&');
+  return QRCode.toDataURL(payload, { margin: 1, width: 96, errorCorrectionLevel: 'M' });
+}
+
 // ─── Generador de HTML ────────────────────────────────────────────────────────
 
-function generarHTMLFactura(f: FacturaDetalle): string {
+function generarHTMLFactura(f: FacturaDetalle, qrDataUrl?: string | null): string {
   const reservaCodigo = f.reserva_codigo ?? '';
   const entrada       = fmtDate(f.reserva_fecha_entrada);
   const salida        = fmtDate(f.reserva_fecha_salida);
@@ -131,16 +147,19 @@ function generarHTMLFactura(f: FacturaDetalle): string {
     ${f.reserva_estado_pago === 'PARTIAL' ? ' · <strong>Estado:</strong> Señal pagada' : ''}
   </div>
   ${f.hash_actual ? `
-  <div style="margin-top:16px;padding:10px 12px;background:#f7f7f8;border-radius:6px;border:1px solid #e4e4e7;">
-    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:4px;">
-      Huella VeriFactu (trazabilidad fiscal)
+  <div style="margin-top:16px;padding:10px 12px;background:#f7f7f8;border-radius:6px;border:1px solid #e4e4e7;display:flex;align-items:flex-start;gap:12px;">
+    <div style="flex:1;">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:4px;">
+        Huella VeriFactu (trazabilidad fiscal)
+      </div>
+      <div style="font-size:9px;color:#555;font-family:monospace;word-break:break-all;">
+        ${f.hash_actual}
+      </div>
+      <div style="font-size:9px;color:#aaa;margin-top:4px;">
+        Factura bloqueada e inmutable · Registro AEAT/VeriFactu
+      </div>
     </div>
-    <div style="font-size:9px;color:#555;font-family:monospace;word-break:break-all;">
-      ${f.hash_actual}
-    </div>
-    <div style="font-size:9px;color:#aaa;margin-top:4px;">
-      Factura bloqueada e inmutable · Registro AEAT/VeriFactu
-    </div>
+    ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR VeriFactu" style="width:72px;height:72px;flex-shrink:0;border-radius:4px;" />` : ''}
   </div>` : ''}
 </div>
   `;
@@ -153,6 +172,8 @@ function generarHTMLFactura(f: FacturaDetalle): string {
  * Nombre del archivo: `{numero}-LaRasilla.pdf`
  */
 export async function descargarFacturaPDF(factura: FacturaDetalle): Promise<void> {
+  const qrDataUrl = await generarQRDataUrl(factura);
+
   // 1. Crear contenedor oculto fuera del viewport
   const el = document.createElement('div');
   el.style.position = 'fixed';
@@ -160,7 +181,7 @@ export async function descargarFacturaPDF(factura: FacturaDetalle): Promise<void
   el.style.top  = '0';
   el.style.width = '794px';
   el.style.background = '#fff';
-  el.innerHTML = generarHTMLFactura(factura);
+  el.innerHTML = generarHTMLFactura(factura, qrDataUrl);
   document.body.appendChild(el);
 
   try {
@@ -188,7 +209,8 @@ export async function descargarFacturaPDF(factura: FacturaDetalle): Promise<void
 /**
  * Abre el diálogo de impresión del navegador con el layout de la factura.
  */
-export function imprimirFactura(factura: FacturaDetalle): void {
+export async function imprimirFactura(factura: FacturaDetalle): Promise<void> {
+  const qrDataUrl = await generarQRDataUrl(factura);
   const win = window.open('', '_blank', 'width=900,height=700');
   if (!win) return;
 
@@ -205,7 +227,7 @@ export function imprimirFactura(factura: FacturaDetalle): void {
       </style>
     </head>
     <body>
-      ${generarHTMLFactura(factura)}
+      ${generarHTMLFactura(factura, qrDataUrl)}
       <script>
         window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; }
       </script>

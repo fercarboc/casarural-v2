@@ -15,6 +15,7 @@ import {
   Home,
   Building2,
   Sparkles,
+  FileDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useAdminTenant } from '../context/AdminTenantContext'
@@ -30,6 +31,7 @@ const NAV_GROUPS_BASE = [
       { to: '/admin/clientes', icon: <Users size={16} />, label: 'Clientes' },
       { to: '/admin/ingresos', icon: <TrendingUp size={16} />, label: 'Ingresos' },
       { to: '/admin/facturas', icon: <FileText size={16} />, label: 'Facturas' },
+      { to: '/admin/exportaciones', icon: <FileDown size={16} />, label: 'Exportaciones' },
       { to: '/admin/limpieza', icon: <Sparkles size={16} />, label: 'Limpieza' },
       { to: '/admin/rentals', icon: <FileText size={16} />, label: 'Contratos' },
     ],

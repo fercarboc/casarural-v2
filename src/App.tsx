@@ -46,6 +46,7 @@ import { NewReservationPage } from './admin/pages/NewReservationPage';
 import { CustomersPage } from './admin/pages/CustomersPage';
 import { IncomePage } from './admin/pages/IncomePage';
 import { InvoicesPage } from './admin/pages/InvoicesPage'
+import { InvoiceExportsPage } from './admin/pages/InvoiceExportsPage'
 import { CleaningDashboardPage } from './modules/cleaning/pages/CleaningDashboardPage';
 import { ConfigPage } from './admin/pages/ConfigPage';
 import { ICalPage } from './admin/pages/ICalPage';
@@ -320,6 +321,7 @@ export default function App() {
               <Route path="clientes" element={<CustomersPage />} />
               <Route path="ingresos" element={<IncomePage />} />
               <Route path="facturas" element={<InvoicesPage />} />
+              <Route path="exportaciones" element={<InvoiceExportsPage />} />
               <Route path="limpieza" element={<CleaningDashboardPage />} />
               <Route path="configuracion" element={<ConfigPage />} />
               <Route path="unidades" element={<UnidadesPage />} />

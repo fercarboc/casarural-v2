@@ -1,0 +1,2 @@
+[functions.generate-invoice-export]
+verify_jwt = true

@@ -10,6 +10,7 @@ type StatusType =
   | 'paid'
   | 'unpaid'
   | 'overdue'
+  | 'returned'
   | 'in-progress'
   | 'open'
   | 'closed'
@@ -52,6 +53,10 @@ const statusConfig: Record<StatusType, { label: string; className: string }> = {
   unpaid: {
     label: 'Impagado',
     className: 'bg-red-100 text-red-800 border-red-200'
+  },
+  returned: {
+    label: 'Devuelta',
+    className: 'bg-blue-100 text-blue-800 border-blue-200'
   },
   overdue: {
     label: 'Vencido',

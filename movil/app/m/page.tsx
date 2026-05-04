@@ -35,7 +35,10 @@ export default function MobileDashboard() {
   const { data: payments } = useRentalPayments(propertyId)
   const { data: alerts } = useIncidents(propertyId)
 
-  const today = new Date().toISOString().split('T')[0]
+  const now = new Date()
+  const hour = now.getHours()
+  const greeting = hour < 13 ? 'Buenos días' : hour < 21 ? 'Buenas tardes' : 'Buenas noches'
+  const today = now.toISOString().split('T')[0]
 
   const todayCheckIns = reservas.filter(r => r.checkIn === today && r.status !== 'cancelled')
   const todayCheckOuts = reservas.filter(r => r.checkOut === today && r.status !== 'cancelled')
@@ -52,7 +55,7 @@ export default function MobileDashboard() {
 
       <main className="flex-1 pb-20 overflow-y-auto">
         <div className="px-4 pt-4 pb-2">
-          <h2 className="text-xl font-semibold text-foreground">Buenos dias</h2>
+          <h2 className="text-xl font-semibold text-foreground">{greeting}</h2>
           <p className="text-sm text-muted-foreground">
             Resumen de {selectedTenant.name}
           </p>

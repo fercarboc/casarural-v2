@@ -44,7 +44,7 @@ export default function MobileReservationsPage() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const { data: reservations, loading, refetch } = useReservas(selectedTenant.id)
+  const { data: reservations, loading, error, refetch } = useReservas(selectedTenant.id)
   const { data: unidades } = useUnidades(selectedTenant.id)
 
   const filteredReservations = reservations.filter(reservation => {
@@ -98,6 +98,11 @@ export default function MobileReservationsPage() {
       <MobileHeader title="Reservas" showBack backHref="/m" />
 
       <main className="flex-1 pb-20 overflow-y-auto">
+        {error && (
+          <div className="px-4 py-2 bg-red-50 border-b border-red-200">
+            <p className="text-xs text-red-600">Error cargando reservas: {error}</p>
+          </div>
+        )}
         <div className="px-4 py-3 space-y-3 sticky top-0 bg-background z-10 border-b border-border">
           <SearchBar
             placeholder="Buscar reserva, huésped..."

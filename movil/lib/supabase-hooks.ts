@@ -81,24 +81,22 @@ export function useReservas(propertyId: string) {
       return
     }
 
+    let cancelled = false
     const load = async () => {
       setLoading(true)
       setError(null)
       const { data: rows, error: err } = await supabase
         .from('reservas')
         .select(`
-          id, codigo, nombre_cliente, apellidos_cliente, fecha_entrada, fecha_salida,
-          noches, num_huespedes, importe_total, estado, origen, notas_admin,
+          id, codigo, nombre_cliente, apellidos_cliente, email_cliente, telefono_cliente,
+          fecha_entrada, fecha_salida, noches, num_huespedes, importe_total, estado, origen, notas_admin,
           reserva_unidades(unidades(id, nombre))
         `)
         .eq('property_id', propertyId)
         .order('fecha_entrada', { ascending: false })
 
-      if (err) {
-        setError(err.message)
-        setLoading(false)
-        return
-      }
+      if (cancelled) return
+      if (err) { setError(err.message); setLoading(false); return }
 
       const mapped: Reservation[] = (rows ?? []).map((r: any) => ({
         id: r.id,
@@ -116,6 +114,8 @@ export function useReservas(propertyId: string) {
         status: mapEstado(r.estado ?? ''),
         source: mapOrigen(r.origen ?? ''),
         notes: r.notas_admin ?? undefined,
+        email: r.email_cliente ?? undefined,
+        phone: r.telefono_cliente ?? undefined,
       }))
 
       setData(mapped)
@@ -123,7 +123,21 @@ export function useReservas(propertyId: string) {
     }
 
     load()
+    return () => { cancelled = true }
   }, [propertyId, refreshKey])
+
+  // Realtime: any change to reservas triggers a refetch
+  useEffect(() => {
+    if (!propertyId) return
+    const channel = supabase
+      .channel(`reservas-rt-${propertyId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'reservas',
+        filter: `property_id=eq.${propertyId}`,
+      }, () => setRefreshKey(k => k + 1))
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [propertyId])
 
   return { data, loading, error, refetch: () => setRefreshKey(k => k + 1) }
 }
@@ -150,11 +164,7 @@ export function useUnidades(propertyId: string) {
         .eq('activa', true)
         .order('nombre')
 
-      if (err) {
-        setError(err.message)
-        setLoading(false)
-        return
-      }
+      if (err) { setError(err.message); setLoading(false); return }
 
       const mapped: Accommodation[] = (rows ?? []).map((u: any) => ({
         id: u.id,
@@ -201,11 +211,7 @@ export function useRentals(propertyId: string) {
         .eq('property_id', propertyId)
         .order('fecha_inicio', { ascending: false })
 
-      if (err) {
-        setError(err.message)
-        setLoading(false)
-        return
-      }
+      if (err) { setError(err.message); setLoading(false); return }
 
       const mapped: Rental[] = (rows ?? []).map((r: any) => ({
         id: r.id,
@@ -254,11 +260,7 @@ export function useContracts(propertyId: string) {
         .eq('property_id', propertyId)
         .order('fecha_fin', { ascending: false })
 
-      if (err) {
-        setError(err.message)
-        setLoading(false)
-        return
-      }
+      if (err) { setError(err.message); setLoading(false); return }
 
       const mapped: Contract[] = (rows ?? []).map((r: any) => {
         let status: 'signed' | 'pending' | 'expired' | 'renewed'
@@ -304,6 +306,7 @@ export function useRentalPayments(propertyId: string) {
       return
     }
 
+    let cancelled = false
     const load = async () => {
       setLoading(true)
       setError(null)
@@ -316,11 +319,8 @@ export function useRentalPayments(propertyId: string) {
         .eq('property_id', propertyId)
         .order('fecha_vencimiento', { ascending: false })
 
-      if (err) {
-        setError(err.message)
-        setLoading(false)
-        return
-      }
+      if (cancelled) return
+      if (err) { setError(err.message); setLoading(false); return }
 
       const mapped: Payment[] = (rows ?? []).map((p: any) => ({
         id: p.id,
@@ -344,6 +344,7 @@ export function useRentalPayments(propertyId: string) {
     }
 
     load()
+    return () => { cancelled = true }
   }, [propertyId, refreshKey])
 
   return { data, loading, error, refetch: () => setRefreshKey(k => k + 1) }
@@ -373,11 +374,7 @@ export function useIncidents(propertyId: string) {
         .eq('property_id', propertyId)
         .order('created_at', { ascending: false })
 
-      if (err) {
-        setError(err.message)
-        setLoading(false)
-        return
-      }
+      if (err) { setError(err.message); setLoading(false); return }
 
       const mapped: Alert[] = (rows ?? []).map((i: any) => ({
         id: i.id,
@@ -486,6 +483,7 @@ export function useCleaningTasks(propertyId: string) {
       return
     }
 
+    let cancelled = false
     const load = async () => {
       setLoading(true)
       setError(null)
@@ -499,11 +497,8 @@ export function useCleaningTasks(propertyId: string) {
         .neq('status', 'CANCELLED')
         .order('scheduled_date', { ascending: true })
 
-      if (err) {
-        setError(err.message)
-        setLoading(false)
-        return
-      }
+      if (cancelled) return
+      if (err) { setError(err.message); setLoading(false); return }
 
       const mapOrigin = (o: string): CleaningTask['type'] => {
         switch (o) {
@@ -538,7 +533,21 @@ export function useCleaningTasks(propertyId: string) {
     }
 
     load()
+    return () => { cancelled = true }
   }, [propertyId, refreshKey])
+
+  // Realtime: any change to cleaning_jobs triggers a refetch
+  useEffect(() => {
+    if (!propertyId) return
+    const channel = supabase
+      .channel(`cleaning-rt-${propertyId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'cleaning_jobs',
+        filter: `property_id=eq.${propertyId}`,
+      }, () => setRefreshKey(k => k + 1))
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [propertyId])
 
   return { data, loading, error, refetch: () => setRefreshKey(k => k + 1) }
 }
@@ -564,6 +573,7 @@ export function useBloqueos(propertyId: string) {
       return
     }
 
+    let cancelled = false
     const load = async () => {
       setLoading(true)
       const { data: rows } = await supabase
@@ -572,6 +582,7 @@ export function useBloqueos(propertyId: string) {
         .eq('property_id', propertyId)
         .order('fecha_inicio')
 
+      if (cancelled) return
       setData((rows ?? []).map((b: any) => ({
         id: b.id,
         unidadId: b.unidad_id,
@@ -584,7 +595,21 @@ export function useBloqueos(propertyId: string) {
     }
 
     load()
+    return () => { cancelled = true }
   }, [propertyId, refreshKey])
+
+  // Realtime: any change to bloqueos triggers a refetch
+  useEffect(() => {
+    if (!propertyId) return
+    const channel = supabase
+      .channel(`bloqueos-rt-${propertyId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'bloqueos',
+        filter: `property_id=eq.${propertyId}`,
+      }, () => setRefreshKey(k => k + 1))
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [propertyId])
 
   return { data, loading, refetch: () => setRefreshKey(k => k + 1) }
 }

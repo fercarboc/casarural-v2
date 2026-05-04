@@ -8,6 +8,7 @@ import { CleaningTaskCard } from '@/components/mobile/cleaning-task-card'
 import { EmptyState } from '@/components/mobile/empty-state'
 import { useTenant } from '@/lib/property-context'
 import { useCleaningTasks, markCleaningJobDone } from '@/lib/supabase-hooks'
+import { useRefetchOnFocus } from '@/lib/use-refetch-on-focus'
 import { Sparkles } from 'lucide-react'
 
 const filterOptions = [
@@ -30,7 +31,9 @@ export default function MobileCleaningPage() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [markingId, setMarkingId] = useState<string | null>(null)
 
-  const { data: tasks, refetch } = useCleaningTasks(selectedTenant.id)
+  const { data: tasks, refetch, error } = useCleaningTasks(selectedTenant.id)
+
+  useRefetchOnFocus(refetch)
 
   const filteredTasks = tasks.filter(task => {
     if (statusFilter !== 'all' && task.status !== statusFilter) return false
@@ -61,6 +64,11 @@ export default function MobileCleaningPage() {
       <MobileHeader title="Limpieza" showBack backHref="/m" />
 
       <main className="flex-1 pb-20 overflow-y-auto">
+        {error && (
+          <div className="px-4 py-2 bg-red-50 border-b border-red-200">
+            <p className="text-xs text-red-600">Error cargando tareas: {error}</p>
+          </div>
+        )}
         <div className="px-4 py-3 bg-muted/50 border-b border-border">
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-2">

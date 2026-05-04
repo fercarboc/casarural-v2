@@ -7,6 +7,7 @@ import { FilterChips } from '@/components/mobile/filter-chips'
 import { StatusBadge } from '@/components/mobile/status-badge'
 import { useTenant } from '@/lib/property-context'
 import { useReservas, useUnidades, useBloqueos, createBloqueo } from '@/lib/supabase-hooks'
+import { useRefetchOnFocus } from '@/lib/use-refetch-on-focus'
 import { ChevronLeft, ChevronRight, LogIn, LogOut, Home, Plus, Ban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,9 +33,11 @@ export default function MobileCalendarPage() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const { data: reservas } = useReservas(selectedTenant.id)
+  const { data: reservas, refetch: refetchReservas, error: reservasError } = useReservas(selectedTenant.id)
   const { data: unidades } = useUnidades(selectedTenant.id)
   const { data: bloqueos, refetch: refetchBloqueos } = useBloqueos(selectedTenant.id)
+
+  useRefetchOnFocus(() => { refetchReservas(); refetchBloqueos() })
 
   const shortStayUnidades = unidades.filter(u => u.modality === 'corta-estancia')
 
@@ -132,6 +135,11 @@ export default function MobileCalendarPage() {
       <MobileHeader title="Calendario" showBack backHref="/m" />
 
       <main className="flex-1 pb-20 overflow-y-auto">
+        {reservasError && (
+          <div className="px-4 py-2 bg-red-50 border-b border-red-200">
+            <p className="text-xs text-red-600">Error cargando reservas: {reservasError}</p>
+          </div>
+        )}
         <div className="px-4 py-3 border-b border-border">
           <div className="flex items-center justify-between mb-3">
             <FilterChips chips={viewOptions} selected={view} onSelect={setView} />

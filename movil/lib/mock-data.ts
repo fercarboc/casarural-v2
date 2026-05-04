@@ -37,6 +37,8 @@ export interface Reservation {
   status: 'confirmed' | 'pending' | 'cancelled'
   source: 'booking' | 'airbnb' | 'direct' | 'other'
   notes?: string
+  email?: string
+  phone?: string
 }
 
 export interface CleaningTask {

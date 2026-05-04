@@ -22,7 +22,7 @@ export default function MobilePaymentsPage() {
   const [filter, setFilter] = useState('all')
   const [markingId, setMarkingId] = useState<string | null>(null)
 
-  const { data: payments, loading, refetch } = useRentalPayments(selectedTenant.id)
+  const { data: payments, loading, error, refetch } = useRentalPayments(selectedTenant.id)
 
   const filteredPayments = payments.filter(p => filter === 'all' || p.status === filter)
 
@@ -48,6 +48,11 @@ export default function MobilePaymentsPage() {
       <MobileHeader title="Cobros" showBack backHref="/m" />
 
       <main className="flex-1 pb-20 overflow-y-auto">
+        {error && (
+          <div className="px-4 py-2 bg-red-50 border-b border-red-200">
+            <p className="text-xs text-red-600">Error cargando cobros: {error}</p>
+          </div>
+        )}
         <div className="px-4 py-3 bg-muted/50 border-b border-border">
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>

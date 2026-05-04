@@ -94,11 +94,16 @@ export default function MobileAgendaPage() {
         </div>
       </div>
       <div className="border-t border-border px-4 py-3 flex items-center gap-2">
-        {type === 'checkin' && reservation.status === 'confirmed' && (
-          <Button variant="default" size="sm" className="flex-1">
-            <Send className="h-4 w-4 mr-1" />
-            Enviar instrucciones
-          </Button>
+        {type === 'checkin' && reservation.status === 'confirmed' && reservation.email && (
+          <a
+            href={`mailto:${reservation.email}?subject=Instrucciones de entrada - ${reservation.accommodationName}`}
+            className="flex-1"
+          >
+            <Button variant="default" size="sm" className="w-full">
+              <Send className="h-4 w-4 mr-1" />
+              Enviar instrucciones
+            </Button>
+          </a>
         )}
         <Link href={`/m/reservas/${reservation.id}`} className={type === 'checkout' ? 'flex-1' : ''}>
           <Button variant="outline" size="sm" className={type === 'checkout' ? 'w-full' : ''}>
@@ -106,12 +111,20 @@ export default function MobileAgendaPage() {
             <ChevronRight className="h-4 w-4 ml-1" />
           </Button>
         </Link>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <Phone className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <Mail className="h-4 w-4" />
-        </Button>
+        {reservation.phone && (
+          <a href={`tel:${reservation.phone}`}>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Phone className="h-4 w-4" />
+            </Button>
+          </a>
+        )}
+        {reservation.email && (
+          <a href={`mailto:${reservation.email}`}>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Mail className="h-4 w-4" />
+            </Button>
+          </a>
+        )}
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { AlertCircle, FlaskConical } from 'lucide-react'
+import { AlertCircle, FlaskConical, Building, ArrowRight, X } from 'lucide-react'
 import { MetaTags } from '../components/MetaTags'
 import { BookingWizardHeader } from '../components/BookingWizardHeader'
 import { BookingSearchForm } from '../components/BookingSearchForm'
@@ -15,6 +15,7 @@ const TEST_MODE = (import.meta as any).env.VITE_BOOKING_TEST_MODE === 'true'
 
 export default function BookingSearchStepPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const tenant   = useTenant()
 
   const {
@@ -39,6 +40,7 @@ export default function BookingSearchStepPage() {
   const [loadingInit, setLoadingInit] = useState(true)
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
+  const [longUnitModal, setLongUnitModal] = useState<{ id: string; nombre: string } | null>(null)
 
   const checkInDate = isoToDate(checkIn)
   const checkOutDate = isoToDate(checkOut)
@@ -70,13 +72,22 @@ export default function BookingSearchStepPage() {
         // (capacidades desactualizadas si se añaden/modifican unidades)
         const { data: unitsData, error: unitsError } = await supabase
           .from('unidades')
-          .select('id, nombre, slug, capacidad_base, capacidad_maxima, orden, activa')
+          .select('id, nombre, slug, capacidad_base, capacidad_maxima, orden, activa, modo_operacion')
           .eq('property_id', tenant.property_id)
           .eq('activa', true)
           .order('orden', { ascending: true })
 
         if (unitsError) throw unitsError
-        setUnits(unitsData ?? [])
+        setUnits((unitsData ?? []).filter((u: any) => u.modo_operacion !== 'LONG'))
+
+        // Si la URL incluye ?unidad=slug de una unidad LONG, mostrar aviso
+        const unidadSlug = searchParams.get('unidad')
+        if (unidadSlug) {
+          const matched = (unitsData ?? []).find((u: any) => u.slug === unidadSlug)
+          if (matched && (matched as any).modo_operacion === 'LONG') {
+            setLongUnitModal({ id: matched.id, nombre: matched.nombre })
+          }
+        }
       } catch (error) {
         console.error('Error loading booking flow', error)
       } finally {
@@ -228,6 +239,46 @@ export default function BookingSearchStepPage() {
 
   return (
     <div>
+      {/* Modal: unidad de media/larga estancia */}
+      {longUnitModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between">
+              <div className="flex items-center gap-2 text-violet-700">
+                <Building size={20} />
+                <span className="font-bold text-base">Alquiler de media/larga estancia</span>
+              </div>
+              <button onClick={() => setLongUnitModal(null)} className="text-stone-400 hover:text-stone-600" type="button">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="mb-2 text-sm text-stone-700">
+              <strong>{longUnitModal.nombre}</strong> es un alojamiento para <strong>media o larga estancia</strong> (mínimo 30 días), con precio mensual.
+            </p>
+            <p className="mb-5 text-sm text-stone-500">
+              No se reserva ni se paga online como una estancia corta. El proceso implica presentar documentación, firmar un contrato de alquiler y abonar una fianza.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setLongUnitModal(null)}
+                className="flex-1 rounded-xl border border-stone-200 py-2.5 text-sm font-medium text-stone-600 hover:bg-stone-50"
+                type="button"
+              >
+                Volver atrás
+              </button>
+              <button
+                onClick={() => navigate(`/solicitar/${longUnitModal.id}`)}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-violet-600 py-2.5 text-sm font-bold text-white hover:bg-violet-700"
+                type="button"
+              >
+                Solicitar alquiler
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <MetaTags
         title={`Reservar | ${property?.nombre ?? 'Reserva directa'}`}
         description="Reserva directa desde la web oficial. Selecciona fechas y consulta disponibilidad."

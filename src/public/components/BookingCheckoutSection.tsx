@@ -106,10 +106,18 @@ export const BookingCheckoutSection: React.FC<Props> = ({
   const importeAloj     = breakdown.importe_alojamiento_total ?? 0
   const importeExtras   = breakdown.importe_extras_total ?? 0
   const importeLimp     = breakdown.importe_limpieza_total ?? 0
-  const importeDesc     = breakdown.descuento_aplicado ?? 0
-  const importeTotal    = breakdown.importe_total ?? 0
   const importeSenal    = breakdown.importe_senal ?? 0
   const importeResto    = breakdown.importe_resto ?? 0
+
+  // importe_alojamiento_total es siempre el valor bruto (pre-descuento).
+  // Calculamos ambas tarifas para mostrar el precio correcto independientemente
+  // de con qué tarifa se calculó el breakdown en el paso anterior.
+  const importeBase   = importeAloj + importeExtras
+  const totalFlexible = importeBase + importeLimp
+  const discountNR    = Math.round(importeBase * 0.10 * 100) / 100
+  const totalNR       = totalFlexible - discountNR
+  const displayTotal    = rateType === 'NON_REFUNDABLE' ? totalNR    : totalFlexible
+  const displayDiscount = rateType === 'NON_REFUNDABLE' ? discountNR : 0
 
   return (
     <div className="space-y-4 pt-1">
@@ -274,7 +282,7 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                   </p>
                   {rateType === 'FLEXIBLE' && <CheckCircle2 size={16} className="text-emerald-600" />}
                 </div>
-                <p className="text-lg font-bold text-stone-900">{importeTotal.toFixed(2)} €</p>
+                <p className="text-lg font-bold text-stone-900">{totalFlexible.toFixed(2)} €</p>
                 <p className="mt-1 text-xs text-stone-500">
                   {hasDeposit
                     ? `Señal ${importeSenal.toFixed(2)} € · resto ${importeResto.toFixed(2)} €`
@@ -306,7 +314,7 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                     <CheckCircle2 size={16} className="text-emerald-600" />
                   )}
                 </div>
-                <p className="text-lg font-bold text-stone-900">{importeTotal.toFixed(2)} €</p>
+                <p className="text-lg font-bold text-stone-900">{totalNR.toFixed(2)} €</p>
                 <p className="mt-1 text-xs text-stone-500">Pago completo al reservar</p>
                 <p className="mt-1 text-[11px] font-medium text-red-600">Sin cancelación ni cambios</p>
               </button>
@@ -456,15 +464,15 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                   <span>Limpieza</span>
                   <span>{importeLimp.toFixed(2)} €</span>
                 </div>
-                {importeDesc > 0 && (
+                {displayDiscount > 0 && (
                   <div className="flex justify-between font-medium text-emerald-700">
                     <span>Descuento no reembolsable</span>
-                    <span>-{importeDesc.toFixed(2)} €</span>
+                    <span>-{displayDiscount.toFixed(2)} €</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-stone-200 pt-3 text-base font-bold text-stone-900">
                   <span>Total</span>
-                  <span>{importeTotal.toFixed(2)} €</span>
+                  <span>{displayTotal.toFixed(2)} €</span>
                 </div>
               </div>
 
@@ -491,7 +499,7 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                 ) : (
                   <div className="flex items-center justify-between">
                     <span className="text-stone-500">Pago ahora</span>
-                    <span className="font-bold text-stone-800">{importeTotal.toFixed(2)} €</span>
+                    <span className="font-bold text-stone-800">{displayTotal.toFixed(2)} €</span>
                   </div>
                 )}
               </div>
@@ -514,7 +522,7 @@ export const BookingCheckoutSection: React.FC<Props> = ({
                 Pagar{' '}
                 {hasDeposit
                   ? `${importeSenal.toFixed(2)} € de señal`
-                  : `${importeTotal.toFixed(2)} €`}
+                  : `${displayTotal.toFixed(2)} €`}
               </>
             )}
           </button>

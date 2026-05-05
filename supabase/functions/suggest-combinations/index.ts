@@ -48,9 +48,10 @@ serve(async (req) => {
     // Cargar unidades con campos de precio base
     const { data: unidades, error: uErr } = await supabase
       .from("unidades")
-      .select("id, nombre, slug, capacidad_base, capacidad_maxima, precio_noche, extra_huesped_noche, tarifa_limpieza, min_noches, precio_noche_especial, extra_huesped_especial, tarifa_limpieza_especial, min_noches_especial")
+      .select("id, nombre, slug, capacidad_base, capacidad_maxima, precio_noche, extra_huesped_noche, tarifa_limpieza, min_noches, precio_noche_especial, extra_huesped_especial, tarifa_limpieza_especial, min_noches_especial, modo_operacion")
       .eq("property_id", property_id)
       .eq("activa", true)
+      .neq("modo_operacion", "LONG")
       .order("orden", { ascending: true });
 
     if (uErr) {

@@ -41,6 +41,9 @@ export default function BookingSearchStepPage() {
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [longUnitModal, setLongUnitModal] = useState<{ id: string; nombre: string } | null>(null)
+  const [stayType, setStayType] = useState<'SHORT' | 'LONG'>('SHORT')
+  const [longUnits, setLongUnits] = useState<{ id: string; nombre: string; precio_noche: number; capacidad_maxima: number; descripcion_corta: string | null; foto_portada: string | null }[]>([])
+  const [loadingLongUnits, setLoadingLongUnits] = useState(false)
 
   const checkInDate = isoToDate(checkIn)
   const checkOutDate = isoToDate(checkOut)
@@ -183,6 +186,21 @@ export default function BookingSearchStepPage() {
     }
   }
 
+  useEffect(() => {
+    if (stayType !== 'LONG' || !tenant.property_id) return
+    setLoadingLongUnits(true)
+    supabase
+      .from('unidades')
+      .select('id, nombre, precio_noche, capacidad_maxima, descripcion_corta, foto_portada')
+      .eq('property_id', tenant.property_id)
+      .eq('activa', true)
+      .eq('modo_operacion', 'LONG')
+      .then(({ data }) => {
+        setLongUnits(data ?? [])
+        setLoadingLongUnits(false)
+      })
+  }, [stayType, tenant.property_id])
+
   const handleSearch = async () => {
     if (!isValidSearch || !checkIn || !checkOut || !property) return
 
@@ -286,68 +304,196 @@ export default function BookingSearchStepPage() {
 
       <BookingWizardHeader currentStep={1} />
 
-      {TEST_MODE && (
-        <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <FlaskConical size={16} className="shrink-0" />
-          <span>
-            <strong>Modo pruebas:</strong> las reservas usan Stripe TEST.
-          </span>
-        </div>
-      )}
-
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-stone-900 md:text-3xl">Selecciona tus fechas</h1>
-        <p className="mt-1 text-sm text-stone-500">
-          Elige entrada, salida y tamaño del grupo para ver las opciones disponibles.
-        </p>
-      </div>
-
-      <div className="grid items-start gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-        <BookingSearchForm
-          checkIn={checkInDate}
-          checkOut={checkOutDate}
-          guests={guests}
-          maxGuests={maxGuests}
-          unitsCount={units.length}
-          onGuestsChange={setGuests}
-          onSearch={handleSearch}
-          isValid={isValidSearch}
-        />
-
-        <AvailabilityCalendar
-          selectedRange={{ start: checkInDate, end: checkOutDate }}
-          onSelectDate={handleSelectDate}
-          availabilityByDate={availabilityByDate}
-          mode="GLOBAL"
-          className="h-fit"
-        />
-      </div>
-
-      {loadingInit && (
-        <div className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-500 shadow-sm">
-          Cargando datos del motor de reservas...
-        </div>
-      )}
-
-      {isSearching && (
-        <div className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-500 shadow-sm">
-          Consultando disponibilidad real...
-        </div>
-      )}
-
-      {searchError && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-4 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 text-red-800"
+      {/* Selector de tipo de estancia */}
+      <div className="mb-6 flex gap-1.5 rounded-2xl border border-stone-200 bg-stone-100 p-1.5">
+        <button
+          type="button"
+          onClick={() => setStayType('SHORT')}
+          className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+            stayType === 'SHORT' ? 'bg-white text-emerald-800 shadow-sm' : 'text-stone-500 hover:text-stone-700'
+          }`}
         >
-          <AlertCircle size={20} className="mt-0.5 shrink-0" />
-          <div>
-            <p className="font-semibold">No se puede continuar</p>
-            <p className="text-sm">{searchError}</p>
+          Corta estancia
+        </button>
+        <button
+          type="button"
+          onClick={() => setStayType('LONG')}
+          className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+            stayType === 'LONG' ? 'bg-white text-violet-800 shadow-sm' : 'text-stone-500 hover:text-stone-700'
+          }`}
+        >
+          Media / Larga estancia
+        </button>
+      </div>
+
+      {/* CORTA ESTANCIA */}
+      {stayType === 'SHORT' && (
+        <>
+          {TEST_MODE && (
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <FlaskConical size={16} className="shrink-0" />
+              <span><strong>Modo pruebas:</strong> las reservas usan Stripe TEST.</span>
+            </div>
+          )}
+
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold text-stone-900 md:text-3xl">Selecciona tus fechas</h1>
+            <p className="mt-1 text-sm text-stone-500">
+              Elige entrada, salida y tamaño del grupo para ver las opciones disponibles.
+            </p>
           </div>
-        </motion.div>
+
+          <div className="grid items-start gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+            <BookingSearchForm
+              checkIn={checkInDate}
+              checkOut={checkOutDate}
+              guests={guests}
+              maxGuests={maxGuests}
+              unitsCount={units.length}
+              onGuestsChange={setGuests}
+              onSearch={handleSearch}
+              isValid={isValidSearch}
+            />
+            <AvailabilityCalendar
+              selectedRange={{ start: checkInDate, end: checkOutDate }}
+              onSelectDate={handleSelectDate}
+              availabilityByDate={availabilityByDate}
+              mode="GLOBAL"
+              className="h-fit"
+            />
+          </div>
+
+          {loadingInit && (
+            <div className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-500 shadow-sm">
+              Cargando datos del motor de reservas...
+            </div>
+          )}
+          {isSearching && (
+            <div className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-500 shadow-sm">
+              Consultando disponibilidad real...
+            </div>
+          )}
+          {searchError && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-4 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 text-red-800"
+            >
+              <AlertCircle size={20} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold">No se puede continuar</p>
+                <p className="text-sm">{searchError}</p>
+              </div>
+            </motion.div>
+          )}
+        </>
       )}
+
+      {/* MEDIA / LARGA ESTANCIA */}
+      {stayType === 'LONG' && (
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-stone-900 md:text-3xl">Media / Larga estancia</h1>
+            <p className="mt-1 text-sm text-stone-500">
+              Alquiler mensual con contrato. Mínimo 30 días.
+            </p>
+          </div>
+
+          {/* Cómo funciona */}
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 p-5">
+            <h2 className="mb-3 font-bold text-violet-900">Cómo funciona el alquiler mensual</h2>
+            <div className="grid gap-2 text-sm text-violet-800 sm:grid-cols-2">
+              {[
+                'Mínimo 30 días de estancia',
+                'Precio mensual cerrado (no por noche)',
+                'Fianza de 2 meses reembolsable',
+                'Pago mensual por transferencia bancaria',
+                'Contrato firmado por ambas partes',
+                'Renovación posible con 30 días de antelación',
+                'Estudio de solvencia con documentación',
+                'Respuesta en 48–72 horas hábiles',
+              ].map(item => (
+                <div key={item} className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 text-violet-500">✓</span>
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Documentos necesarios */}
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 p-5">
+            <h3 className="mb-2 font-semibold text-stone-800">Documentación que solicitaremos</h3>
+            <ul className="space-y-1 text-sm text-stone-600">
+              <li>• DNI o NIE del solicitante</li>
+              <li>• Últimas 3 nóminas o justificante de ingresos</li>
+              <li>• Contrato de trabajo vigente</li>
+              <li>• Vida laboral (SEPE)</li>
+              <li>• Última declaración de la renta (IRPF)</li>
+              <li>• Extracto bancario de los últimos 3 meses (opcional)</li>
+            </ul>
+          </div>
+
+          {/* Alojamientos disponibles */}
+          <div>
+            <h2 className="mb-4 text-xl font-bold text-stone-900">Alojamientos disponibles</h2>
+            {loadingLongUnits ? (
+              <p className="text-sm text-stone-400">Cargando...</p>
+            ) : longUnits.length === 0 ? (
+              <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center text-sm text-stone-500">
+                No hay alojamientos de media/larga estancia disponibles en este momento.
+                Contacta con nosotros para más información.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {longUnits.map(unit => (
+                  <div key={unit.id} className="flex flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm sm:flex-row">
+                    {unit.foto_portada ? (
+                      <img src={unit.foto_portada} alt={unit.nombre} className="h-44 w-full shrink-0 object-cover sm:h-auto sm:w-52" />
+                    ) : (
+                      <div className="flex h-44 w-full shrink-0 items-center justify-center bg-stone-100 sm:h-auto sm:w-52">
+                        <Building size={32} className="text-stone-300" />
+                      </div>
+                    )}
+                    <div className="flex flex-1 flex-col justify-between p-5">
+                      <div>
+                        <div className="mb-1 flex items-start justify-between gap-3">
+                          <h3 className="text-lg font-bold text-stone-900">{unit.nombre}</h3>
+                          <span className="shrink-0 rounded-full bg-violet-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-700">
+                            Alquiler mensual
+                          </span>
+                        </div>
+                        {unit.descripcion_corta && (
+                          <p className="mb-2 line-clamp-2 text-sm text-stone-500">{unit.descripcion_corta}</p>
+                        )}
+                        <p className="text-sm text-stone-500">
+                          Hasta <strong>{unit.capacidad_maxima}</strong> personas
+                        </p>
+                      </div>
+                      <div className="mt-4 flex items-center justify-between gap-4">
+                        {unit.precio_noche > 0 && (
+                          <p className="font-bold text-stone-800">
+                            Desde <span className="text-xl text-violet-700">{unit.precio_noche} €</span>/mes
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/solicitar/${unit.id}`)}
+                          className="flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-violet-700"
+                        >
+                          Solicitar alquiler
+                          <ArrowRight size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

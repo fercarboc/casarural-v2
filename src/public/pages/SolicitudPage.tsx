@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronRight, ChevronLeft, Loader2, Home, CheckCircle2, AlertCircle } from 'lucide-react'
+import { ChevronRight, ChevronLeft, Loader2, Home, CheckCircle2, AlertCircle, Paperclip, X } from 'lucide-react'
 import { supabase } from '../../integrations/supabase/client'
 import { usePublicProperty } from '../../shared/hooks/usePublicProperty'
 
@@ -74,6 +74,13 @@ export const SolicitudPage: React.FC = () => {
   const [form, setForm] = useState<FormData>(EMPTY)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [files, setFiles] = useState<Record<string, File | null>>({
+    DNI: null,
+    NOMINA: null,
+    CONTRATO_LABORAL: null,
+    VIDA_LABORAL: null,
+    DECLARACION_RENTA: null,
+  })
 
   useEffect(() => {
     if (!unidadId) return
@@ -102,7 +109,8 @@ export const SolicitudPage: React.FC = () => {
       if (!form.fecha_inicio) return 'Indica la fecha de inicio deseada'
       if (!form.duracion_meses || parseInt(form.duracion_meses) < 1) return 'Indica la duración en meses'
     }
-    if (step === 3) {
+    // paso 3 (documentos): todos opcionales
+    if (step === 4) {
       if (!form.acepta_terminos) return 'Debes aceptar los términos y condiciones'
     }
     return ''
@@ -193,6 +201,26 @@ export const SolicitudPage: React.FC = () => {
         }).catch(() => {/* no crítico */})
       }
 
+      // Subir documentos adjuntados (no crítico — si falla, la solicitud sigue adelante)
+      const docEntries = Object.entries(files).filter(([, f]) => f !== null) as [string, File][]
+      for (const [docType, file] of docEntries) {
+        try {
+          const fd = new FormData()
+          fd.append('file', file)
+          fd.append('rental_id', rental!.id)
+          fd.append('email', form.cliente_email.trim())
+          fd.append('document_type', docType)
+          await fetch(
+            `${(import.meta as any).env.VITE_SUPABASE_URL}/functions/v1/tenant-upload-rental-doc`,
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${(import.meta as any).env.VITE_SUPABASE_ANON_KEY}` },
+              body: fd,
+            }
+          )
+        } catch {/* silencioso */}
+      }
+
       navigate('/solicitud/confirmacion', { replace: true })
     } catch (e: any) {
       setError(e.message ?? 'Error al enviar la solicitud. Inténtalo de nuevo.')
@@ -211,7 +239,7 @@ export const SolicitudPage: React.FC = () => {
 
   if (!unidad) return null
 
-  const STEPS = ['Tus datos', 'Preferencias', 'Confirmación']
+  const STEPS = ['Tus datos', 'Preferencias', 'Documentos', 'Confirmación']
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
@@ -395,8 +423,69 @@ export const SolicitudPage: React.FC = () => {
           </div>
         )}
 
-        {/* Step 3 */}
+        {/* Step 3 — Documentos */}
         {step === 3 && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-stone-800">Documentación</h2>
+              <p className="mt-1 text-sm text-stone-500">
+                Adjunta los documentos que tengas disponibles. Todos son opcionales en este momento — el propietario podrá solicitar documentación adicional durante el proceso.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <p className="font-semibold mb-1">Documentos recomendados:</p>
+              <ul className="list-inside list-disc space-y-0.5 text-amber-700">
+                <li>DNI o NIE</li>
+                <li>Últimas 3 nóminas o justificante de ingresos</li>
+                <li>Contrato de trabajo vigente</li>
+                <li>Vida laboral (SEPE)</li>
+                <li>Última declaración de la renta (IRPF)</li>
+              </ul>
+            </div>
+
+            <div className="space-y-4">
+              {([
+                { key: 'DNI',               label: 'DNI / NIE' },
+                { key: 'NOMINA',            label: 'Nómina(s) — últimas 3' },
+                { key: 'CONTRATO_LABORAL',  label: 'Contrato de trabajo' },
+                { key: 'VIDA_LABORAL',      label: 'Vida laboral (SEPE)' },
+                { key: 'DECLARACION_RENTA', label: 'Declaración de la renta' },
+              ] as { key: string; label: string }[]).map(({ key, label }) => (
+                <div key={key} className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
+                      <Paperclip size={14} className="text-stone-400" />
+                      {label}
+                    </label>
+                    {files[key] && (
+                      <button
+                        type="button"
+                        onClick={() => setFiles(f => ({ ...f, [key]: null }))}
+                        className="text-stone-400 hover:text-red-500"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  {files[key] ? (
+                    <p className="text-xs text-emerald-700 font-medium">✓ {files[key]!.name}</p>
+                  ) : (
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={e => setFiles(f => ({ ...f, [key]: e.target.files?.[0] ?? null }))}
+                      className="w-full text-sm text-stone-500 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-emerald-700 hover:file:bg-emerald-100"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 4 — Confirmación */}
+        {step === 4 && (
           <div className="space-y-5">
             <h2 className="text-lg font-semibold text-stone-800">Resumen de tu solicitud</h2>
 
@@ -413,8 +502,15 @@ export const SolicitudPage: React.FC = () => {
               <div className="flex justify-between"><span className="text-stone-500">Mascotas</span><span className="font-medium text-stone-800">{form.mascotas ? `Sí${form.tipo_mascotas ? ` (${form.tipo_mascotas})` : ''}` : 'No'}</span></div>
             </div>
 
+            {Object.values(files).some(Boolean) && (
+              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800">
+                <span className="font-semibold">Documentos adjuntos:</span>{' '}
+                {Object.entries(files).filter(([, f]) => f).map(([, f]) => f!.name).join(', ')}
+              </div>
+            )}
+
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              Esta es una <strong>solicitud de información</strong>, no un contrato. El propietario se pondrá en contacto contigo para confirmar disponibilidad y condiciones.
+              Esta es una <strong>solicitud de alquiler</strong>. El propietario estudiará tu solicitud y se pondrá en contacto contigo para confirmar disponibilidad y condiciones.
             </div>
 
             <label className="flex cursor-pointer items-start gap-3 text-sm text-stone-600">
@@ -450,7 +546,7 @@ export const SolicitudPage: React.FC = () => {
           </button>
         ) : <div />}
 
-        {step < 3 ? (
+        {step < 4 ? (
           <button onClick={next} className="flex items-center gap-1.5 rounded-xl bg-emerald-800 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-900">
             Siguiente <ChevronRight size={15} />
           </button>
